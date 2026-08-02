@@ -28,12 +28,33 @@
 // Known limitation: undo/inspect detection is flag-based (--abort/--quit/--help); a `-h` alias
 // combined with other advancing flags in the same invocation is not specially disambiguated.
 //
-// Known limitation (gh, 2 items — deliberately left open, filed as tasks/todo.md Backlog items):
+// Known limitation (gh, deliberately left open, filed as tasks/todo.md Backlog items):
 //   (i) `gh api --method PUT repos/.../pulls/N/merge` (direct REST call) is not detected — API-level
 //       calls are out of scope for this guard by design.
-//   (ii) `gh.exe pr merge` is not detected: lib/parse-cmd.js's basename extraction lower-cases but
-//       does not strip a `.exe` suffix, so `cmd` resolves to `"gh.exe"`, not `"gh"`. Same pre-existing
-//       hole as `git.exe` for the git-side checks in this file (ruling GP2, pending).
+//   (ii) `gh.exe pr merge` / `gh.cmd pr merge` ARE now detected: lib/parse-cmd.js strips a trailing
+//       `.exe`/`.cmd` suffix from the resolved basename (ruling GP2), so both resolve to `cmd === "gh"`
+//       here, same as the git-side checks in this file. This is NOT an exhaustive fix for every
+//       suffixed/wrapped spelling of gh, though — see the CWD_BUILTINS and step-3 comments in
+//       lib/parse-cmd.js for the full, explicitly non-exhaustive list of residual gaps that module
+//       does NOT close (also plan Table C). The gh-relevant ones: an unquoted path containing spaces
+//       (e.g. `C:/Program Files/gh/bin/gh.exe pr merge` resolves to `cmd === "program"`, not `"gh"`);
+//       a backslash-separated path (parse-cmd.js only splits on `/`, not `\`); wrapper-prefix peeling
+//       not recognizing `sudo.exe`/`env.exe` as wrappers; `eval.exe "gh pr merge 12"` (the basename
+//       strips to `eval`, but extractEvalArg() matches raw text `/\beval\s/`, which does not match
+//       `eval.exe `, so the inner command is never parsed); other PATHEXT suffixes (`.com`, `.ps1`);
+//       a double suffix (e.g. `gh.exe.cmd` strips only the outer `.cmd`, leaving `gh.exe`). `.bat` is
+//       deliberately NOT stripped (ruling G1): `gh.bat pr merge` still resolves to `cmd === "gh.bat"`
+//       and is not detected. None of these are fixed here; named only so this comment does not read
+//       as an exhaustive account of what is closed.
+//   (iii) The "ARE now detected" in (ii) is specific to THIS file: its gh/git checks read only
+//       lib/parse-cmd.js's normalized `cmd`, so GP2's strip reaches them directly. That is NOT true
+//       of every guard in this codebase — a guard whose first check is a raw-text regex match on the
+//       un-normalized command string (before lib/parse-cmd's segments() output is ever consulted) is
+//       entirely unaffected by this normalization. Confirmed example: cmd-write-guard.js's
+//       WRITE_INDICATOR_RE requires the literal bare `git\s+(?:checkout|restore)` / `sed\s+-i` in the
+//       raw command text, so `git.exe restore` / `git.cmd restore` / `sed.exe -i` never even reach
+//       extraction there and bypass that guard while locked (measured; filed as the highest-priority
+//       tasks/todo.md Backlog item). GP2 does not close this class in any file that has such a gate.
 //
 // Command parsing goes through the shared tokenizer (lib/parse-cmd: quote-aware segment split,
 // then per-token unquoting) so a quoted commit message / heredoc that merely mentions "main"
