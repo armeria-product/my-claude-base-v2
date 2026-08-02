@@ -3,9 +3,12 @@ name: quality-loop
 description: >
   Worker が成果物を生産し、権威モデル（frontier tier: CLAUDE.md §2 ¹ の frontier authority
   規約に従う、下限 opus）が審査し、差し戻し → 修正 → 再審査を APPROVE まで反復する自己改善ループ。
-  非自明なコード・計画・ドキュメントの品質ゲートとして、harness / audit / plan から
+  非自明なコード・計画・ドキュメントの品質ゲートとして、harness / plan から
   共通プリミティブとして呼ばれる。「品質チェックして」「レビューループして」
   「自己改善ループで」と頼まれた時にも単体で発動する。
+  「セキュリティ観点でも厳しく検査して」と頼まれた時は、コード審査パネルに加えて
+  reviewer (target: security) を並列で1本立て、全所見を1回の fusion に統合する
+  On-Request Security Track で応じる（決済・認証・データ移行などの高リスク変更向け）。
 user-invocable: true
 ---
 
@@ -22,6 +25,7 @@ CLAUDE.md §1.3 Writer/Reviewer Separation.
 | **Worker** | Choose by deliverable type: code/tests = executor / planning = planner | Each agent's frontmatter (standard/heavy) |
 | **Authority** | Code = reviewer (match target to the deliverable) / planning = planner self-review mode | **frontier**: resolves to `opus` today, with no dispatch override (CLAUDE.md §2 ¹). **Below opus is forbidden.** Does not depend on the conductor's model. For plan/design/architecture deliverables and normal code review (`reviewer target:code`): add an external co-reviewer per the Authority Co-Review section below, when its trigger condition is met; trigger unmet → the standing two-seat panel continues (see Authority Co-Review) |
 | **Verifier** | verifier | standard |
+| **Security (on request)** | `reviewer target: security` — a **parallel review track** added when the user asks for a security-inclusive strict pass（「セキュリティ観点でも厳しく検査」）; findings fold into the same single fusion (see On-Request Security Track below) | heavy (reviewer frontmatter); takes no co-seats itself |
 
 ## Loop Contract (max 3 cycles)
 
@@ -109,7 +113,11 @@ The red-team seat is a same-tier instance in an independent context, never a sep
 2. A same-tier instance, red-team lens — same model as seat 1 for this dispatch (see above), independent context, same review prompt + the added line above
 3. *(when the trigger condition is met)* a same-role worker with `RELAY-MODEL: <default external alias>` as the first line of the identical review prompt
 
-All attendees' outputs are integrated via the existing Fusion Composition below (`reviewer target:fusion` → `fusion-detect.mjs` → revisit ≤ 1) — 2 inputs when the external seat is absent, 3 when present (`partial_coverage` activates at N≥3). A calling workflow may fold all attendees into one larger fusion instead — for example audit Phase 4b — but must not run nested fusions.
+All attendees' outputs are integrated via the existing Fusion Composition below (`reviewer target:fusion` → `fusion-detect.mjs` → revisit ≤ 1) — 2 inputs when the external seat is absent, 3 when present (`partial_coverage` activates at N≥3). A calling flow may fold all attendees into one larger fusion instead — e.g. the On-Request Security Track below folds the security review in — but must not run nested fusions.
+
+### On-Request Security Track (strict inspection mode)
+
+When the user asks for a security-inclusive strict pass (e.g. 「セキュリティ観点でも厳しく検査」), add a **parallel `reviewer target: security` review** (OWASP Top 10 + agentic threats) alongside the code panel, and fold ALL tracks into the **single** fusion call — code spec-conformance + code red-team (+ code external when attending) + security = 3-5 inputs; never run a nested code-only fusion first. The security track is a separate review, **not** a lens seat: the 4-seat cap governs the code panel only, and the security review itself still takes no co-seats (Round 0 policy below). The conductor acts on the fused JSON: fix all CRITICAL/HIGH, investigate every `blind_spot`, resolve each `contradiction` explicitly; the verifier then attaches concrete evidence (test logs, diffs) per finding addressed. Intended for high-risk changes — payments, auth, data migration, multi-system blast radius.
 
 **Binding verdict stays with the frontier authority.** The red-team seat and the external co-reviewer are additional viewpoints fused into the findings — neither issues or overrides the APPROVE/REQUEST_CHANGES verdict, and the opus floor guarantee is unaffected. If the fused result carries a red-team- or co-reviewer-originated CRITICAL/HIGH finding, the conductor presents it to the frontier authority for a ruling before the final APPROVE — **regardless of the split verdict** (this trigger is severity-driven, not a function of `fusion-detect.mjs`'s split/collapse output) — the verdict right always stays with the frontier authority (spec-conformance lens).
 

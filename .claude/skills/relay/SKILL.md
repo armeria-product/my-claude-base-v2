@@ -4,7 +4,7 @@ description: >
   外部モデル（GPT 系など）への振り分け規約の SOT（正本）。worker を `RELAY-MODEL:<alias>`
   マーカー付きで spawn する手順、alias の参照（辞書は models.json）、複数モデル指名時の合議(fan-out)の組み方を定義する。
   「外部モデルで」「RELAY-MODEL」「gpt で動かす」「別モデルで」「合議」「複数モデルで意見を聞いて」
-  と頼まれた時、または harness/audit/quality-loop が worker の backend を外部モデルに振る時に使う。
+  と頼まれた時、または harness/quality-loop が worker の backend を外部モデルに振る時に使う。
 user-invocable: true
 ---
 

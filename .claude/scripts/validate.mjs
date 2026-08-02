@@ -205,6 +205,7 @@ const FORBIDDEN = [
   [/\baddons?\b/, 'addons subsystem was removed (intentional) — do not reference it'],
   [/(?:^|[^\w/])\/improve\b|skills\/improve\b/, 'the /improve unattended self-improvement loop was removed in v2 — improvements go through normal user requests'],
   [/(?:^|[^\w/])\/checkpoint\b|commands\/checkpoint\b/, 'the /checkpoint command was removed in v2 — native /rewind covers it'],
+  [/skills\/audit\b|(?:^|[^\w/])\/audit\b/, 'the audit skill was folded into quality-loop (request the security track: 「quality-loop でセキュリティ観点でも厳しく検査」)'],
   [/(?:^|[^\w/])\/wrap\b/, 'there is no /wrap skill — the enhanced /save-session owns the report/save flow'],
   [/^(?!.*never name an alias starting with).*\bfable\b/i, 'fable is no longer a dispatch target — the frontier authority runs at `opus` (CLAUDE.md §2 ¹); relay/SKILL.md\'s alias-collision list is the only allowed mention'],
   [/frontier dispatch override/i, 'renamed to "frontier authority convention" — the override no longer exists (CLAUDE.md §2 ¹)'],

@@ -73,7 +73,7 @@ claude   # 起動するだけ（フック・権限・記録は .claude/settings.
 CLAUDE.md            … 運用の憲法（§番号は各所から引用される安定API — 改番禁止・追記のみ）
 .claude/
   agents/            … サブエージェント定義 7体
-  skills/            … スキル 16種（下記）
+  skills/            … スキル 15種（下記）
   commands/          … /save-session・/resume-session
   hooks/             … フック 18本＋共有ライブラリ（下記）
   rules/             … パス連動ルール（agents / dev-projects / session-persistence）
@@ -99,13 +99,12 @@ tmp/                 … 使い捨て作業ファイル
 | explorer | light (haiku) | コードベース探索・事実収集 |
 | document-author | standard (sonnet) | 自己完結HTML成果物・図解・スライド |
 
-## Skills（16種）
+## Skills（15種）
 
 - **plan** — 複雑度で軽量/重量を自動判定する計画スキル。重量パスは scope.json＋承認引き渡しで終わり、承認がロックを作動させる
 - **harness** — feature / bugfix / refactor / security / research の複数エージェント一括遂行。委任時は計画書のパスを渡しワーカー自身に読ませる（伝言ゲーム禁止）
-- **quality-loop** — 書き手と審査役を分離した自己改善ループ（権威=opus床値・赤チーム席常設・外部同席・**レンズカタログ**: シンプルさ/利用者視点/効率/互換/テスト検出力を条件・指名で1席、同時最大4席）
+- **quality-loop** — 書き手と審査役を分離した自己改善ループ（権威=opus床値・赤チーム席常設・外部同席・**レンズカタログ**: シンプルさ/利用者視点/効率/互換/テスト検出力を条件・指名で1席、同時最大4席）。「**セキュリティ観点でも厳しく検査**」と頼むと reviewer(target:security) が並列で1本立ち、全所見が1回の fusion に統合される（決済・認証・データ移行など高リスク変更向けの厳格モード）
 - **check** — 完了報告前の自動検証（製品コード=build/lint/test、ハーネス=validate.mjs、HTML=自己完結lint）
-- **audit** — 高厳密の監査パイプライン。**提案まで**が本体で、実装は承認ゲート（スコープロック）通過後
 - **commit** / **pr** — 規約コミットとブランチ+PR運用（main はあなたの Merge でのみ前進）
 - **relay** — 外部モデルルーティング規約（clover/models.json が別名辞書のSOT）
 - **code-cleaner** — 削除専用のスロップ掃除パス

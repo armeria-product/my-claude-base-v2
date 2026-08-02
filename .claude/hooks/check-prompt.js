@@ -64,7 +64,7 @@ const RECEPTIONIST_HINT = `[receptionist-hint] Build/change intent detected ({ma
    Q1 Nature: (a) new build (b) modification (c) cleanup/refactor (d) investigation only (e) independent review (f) high-stakes/irreversible decision needing multiple viewpoints
    Q2 Scope: (a) 1-2 files (b) 3+/cross-cutting (c) parallel scale (d) unknown
    Q3 Requirements: (a) clear (b) direction only (c) fuzzy
-3. Routing (evaluate top-down): Q1=e→audit / Q1=f→quality-loop (Fusion Composition) / Q1=c→code-cleaner / Q3=c→plan(light) /
+3. Routing (evaluate top-down): Q1=e→quality-loop (+security track if the target is risk-sensitive) / Q1=f→quality-loop (Fusion Composition) / Q1=c→code-cleaner / Q3=c→plan(light) /
    Q2=c→harness / Q2=b∧Q3∈{a,b}→plan(heavy) / Q1=d→normal investigation / all light→implement directly
 4. Declare "Handing off to <X>. Reason: <one line>" and launch the Skill (at most 1 follow-up question)
 Ignore this hint if the immediately preceding conversation already skipped it.`;
