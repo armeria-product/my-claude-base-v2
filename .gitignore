@@ -1,0 +1,28 @@
+# Session records (disk is the store; untracked to avoid PR noise and merge conflicts)
+tasks/*.md
+tasks/history/
+tasks/reviews/
+journal/
+
+# Scope-lock runtime state (hook-owned; untracked so git holds no restorable copy)
+.claude/state/
+
+# Scratch/temp workspace (CLAUDE.md §0 Temp files)
+/tmp/
+
+# Claude Code internals
+.claude/.relay-status
+
+# clover relay runtime (code is tracked; logs/sessions are not)
+clover/relay.log
+clover/run/
+
+# Product directories (each has its own git repo)
+dev/
+plans/
+
+# mcp
+.mcp.json
+
+# Node deps for harness scripts
+.claude/scripts/node_modules/
