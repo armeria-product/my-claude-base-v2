@@ -2,7 +2,7 @@
 tasks/*.md
 tasks/history/
 tasks/reviews/
-tasks/journal/
+tasks/journal/*
 
 # Scope-lock runtime state (hook-owned; untracked so git holds no restorable copy)
 .claude/state/
