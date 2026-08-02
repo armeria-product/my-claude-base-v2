@@ -197,9 +197,11 @@ if (claudeMd)
       fail('statusline.js no longer reads scope-lock — the 🔒 indicator is gone (locks become invisible)');
   }
   // Review-floor wiring (CLAUDE.md §2 ¹): block-review-floor.js must stay armed on Task|Agent,
-  // and its BELOW_FLOOR set must still name all three below-floor tiers. Each name is checked
-  // independently (not one ordered combined pattern) so a Set literal written in a different
-  // member order doesn't false-fail (cycle-1 C10).
+  // and its BELOW_FLOOR set must still name all three below-floor tiers. Membership is checked
+  // against the BELOW_FLOOR = new Set([...]) literal specifically (not the whole file text), so
+  // a tier name merely quoted elsewhere (e.g. left behind in a comment after being dropped from
+  // the Set) doesn't false-pass. Each name is checked independently (not one ordered combined
+  // pattern) so a Set literal written in a different member order doesn't false-fail (cycle-1 C10).
   {
     const rf = eventsOf('block-review-floor.js');
     if (!rf.some((e) => e.event === 'PreToolUse' && e.matcher.includes('Task') && e.matcher.includes('Agent')))
@@ -207,9 +209,13 @@ if (claudeMd)
     const rfPath = path.join(ROOT, '.claude', 'hooks', 'block-review-floor.js');
     if (fs.existsSync(rfPath)) {
       const rfText = read(rfPath);
-      for (const name of ['sonnet', 'haiku', 'inherit'])
-        if (!new RegExp(`['"]${name}['"]`).test(rfText))
-          fail(`block-review-floor.js no longer names "${name}" in its BELOW_FLOOR set — that tier silently stops being denied`);
+      const belowFloorMatch = rfText.match(/BELOW_FLOOR\s*=\s*new Set\(\[([^\]]*)\]\)/);
+      if (!belowFloorMatch)
+        fail('block-review-floor.js: could not locate the BELOW_FLOOR = new Set([...]) definition — cannot verify its members');
+      else
+        for (const name of ['sonnet', 'haiku', 'inherit'])
+          if (!new RegExp(`['"]${name}['"]`).test(belowFloorMatch[1]))
+            fail(`block-review-floor.js no longer names "${name}" in its BELOW_FLOOR set — that tier silently stops being denied`);
     }
   }
 }
