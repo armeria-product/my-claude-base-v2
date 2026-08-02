@@ -123,12 +123,13 @@ if (claudeMd)
 // ---- 3.5 v2 wiring invariants: state-dir deny + Bash matchers cover PowerShell ----
 {
   // (b) The scope-lock state dir must be Claude-unwritable. permissions.deny is the only layer
-  // that holds even under bypassPermissions — losing these two entries disarms the whole lock.
+  // that holds even under bypassPermissions — losing this entry disarms the whole lock.
+  // CLI fact (observed 2026-08-02 warning): file-permission rules match Edit(path) ONLY, and
+  // an Edit rule covers ALL file-editing tools (Write/NotebookEdit included); Write(path)/
+  // NotebookEdit(path) deny entries are inert noise, so exactly the Edit form must be present.
   const denyList = settings.permissions?.deny ?? [];
-  for (const must of ['Edit(./.claude/state/**)', 'Write(./.claude/state/**)']) {
-    if (!denyList.includes(must))
-      fail(`settings.json permissions.deny is missing "${must}" — .claude/state/ (scope-lock home) becomes Claude-writable and the lock is no longer tamper-proof`);
-  }
+  if (!denyList.includes('Edit(./.claude/state/**)'))
+    fail('settings.json permissions.deny is missing "Edit(./.claude/state/**)" — .claude/state/ (scope-lock home) becomes Claude-writable and the lock is no longer tamper-proof (the Edit rule is the one that covers Write/NotebookEdit too)');
   // (h) This Windows host exposes a PowerShell tool alongside Bash. A matcher that names Bash
   // without PowerShell leaves a full command bypass open (v1's gap).
   for (const [event, groups] of Object.entries(settings.hooks ?? {}))

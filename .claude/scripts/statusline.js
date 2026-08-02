@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+// NOTE: .claude/scripts/package.json declares "type":"module", so this file is ESM —
+// use import, never require (a require here throws and dies silently in try/catch).
+import fs from "node:fs";
+import path from "node:path";
+
 let raw = "";
 process.stdin.on("data", (c) => (raw += c));
 process.stdin.on("end", () => {
@@ -53,8 +58,6 @@ process.stdin.on("end", () => {
 
   // scope-lock indicator: 🔒slug while a plan lock is armed (reads hook-owned state)
   try {
-    const fs = require("node:fs");
-    const path = require("node:path");
     const proj = data?.workspace?.project_dir || data?.cwd || process.cwd();
     const lock = JSON.parse(
       fs.readFileSync(path.join(proj, ".claude", "state", "scope-lock.json"), "utf8")
