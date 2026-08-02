@@ -54,6 +54,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/approve-lock.js\""
+          },
+          {
+            "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-prompt.js\""
           }
         ]
@@ -81,6 +85,15 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/scope-guard.js\""
+          }
+        ]
+      },
+      {
         "matcher": "Write",
         "hooks": [
           {
@@ -101,6 +114,10 @@
       {
         "matcher": "Bash|PowerShell",
         "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/cmd-write-guard.js\""
+          },
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-destructive-git.js\""

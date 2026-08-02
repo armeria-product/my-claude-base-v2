@@ -31,6 +31,25 @@ function main() {
   const root = projectRoot(payload);
   const line = formatLine(payload, root);
   if (line) appendLine(root, line);
+
+  // Plan-handoff convergence (CLAUDE.md §7): after a native plan-mode approval, steer the
+  // model onto the same scope.json -> 「承認」 flow the plan skill ends with. Mechanical, not
+  // prose-only — losing this injection would silently reopen the "plan approved but nothing
+  // is locked" gap that v2 exists to close.
+  if (payload.tool_name === 'ExitPlanMode') {
+    console.log(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PostToolUse',
+          additionalContext:
+            '[plan-handoff] プランモードの計画が承認されました。この計画を「承認後は自走・範囲は機械的に固定」で実行する場合: ' +
+            'plans/{slug}/scope.json（{"slug","status":"proposed","proposedAt","plan","allow":[...glob],"forbid":[...],"tasks":[...]}）を書き出し、' +
+            '範囲を平易な日本語で示した上で「scope.json を書き出しました。『承認』とだけ返信するとロックして自走を開始します（解除は『解除』）」とユーザーに伝えること。' +
+            '1-2ファイルの小さな作業でロックが過剰なら、この案内は無視して直接実装してよい。',
+        },
+      })
+    );
+  }
 }
 
 function formatLine(payload, root) {

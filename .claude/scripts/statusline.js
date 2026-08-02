@@ -51,6 +51,19 @@ process.stdin.on("end", () => {
   const model = data?.model?.display_name || "Claude";
   const parts = [model];
 
+  // scope-lock indicator: 🔒slug while a plan lock is armed (reads hook-owned state)
+  try {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const proj = data?.workspace?.project_dir || data?.cwd || process.cwd();
+    const lock = JSON.parse(
+      fs.readFileSync(path.join(proj, ".claude", "state", "scope-lock.json"), "utf8")
+    );
+    if (lock.status === "locked") parts.push(`\x1b[33m🔒${lock.slug}${R}`);
+  } catch {
+    /* no lock file -> no segment */
+  }
+
   const ctx = num(data?.context_window?.used_percentage);
   if (ctx != null) parts.push(fmt("ctx", ctx));
 

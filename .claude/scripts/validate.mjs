@@ -169,6 +169,29 @@ if (claudeMd)
     if (fs.existsSync(p) && /unlinkSync|rmSync|\brotate\s*\(/.test(read(p)))
       fail('archive-session-state.js contains a deletion/rotation code path — v2 keeps session-state history in full');
   }
+
+  // Scope-lock chain wiring: all three hooks must stay armed on the right events/matchers.
+  {
+    const al = eventsOf('approve-lock.js');
+    if (!al.some((e) => e.event === 'UserPromptSubmit'))
+      fail('approve-lock.js is not registered under UserPromptSubmit — 「承認」/「解除」 can no longer arm/disarm the lock');
+    const sg = eventsOf('scope-guard.js');
+    if (!sg.some((e) => e.event === 'PreToolUse' && ['Edit', 'Write', 'NotebookEdit'].every((t) => e.matcher.includes(t))))
+      fail('scope-guard.js is not registered under PreToolUse Edit|Write|NotebookEdit — locked-scope writes are no longer gated');
+    const cw = eventsOf('cmd-write-guard.js');
+    if (!cw.some((e) => e.event === 'PreToolUse' && e.matcher.includes('Bash') && e.matcher.includes('PowerShell')))
+      fail('cmd-write-guard.js is not registered under PreToolUse Bash|PowerShell — the shell write pathway is unguarded');
+  }
+  // Guard-of-the-guard: cmd-write-guard must keep its unconditional .claude/state shell protection,
+  // and the statusline must keep surfacing the lock (silent locks breed confusion).
+  {
+    const cwPath = path.join(ROOT, '.claude', 'hooks', 'cmd-write-guard.js');
+    if (fs.existsSync(cwPath) && !/\\?\.claude\[\\\\\/\]\+state|\.claude[\\/]+state/.test(read(cwPath)))
+      fail('cmd-write-guard.js no longer references .claude/state — the unconditional lock-file shell protection is gone');
+    const slPath = path.join(ROOT, '.claude', 'scripts', 'statusline.js');
+    if (fs.existsSync(slPath) && !/scope-lock/.test(read(slPath)))
+      fail('statusline.js no longer reads scope-lock — the 🔒 indicator is gone (locks become invisible)');
+  }
 }
 
 // ---- 4. Dead references in core docs/config ----
