@@ -97,9 +97,19 @@ function runRow(row) {
 
 function verdictOf(row, result) {
   if (row.hook.endsWith('cmd-write-guard.js')) {
+    if (result.exit !== 0) {
+      throw new Error(
+        `${row.set}/${row.name}: cmd-write-guard.js exited ${result.exit} (expected 0; ` +
+        `this hook signals deny via stdout JSON, not exit code) — stderr: ${result.stderr}`
+      );
+    }
     return result.stdout.includes('"permissionDecision":"deny"') ? 'deny' : 'allow';
   }
-  return result.exit === 2 ? 'deny' : 'allow';
+  if (result.exit === 2) return 'deny';
+  if (result.exit === 0) return 'allow';
+  throw new Error(
+    `${row.set}/${row.name}: ${row.hook} exited ${result.exit} (expected 0 or 2) — stderr: ${result.stderr}`
+  );
 }
 
 function checkCanaries(results) {
@@ -182,7 +192,13 @@ function registerTests() {
     .split('<SANDBOX>').join(slash(SANDBOX))
     .split('<REPO>').join(slash(ROOT)));
 
-  const EXPECTED_SAMPLE_COUNT = 144;
+  const EXPECTED_SAMPLE_COUNT = 148;
+  // Independently-hardcoded expectation (not re-derived from allRows) so this assertion can't
+  // silently pass no matter what skipIf tags actually exist in the samples file — mirrors the
+  // EXPECTED_SAMPLE_COUNT literal above. Update both the count and this table together when a
+  // row's skipIf tag changes or a new skipIf-tagged row is added/removed.
+  const EXPECTED_SKIP_TAG_COUNTS = { 'protected-branch': 4, 'non-win32': 1 };
+
   test('samples file integrity: JSON.parse succeeds, row count matches, set+name pairs unique', () => {
     const parsed = JSON.parse(raw
       .split('<SANDBOX_FREE>').join(slash(SANDBOX_FREE))
@@ -195,6 +211,18 @@ function registerTests() {
       assert.ok(!seen.has(key), `duplicate set+name pair: ${key}`);
       seen.add(key);
     }
+  });
+
+  test('samples file integrity: skipIf tag counts match the expected table', () => {
+    const parsed = JSON.parse(raw
+      .split('<SANDBOX_FREE>').join(slash(SANDBOX_FREE))
+      .split('<SANDBOX>').join(slash(SANDBOX))
+      .split('<REPO>').join(slash(ROOT)));
+    const actual = {};
+    for (const r of parsed) {
+      if (r.skipIf) actual[r.skipIf] = (actual[r.skipIf] || 0) + 1;
+    }
+    assert.deepStrictEqual(actual, EXPECTED_SKIP_TAG_COUNTS);
   });
 
   const branch = currentBranch();
@@ -212,13 +240,39 @@ function registerTests() {
     });
   }
 
+  // Independently-hardcoded per-set expectation (not re-derived from allRows — a self-filter
+  // compared to itself is always equal and detects nothing). Update this table whenever a row
+  // is added to/removed from/moved between sets. Verified this equals EXPECTED_SAMPLE_COUNT and
+  // covers exactly the sets present in the samples file below.
+  const EXPECTED_SET_COUNTS = {
+    'S-git-pure': 26,
+    'S-git-env': 13,
+    'S-gh': 15,
+    'S-state': 17,
+    'S-lock': 18,
+    'S-fs': 18,
+    'S-prompt': 8,
+    'S-session': 5,
+    'S-agent': 23,
+    'S-secret': 5,
+  };
+
   const setsInOrder = [...new Set(allRows.map((r) => r.set))];
+
+  test('EXPECTED_SET_COUNTS covers exactly the sets present, and sums to EXPECTED_SAMPLE_COUNT', () => {
+    assert.deepStrictEqual(
+      [...Object.keys(EXPECTED_SET_COUNTS)].sort(),
+      [...setsInOrder].sort()
+    );
+    const sum = Object.values(EXPECTED_SET_COUNTS).reduce((a, b) => a + b, 0);
+    assert.strictEqual(sum, EXPECTED_SAMPLE_COUNT);
+  });
+
   for (const setName of setsInOrder) {
     const setRows = allRows.filter((r) => r.set === setName);
 
-    test(`${setName}: row count matches samples file (${setRows.length})`, () => {
-      const rerowed = allRows.filter((r) => r.set === setName);
-      assert.strictEqual(rerowed.length, setRows.length);
+    test(`${setName}: row count matches the expected table (${setRows.length})`, () => {
+      assert.strictEqual(setRows.length, EXPECTED_SET_COUNTS[setName]);
       assert.ok(setRows.length >= 3, `${setName} must include at least the 3 canary rows`);
     });
 

@@ -118,12 +118,12 @@ CLAUDE.md            … 運用ルールの本体（§番号は各所から引�
   hooks/             … フック 19本＋共有ライブラリ（下記「安全装置」）
   rules/             … パスに連動して自動適用されるルール（agents / dev-projects / session-persistence）
   scripts/           … validate.mjs・statusline（ステータスバー表示）・doc変換（html2pdf / html2pptx / deckpack）・fusion-detect
-  state/             … フック専用の状態置き場（スコープロック本体。Claude は書き込み不可・git 追跡外）
+  state/             … フック専用の状態置き場（スコープロック本体。Claude は書き込み不可・git 追跡外・フックが初回に自動生成するため、フレッシュな clone 直後には存在しない）
 clover/              … 外部モデル中継（自己完結のサブプロジェクト・ルート直下）
 docs/                … PDF変換のセットアップ手順などのガイド
 tasks/               … todo / lessons / session-state（+ history/ に全量保持）+ journal/（機械ジャーナル＋レポート・追記専用）— いずれも git 追跡外。journal はどのプロジェクトを触っていても分岐しないルート1本のタイムライン
 plans/               … /plan の成果物（PLAN.md / scope.json / deviations.md・git 追跡外）
-dev/                 … 製品プロジェクトの置き場（各自が独立したgitリポジトリを持てる）
+dev/                 … 製品プロジェクトの置き場（各自が独立したgitリポジトリを持てる・git 追跡外なので、最初の製品を置くまでフレッシュな clone 直後には存在しない）
 tmp/                 … 使い捨ての作業ファイル
 ```
 
@@ -131,7 +131,7 @@ tmp/                 … 使い捨ての作業ファイル
 
 ## 安全装置の一覧（フック19本）
 
-すべて Bash と PowerShell の両方の経路を検査します。
+全19本のうち、Bash と PowerShell の両方の経路を実際に検査するのは8本だけです — `settings.json` で `Bash|PowerShell` にマッチャー登録された7本（`cmd-write-guard.js` / `block-destructive-git.js` / `block-direct-to-main.js` / `block-destructive-fs.js` / `block-no-verify.js` / `check-commit-safety.js` / `block-secret-read.js`）と、両方を含むより広いマッチャーで動く `journal.js`。残り11本は Edit/Write・Task/Agent・SessionStart・UserPromptSubmit・Workflow など別イベントに登録されており、コマンド文字列そのものは検査しません。
 
 - **スコープロック系**: `approve-lock.js`（「承認」/「解除」の検知＝ロックの唯一の入口） / `scope-guard.js`（Edit/Write の範囲外書き込みを拒否） / `cmd-write-guard.js`（Bash/PowerShell 経由の範囲外書き込みを拒否し、`.claude/state` を常時保護する）
 - **記録系**: `journal.js`（全ツール実行を1行記録し、計画承認後は scope.json の案内を出す） / `session-journal.js`（セッションの境界マーカーを打ち、レポート未生成を検知する） / `session-start.js`（session-state・ロック状態・ジャーナル末尾・todo・lessons を起動時に読み込む） / `archive-session-state.js`（上書きの前に全量を退避する — 削除しない）
@@ -148,7 +148,7 @@ tmp/                 … 使い捨ての作業ファイル
   ```bash
   node --test ".claude/hooks/lib/*.test.js" ".claude/scripts/*.test.mjs"
   ```
-  現時点で241件のテストが pass します。
+  現時点で全247件のテストのうち、pass/skip の内訳はブランチと OS に依存します（`main`/`master` ブランチでは protected-branch タグの4件、非 win32 環境では non-win32 タグの1件がそれぞれ skip されるため）。作業ブランチ・win32（このリポジトリの標準環境）では247 pass・0 skip、`main`・非win32 の組み合わせでは242 pass・5 skip になります。skip 件数の期待値は `hook-probes.test.js` の `EXPECTED_SKIP_TAG_COUNTS` を正とします。
 - **clover の全テスト**（clover は自己完結のサブプロジェクトなので別コマンド）:
   ```bash
   RELAY_ROUTER_NO_LISTEN=1 RELAY_SHIM_NO_LISTEN=1 node --test clover/test/*.test.mjs

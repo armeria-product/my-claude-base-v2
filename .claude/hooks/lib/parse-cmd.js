@@ -91,6 +91,15 @@ function unquoteToken(t) {
   return t;
 }
 
+// Shell builtins with no corresponding real executable on PATH: `cd.exe`/`pushd.exe`/`popd.exe`
+// are not files, so a real shell asked to run one fails with "command not found" and leaves the
+// cwd unchanged. Suffix-stripping these names would make lib/cmd-targets.js's exact-match cwd
+// tracking (`case 'cd':`, and the liberal cd/pushd tracking used for .claude/state protection)
+// believe a no-op/failed invocation moved the cwd — see the comment at the strip site below for
+// the two fail-open bypasses this produced. `popd` is included even though no consumer currently
+// tracks it, as the same no-real-executable reasoning applies.
+const CWD_BUILTINS = new Set(['cd', 'pushd', 'popd']);
+
 /**
  * Normalize one segment into one-or-more { cmd, args, raw } objects.
  * For bash/sh/eval indirection the inner command string is parsed recursively.
@@ -118,14 +127,39 @@ function normalizeSegment(seg) {
   //    trailing Windows executable suffix so `git.exe`/`gh.cmd`/etc. match the same guards as
   //    the bare command name. Only `.exe` and `.cmd` are stripped — `.bat` is deliberately left
   //    alone (ruling G1) as a boundary marker for the unhandled case.
-  //    Known residual gaps this does NOT fix (see plan Table C): an unquoted path containing
-  //    spaces (e.g. `C:/Program Files/Git/bin/git.exe push` resolves to `cmd === 'program'`,
-  //    not `git`), a backslash-separated path (this function only splits on `/`, not `\`), and
-  //    `eval.exe "<inner>"` (the basename strips to `eval`, but extractEvalArg() below matches
-  //    the raw text `/\beval\s/`, which does not match `eval.exe `, so the inner command is
-  //    never parsed and the whole call is treated as an opaque command).
+  //
+  //    Exception: a name in CWD_BUILTINS (`cd`/`pushd`/`popd`) is NOT suffix-stripped, even if
+  //    it resolves to e.g. `cd.exe` — see the CWD_BUILTINS comment above. Concretely, without
+  //    this exception `cd.exe sub; cp a.txt other/b.txt` made cmd-targets.js's cwd tracker
+  //    believe cwd moved to `sub/` when a real shell never left the top level (scope-lock
+  //    escape: the cp target then falsely resolves inside an allow-listed dir), and
+  //    `cd .claude; cd.exe ..; echo x > state/f` made it believe cwd left `.claude` when a
+  //    real shell never did (defeats the unconditional .claude/state write protection). Both
+  //    were found in review and are pinned as samples (hook-probes.samples.json:
+  //    lock-cd-exe-fake-cwd-move-escape, state-cd-exe-fake-cwd-move-defeat).
+  //
+  //    This strip is NOT an exhaustive fix for suffixed commands — only the plain
+  //    `<basename>.exe`/`<basename>.cmd` case. Known residual gaps (see plan Table C), plus
+  //    further out-of-scope gap classes surfaced in review, that this does NOT fix:
+  //      - an unquoted path containing spaces (e.g. `C:/Program Files/Git/bin/git.exe push`
+  //        resolves to `cmd === 'program'`, not `git`)
+  //      - a backslash-separated path (this function only splits on `/`, not `\`)
+  //      - `eval.exe "<inner>"` (the basename strips to `eval`, but extractEvalArg() below
+  //        matches the raw text `/\beval\s/`, which does not match `eval.exe `, so the inner
+  //        command is never parsed and the whole call is treated as an opaque command)
+  //      - wrapper-prefix peeling (step 2 above) compares raw tokens (`sudo`, `command`, `env`),
+  //        so `sudo.exe`/`env.exe` are not recognized as wrappers and stay opaque
+  //      - block-destructive-fs.js's own private basename resolvers (separate from this module)
+  //        are not suffix-aware either, e.g. `find ... -exec rm.exe {} \;` / `xargs rm.exe`
+  //      - other PATHEXT suffixes beyond `.exe`/`.cmd` are untouched (`.com`, `.ps1`), as is
+  //        `.bat` (deliberately, ruling G1)
+  //      - a double suffix (e.g. `git.exe.cmd`) strips only the outer `.cmd`, leaving `git.exe`
+  //    None of these are fixed here; they are pre-existing and out of this change's scope —
+  //    named only so this comment does not read as an exhaustive account of what is closed.
   const rawCmd = tokens[idx];
-  const cmd = rawCmd.replace(/^\\/, '').split('/').pop().toLowerCase().replace(/\.(exe|cmd)$/, '');
+  const basename = rawCmd.replace(/^\\/, '').split('/').pop().toLowerCase();
+  const strippedBasename = basename.replace(/\.(exe|cmd)$/, '');
+  const cmd = CWD_BUILTINS.has(strippedBasename) ? basename : strippedBasename;
   idx++;
 
   const args = tokens.slice(idx);
