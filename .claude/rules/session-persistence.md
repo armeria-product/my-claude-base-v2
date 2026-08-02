@@ -1,0 +1,153 @@
+---
+description: session-state / lessons / todo / roadmap ファイルの配置先判定と bootstrap ルール（dev/ と tasks/ の振り分け）＋ 4ファイルの構造契約
+paths:
+  - tasks/session-state.md
+  - tasks/lessons.md
+  - tasks/todo.md
+  - tasks/roadmap.md
+  - dev/*/tasks/session-state.md
+  - dev/*/tasks/lessons.md
+  - dev/*/tasks/todo.md
+  - dev/*/tasks/roadmap.md
+---
+
+# Session Persistence Routing Rule
+
+Centralizes location detection and bootstrap for `session-state.md` / `lessons.md` / `todo.md` / `roadmap.md`.
+This rule fires on any write attempt to the 8 paths above.
+
+> **journal/ is outside this rule**: the work journal (`journal/YYYY-MM/DD.md`) lives at the
+> workspace root only, is written by hooks (journal.js / session-journal.js) and appended to by
+> /save-session, and is **append-only, never rotated, never routed per product**.
+
+## 1. Product Context Detection
+
+Evaluate in the following order and adopt the first match:
+
+1. **User explicitly specifies the save location** → follow that instruction (skip the remaining checks)
+2. **The result of `git diff --name-only HEAD`** includes files under `dev/{name}/` → that `{name}` is the product context
+3. **Files Read/Edit/Written in the recent conversation** include paths under `dev/{name}/` → that `{name}` is the product context
+4. None of the above match → no product context (root context)
+
+When multiple products match: adopt the one with the most hits; on a tie, confirm with the user (do not auto-detect).
+
+## 2. Routing Table
+
+| Situation | session-state | lessons | todo | roadmap |
+|------|--------------|---------|------|---------|
+| Product context present | `dev/{name}/tasks/session-state.md` | `dev/{name}/tasks/lessons.md` | `dev/{name}/tasks/todo.md` | `dev/{name}/tasks/roadmap.md` |
+| No product context | `tasks/session-state.md` | `tasks/lessons.md` | `tasks/todo.md` | `tasks/roadmap.md` |
+
+## 3. Bootstrap Rule (new-file creation)
+
+When running `/save-session`, if **a product context is detected**, create the `dev/{name}/tasks/` directory as needed and bootstrap the 3 files below (only the ones not yet created). `roadmap.md` is excluded — created on-demand (§6.4).
+
+```markdown
+# TODO — {product-name}
+
+## Now
+## Backlog
+## Recently Done
+```
+
+```markdown
+# Session State — {product-name}
+## 🔥 START HERE — [YYYY-MM-DD HH:MM] — <現在地: ブランチ・最新SHA・一言>
+```
+
+```markdown
+# Lessons — {product-name}
+
+<!-- Append entries in CLAUDE.md §4 format (### [YYYY-MM-DD] Pattern name + Trigger/Mistake/Fix/Rule) at the end (ascending order). See §6.3. -->
+```
+
+**Important**: never overwrite existing files; with no product context, do not bootstrap (root `tasks/` files are assumed to exist).
+
+## 4. Cross-Contamination Guard
+
+When **a product context is present** and a write to root's `tasks/lessons.md` / `tasks/todo.md` / `tasks/roadmap.md` is attempted:
+1. Stop the write → 2. Ask "product-specific or cross-cutting?" → 3. Product-specific → redirect to `dev/{name}/tasks/` → 4. Root only when explicitly cross-cutting.
+
+When **there is no product context** and a write to `dev/{name}/tasks/` is attempted: warn and confirm which product context. This guard does not apply to `session-state.md` (routing is uniquely determined).
+
+## 5. Scope of This Rule
+
+Write-target detection for all 4 files, bootstrap for the 3 bootstrapped files, and the structure contract (§6). Actually writing is each actor's responsibility. Actors that follow this rule:
+- `.claude/agents/planner.md` — todo.md (checklist only, §6.1); roadmap.md (large-scale step list, §6.4)
+- `.claude/commands/save-session.md` — session-state.md (§6.2) + bootstrap + lessons/todo appends
+- `.claude/commands/resume-session.md` — detecting the source to read from
+- `.claude/hooks/session-start.js` — reads the 4 files + journal tail for context injection (structure-independent)
+- `.claude/hooks/archive-session-state.js` — archives session-state.md before overwrite (**no rotation — history is kept in full**)
+
+---
+
+## 6. File Structure Contract (single source for the "form" of the 4 files)
+
+**Scope-out**: design artifacts under `plans/{slug}/` (PLAN.md / research.md / scope.json / deviations.md) are not part of the tasks 4 files.
+
+### 6.1 todo.md — a lightweight backlog of only not-started and in-progress items
+
+```markdown
+# TODO — {product}
+> Do not write design document body text. Work that needs a full design goes to the plan skill (heavy path) plans/.
+> Step-ordered implementation checklists go to roadmap.md (§6.4), not here.
+> This file holds work items only (1 line each).
+
+## Now (top priority)
+- [ ] <1 line> (priority: high)   ← items needing design link to the final home of the heavy-path artifact (done/<slug>/)
+
+## Backlog (priority order · 1 line each)
+- [ ] <1 line> (priority: med)
+
+## Recently Done (latest 10 only · delete the overflow = git log and SHA are the canonical history)
+- [x] <1 line> (`<sha>`, YYYY-MM-DD)
+```
+
+**Hygiene rules**: (1) no inline design body text (link to the artifact instead); (2) `Recently Done` capped at 10; (3) design links point to permanent paths (`done/<slug>/` or a commit), never the volatile `plans/<slug>/`; (4) no item-count cap and no Archive Index section.
+
+### 6.2 session-state.md — exactly one current snapshot, ≤30 lines, machine-oriented
+
+Reader = the next Claude session (internal shorthand allowed). Human-readable narrative lives in the journal report (/save-session §4) — do not duplicate it here.
+
+```markdown
+# Session State — {product}
+## 🔥 START HERE — [YYYY-MM-DD HH:MM] — <現在地: ブランチ・最新SHA・一言>
+
+### Lock
+<locked: slug / なし>
+### Next (≤5)
+1. …
+### Blockers
+<なし / 1行ずつ>
+### Journal
+→ journal/YYYY-MM/DD.md（レポートは HH:MM 節）
+```
+
+**Hygiene rules**: (1) `## 🔥 START HERE` appears **exactly once** (fixed at the top); (2) **≤30 lines total** — details belong to the journal and git, not here; (3) overwrite-save only — the archive-session-state.js hook copies the previous version to `history/session-state-YYYYMMDD-HHMM.md` first, and **history is never rotated or deleted** (full retention); (4) identify commits by SHA.
+
+### 6.3 lessons.md — fully compatible with CLAUDE.md §4 · **ascending append**
+
+```markdown
+# Lessons — {product}
+
+### [YYYY-MM-DD] Pattern name     ← same format as CLAUDE.md §4. Append new entries at the end (ascending order).
+- **Trigger**: …
+- **Mistake**: …
+- **Fix**: …
+- **Rule**: …
+```
+
+**Hygiene rules**: (1) keep the entry heading exactly `### [date] Pattern name`; (2) H1 is `# Lessons — {product}`; (3) ascending append (old→new); (4) once ~18KB, settled entries may be distilled into `lessons-archive.md` (verbatim move; archive excluded from session-start injection).
+
+### 6.4 roadmap.md — an ordered, dependency-resolved step list for one large-scale change, live-updated
+
+```markdown
+# Roadmap — {product}
+
+## <work name> — [YYYY-MM-DD]
+- [x] <step 1, 1 line — done>
+- [~] <step 2, 1 line — in progress>
+- [ ] <step 3, 1 line>
+```
+
+**Hygiene rules**: (1) markers `- [ ]` 未実装 / `- [~]` 進行中 / `- [x]` 完了; (2) top-to-bottom = implementation order; (3) mark `[~]` on start and `[x]` only when implementation **and verification** are done; (4) one work unit = one H2 section; (5) one line per step, no design body (link to plans/); (6) created on-demand only for large-scale work; (7) on completion fold into one line under todo.md `Recently Done`, then delete the section (git log is the canonical history).

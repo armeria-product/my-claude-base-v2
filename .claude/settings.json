@@ -22,6 +22,32 @@
     "additionalDirectories": []
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.js\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-journal.js\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-journal.js\""
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "matcher": "",
@@ -42,9 +68,27 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/format-on-write.js\""
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash|PowerShell|Task|Agent|ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/journal.js\""
+          }
+        ]
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/archive-session-state.js\""
+          }
+        ]
+      },
       {
         "matcher": "Workflow",
         "hooks": [

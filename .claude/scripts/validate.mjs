@@ -137,6 +137,38 @@ if (claudeMd)
       if (/\bBash\b/.test(m) && !/\bPowerShell\b/.test(m))
         fail(`settings.json ${event} matcher "${m}" covers Bash but not PowerShell — commands via the PowerShell tool bypass every hook in this group`);
     }
+
+  // Record-layer wiring: the machine journal + session boundary markers must stay armed.
+  const eventsOf = (needle) => {
+    const evs = [];
+    for (const [event, groups] of Object.entries(settings.hooks ?? {}))
+      for (const g of groups)
+        for (const h of g.hooks ?? [])
+          if (h.command.includes(needle)) evs.push({ event, matcher: g.matcher ?? '' });
+    return evs;
+  };
+  {
+    const j = eventsOf('/journal.js').filter((e) => e.event === 'PostToolUse');
+    if (!j.length) fail('journal.js is not registered under PostToolUse — the machine journal never records');
+    else
+      for (const need of ['Edit', 'Write', 'NotebookEdit', 'Bash', 'PowerShell', 'Task', 'ExitPlanMode'])
+        if (!j.some((e) => e.matcher.includes(need)))
+          fail(`journal.js PostToolUse matcher does not cover ${need} — those events vanish from the journal`);
+    const sj = eventsOf('session-journal.js');
+    for (const ev of ['SessionStart', 'SessionEnd'])
+      if (!sj.some((e) => e.event === ev))
+        fail(`session-journal.js is not registered under ${ev} — session boundary markers (crash detection) break`);
+    const ar = eventsOf('archive-session-state.js');
+    if (!ar.some((e) => e.event === 'PreToolUse' && /\bWrite\b/.test(e.matcher)))
+      fail('archive-session-state.js is not registered under PreToolUse Write — session-state history stops being archived');
+  }
+  // History retention: the archive hook must never regrow a rotation/deletion code path
+  // (user ruling 2026-08-02: session-state history is kept in full).
+  {
+    const p = path.join(ROOT, '.claude', 'hooks', 'archive-session-state.js');
+    if (fs.existsSync(p) && /unlinkSync|rmSync|\brotate\s*\(/.test(read(p)))
+      fail('archive-session-state.js contains a deletion/rotation code path — v2 keeps session-state history in full');
+  }
 }
 
 // ---- 4. Dead references in core docs/config ----
@@ -203,6 +235,9 @@ const INVARIANTS = [
   ['CLAUDE.md', /hypotheses, not orders/, 'CLAUDE.md §1.10\'s framing of development requests as hypotheses, not orders must remain'],
   ['CLAUDE.md', /never (added|folds?|folded) .*into scope|never fold them into scope/i, 'CLAUDE.md §1.10 must still state that gap proposals are never folded into scope without a ruling'],
   ['CLAUDE.md', /worker reads (them|PLAN\.md.*itself)|reads them itself/i, 'CLAUDE.md §2 must still state the scope-handoff rule (workers read PLAN.md/scope.json themselves — no paraphrase)'],
+  ['.claude/commands/save-session.md', /やったこと[\s\S]*できなかったこと・保留[\s\S]*確認してほしいこと[\s\S]*次にやること/, 'save-session must keep the fixed 4-section report headings (やったこと / できなかったこと・保留 / 確認してほしいこと / 次にやること)'],
+  ['.claude/commands/save-session.md', /SAVE マーカー/, 'save-session must keep the SAVE-marker step — the crash/unreported-session scan keys on it'],
+  ['.claude/rules/session-persistence.md', /never rotated or deleted/i, 'session-persistence §6.2 must keep the full-retention sentence for session-state history'],
 ];
 for (const [relPath, must, why] of INVARIANTS) {
   const p = path.join(ROOT, relPath);
