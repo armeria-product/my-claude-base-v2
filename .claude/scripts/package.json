@@ -1,0 +1,9 @@
+{
+  "name": "claude-scripts",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "pptxgenjs": "^4.0.1",
+    "puppeteer-core": "^25.3.0"
+  }
+}
