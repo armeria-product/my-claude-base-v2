@@ -17,6 +17,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { projectRoot, journalPath } = require('./lib/journal-util');
 
 const TOTAL_CAP = 24 * 1024; // combined upper limit
 const MIN_FLOOR = 2 * 1024; // minimum guaranteed per file
@@ -41,11 +42,12 @@ process.stdin.on('end', () => {
     : path.join(projectDir, 'tasks');
 
   // highest priority first (trimming runs in reverse = drop lessons first, then journal, ...)
+  const journalRoot = projectRoot(payload);
   const files = [
     { label: 'SESSION STATE', file: path.join(tasksDir, 'session-state.md'), empty: '(no previous session state — first session or none saved)' },
     { label: 'ROADMAP', file: path.join(tasksDir, 'roadmap.md'), empty: '(no roadmap recorded yet)' },
     { label: 'TODO', file: path.join(tasksDir, 'todo.md'), empty: '(no todo recorded yet)' },
-    { label: 'JOURNAL', file: journalToday(projectDir), empty: '(no journal entries today yet)' },
+    { label: 'JOURNAL', file: journalPath(journalRoot, new Date()), relBase: journalRoot, empty: '(no journal entries today yet)' },
     { label: 'LESSONS', file: path.join(tasksDir, 'lessons.md'), empty: '(no lessons recorded yet)' },
   ];
 
@@ -54,7 +56,7 @@ process.stdin.on('end', () => {
       f.text = fs.readFileSync(f.file, 'utf8');
       if (f.label === 'JOURNAL') f.text = journalView(f.text);
       f.size = Buffer.byteLength(f.text, 'utf8');
-      f.rel = path.relative(projectDir, f.file).split(path.sep).join('/');
+      f.rel = path.relative(f.relBase || projectDir, f.file).split(path.sep).join('/');
     } catch {
       f.text = null;
       f.size = 0;
@@ -81,12 +83,6 @@ process.stdin.on('end', () => {
   );
   process.exit(0);
 });
-
-function journalToday(projectDir) {
-  const d = new Date();
-  const two = (n) => String(n).padStart(2, '0');
-  return path.join(projectDir, 'tasks', 'journal', `${d.getFullYear()}-${two(d.getMonth() + 1)}`, `${two(d.getDate())}.md`);
-}
 
 // The journal is the single home of 次にやること/保留 (the session report) — session-state.md
 // only points at it. So the injected view must RELIABLY contain the LAST report section, not

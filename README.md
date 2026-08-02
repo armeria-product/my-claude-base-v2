@@ -124,7 +124,7 @@ tmp/                 … 使い捨て作業ファイル
 
 **安全系（v1から移植・Bash|PowerShell 両対応）**: block-destructive-git.js / block-destructive-fs.js / block-secret-read.js / block-no-verify.js / block-direct-to-main.js / check-commit-safety.js
 
-**運用系**: check-prompt.js（受付ルーティングのヒント注入）/ format-on-write.js（dev/ 配下の自動整形）/ workflow-budget-guard.js（Workflow のトークン予算宣言の強制）/ relay-required-agent.js（relay OFF 時の外部モデル起動ブロック）/ block-review-floor.js（レビュー権威の opus 下限を機械強制）/ clover-auto-install.js（clover ラッパーの自動設置）
+**運用系**: check-prompt.js（repo-state の1行注入）/ format-on-write.js（dev/ 配下の自動整形）/ workflow-budget-guard.js（Workflow のトークン予算宣言の強制）/ relay-required-agent.js（relay OFF 時の外部モデル起動ブロック）/ block-review-floor.js（レビュー権威の opus 下限を機械強制）/ clover-auto-install.js（clover ラッパーの自動設置）
 
 **共有ライブラリ**: lib/parse-cmd.js（引用符・heredoc対応のコマンド解析）/ lib/scope-match.js（glob照合・テスト付き）/ lib/scope-decision.js（許可判定チェーン）/ lib/journal-util.js（ジャーナル追記）
 

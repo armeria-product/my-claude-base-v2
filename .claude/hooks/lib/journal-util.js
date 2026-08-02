@@ -43,10 +43,15 @@ function journalFile(root, d = new Date()) {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${two(d.getDate())}.md`);
   if (!fs.existsSync(file)) {
-    fs.writeFileSync(
-      file,
-      `# ${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} 作業ジャーナル\n\n`
-    );
+    try {
+      fs.writeFileSync(
+        file,
+        `# ${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} 作業ジャーナル\n\n`,
+        { flag: 'wx' }
+      );
+    } catch {
+      /* 並走セッションが先に作った — 既存内容はそのまま、呼び出し側の追記へフォールバック */
+    }
   }
   return file;
 }
