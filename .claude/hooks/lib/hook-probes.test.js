@@ -201,7 +201,10 @@ function registerTests() {
   const branchProtected = PROTECTED_BRANCHES.has(branch);
 
   for (const row of allRows) {
-    const skip = row.skipIf === 'protected-branch' && branchProtected ? row.skipReason : false;
+    const skip = (row.skipIf === 'protected-branch' && branchProtected)
+      || (row.skipIf === 'non-win32' && process.platform !== 'win32')
+      ? row.skipReason
+      : false;
     test(`${row.set}/${row.name}`, { skip }, () => {
       const result = runRow(row);
       const verdict = verdictOf(row, result);
