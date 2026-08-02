@@ -52,7 +52,7 @@ When running `/save-session`, if **a product context is detected**, create the `
 
 ```markdown
 # Session State — {product-name}
-## 🔥 START HERE — [YYYY-MM-DD HH:MM] — <現在地: ブランチ・最新SHA・一言>
+## START HERE — [YYYY-MM-DD HH:MM] — <現在地: ブランチ・最新SHA・一言>
 ```
 
 ```markdown
@@ -105,25 +105,16 @@ Write-target detection for all 4 files, bootstrap for the 3 bootstrapped files, 
 
 **Hygiene rules**: (1) no inline design body text (link to the artifact instead); (2) `Recently Done` capped at 10; (3) design links point to permanent paths (`done/<slug>/` or a commit), never the volatile `plans/<slug>/`; (4) no item-count cap and no Archive Index section.
 
-### 6.2 session-state.md — exactly one current snapshot, ≤30 lines, machine-oriented
+### 6.2 session-state.md — a 2-line pointer, nothing else
 
-Reader = the next Claude session (internal shorthand allowed). Human-readable narrative lives in the journal report (/save-session §4) — do not duplicate it here.
+Reader = the next Claude session. **This file duplicates nothing**: next actions / holds / user-facing notes live ONLY in the journal report (/save-session step 4 — SessionStart injects the latest report section reliably), and lock state lives ONLY in `.claude/state/scope-lock.json` (also injected). What remains here is the per-product resume anchor and the pointer to the report that is "current".
 
 ```markdown
 # Session State — {product}
-## 🔥 START HERE — [YYYY-MM-DD HH:MM] — <現在地: ブランチ・最新SHA・一言>
-
-### Lock
-<locked: slug / なし>
-### Next (≤5)
-1. …
-### Blockers
-<なし / 1行ずつ>
-### Journal
-→ journal/YYYY-MM/DD.md（レポートは HH:MM 節）
+## START HERE — [YYYY-MM-DD HH:MM] — <branch・latest SHA> → journal/YYYY-MM/DD.md の HH:MM レポート
 ```
 
-**Hygiene rules**: (1) `## 🔥 START HERE` appears **exactly once** (fixed at the top); (2) **≤30 lines total** — details belong to the journal and git, not here; (3) overwrite-save only — the archive-session-state.js hook copies the previous version to `history/session-state-YYYYMMDD-HHMM.md` first, and **history is never rotated or deleted** (full retention); (4) identify commits by SHA.
+**Hygiene rules**: (1) `## START HERE` appears **exactly once** and the whole file stays ~2 lines; (2) no Next / Blockers / Lock sections — writing them here recreates the duplication this contract exists to prevent; (3) overwrite-save only — the archive-session-state.js hook copies the previous version to `history/session-state-YYYYMMDD-HHMM.md` first, and history is **never rotated or deleted** (full retention); (4) identify commits by SHA.
 
 ### 6.3 lessons.md — fully compatible with CLAUDE.md §4 · **ascending append**
 

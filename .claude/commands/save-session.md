@@ -34,24 +34,15 @@
 ### 5. deviations の提案化（ロック中のみ）
 `plans/{slug}/deviations.md` と journal の DENY 行があれば、「範囲外だが価値がありそうな変更」として上記「確認してほしいこと」に**提案として**まとめる。**実装はしない**（再承認後の仕事）。
 
-### 6. session-state.md の更新（30行以内・機械用）
+### 6. session-state.md の更新（ポインタ2行 — レポートと重複させない）
 `{tasks-dir}/session-state.md` を以下の契約で**上書き**する（上書き前の旧版は archive-session-state.js フックが `history/` へ自動退避する。**履歴は削除しない** — 全量保持）。
 
 ```markdown
 # Session State — {context}
-## START HERE — [YYYY-MM-DD HH:MM] — <現在地: ブランチ・最新SHA・一言>
-
-### Lock
-<locked: slug / なし>
-### Next (≤5)
-1. <次の一手>
-### Blockers
-<なし / 1行ずつ>
-### Journal
-→ journal/YYYY-MM/DD.md（このセッションのレポートは HH:MM 節）
+## START HERE — [YYYY-MM-DD HH:MM] — <ブランチ・最新SHA> → journal/YYYY-MM/DD.md の HH:MM レポート
 ```
 
-30行を超える詳細は書かない — 詳細はジャーナルとgitが持っている。内部用語はここでは使用可（読者は次のClaude）。
+**次にやること・保留・確認事項をここに書かない** — それらの唯一の家はステップ4のジャーナルレポート（SessionStart フックが最新レポート節を必ず注入する）。ロック状態も書かない（`.claude/state/scope-lock.json` が正で、これも注入される）。このファイルの役割は「製品ごとの再開アンカー＋どのレポートが現在地かのポインタ」だけ。
 
 ### 7. SAVE マーカーを追記
 当日ジャーナル末尾に1行追記する（ID はセッション開始時に注入されたもの。補完モードでは対象過去セッションの ID）:
@@ -65,5 +56,6 @@
 ## Rules
 - レポートの4見出し（やったこと / できなかったこと・保留 / 確認してほしいこと / 次にやること）は固定 — validate が見張っている
 - 「できなかったこと・保留」は空でも「なし」と明記（次セッションの無駄足防止）
-- session-state.md の `## 🔥 START HERE` 見出しは**ちょうど1つ**。コミットは SHA で特定
+- session-state.md の `## START HERE` 見出しは**ちょうど1つ**・全体2行。コミットは SHA で特定
+- **同じ内容を2箇所に書かない**: 次にやること・保留＝レポート、ロック＝state ファイル、履歴＝git と journal。session-state はポインタのみ
 - ジャーナルは追記のみ — 既存行の書き換え・削除は一切しない

@@ -52,10 +52,7 @@ process.stdin.on('end', () => {
   for (const f of files) {
     try {
       f.text = fs.readFileSync(f.file, 'utf8');
-      if (f.label === 'JOURNAL' && Buffer.byteLength(f.text, 'utf8') > JOURNAL_SLICE) {
-        const buf = Buffer.from(f.text, 'utf8');
-        f.text = '[tail]\n' + buf.subarray(buf.length - JOURNAL_SLICE).toString('utf8').replace(/^�+/, '');
-      }
+      if (f.label === 'JOURNAL') f.text = journalView(f.text);
       f.size = Buffer.byteLength(f.text, 'utf8');
       f.rel = path.relative(projectDir, f.file).split(path.sep).join('/');
     } catch {
@@ -89,6 +86,32 @@ function journalToday(projectDir) {
   const d = new Date();
   const two = (n) => String(n).padStart(2, '0');
   return path.join(projectDir, 'journal', `${d.getFullYear()}-${two(d.getMonth() + 1)}`, `${two(d.getDate())}.md`);
+}
+
+// The journal is the single home of 次にやること/保留 (the session report) — session-state.md
+// only points at it. So the injected view must RELIABLY contain the LAST report section, not
+// just a blind tail slice (machine lines appended after a report could otherwise push it out).
+// View = last "## HH:MM …" report heading through EOF; middle is elided if oversized (keep the
+// report head + the most recent machine lines). Fallback when no report exists yet: tail slice.
+function journalView(text) {
+  let last = -1;
+  const re = /^## \d\d:\d\d .*$/gm;
+  let m;
+  while ((m = re.exec(text))) last = m.index;
+  if (last < 0) {
+    if (Buffer.byteLength(text, 'utf8') <= JOURNAL_SLICE) return text;
+    const buf = Buffer.from(text, 'utf8');
+    return '[tail]\n' + buf.subarray(buf.length - JOURNAL_SLICE).toString('utf8').replace(/^�+/, '');
+  }
+  let view = text.slice(last);
+  const cap = JOURNAL_SLICE * 2;
+  if (Buffer.byteLength(view, 'utf8') > cap) {
+    const buf = Buffer.from(view, 'utf8');
+    const head = buf.subarray(0, Math.floor(cap * 0.6)).toString('utf8').replace(/�+$/, '');
+    const tail = buf.subarray(buf.length - Math.floor(cap * 0.35)).toString('utf8').replace(/^�+/, '');
+    view = head + '\n[…中略…]\n' + tail;
+  }
+  return '[latest session report + after]\n' + view;
 }
 
 function lockStatus(projectDir) {
