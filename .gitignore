@@ -1,7 +1,6 @@
 # Session records (disk is the store; untracked to avoid PR noise and merge conflicts)
 tasks/*.md
 tasks/history/
-tasks/reviews/
 tasks/journal/*
 
 # Scope-lock runtime state (hook-owned; untracked so git holds no restorable copy)
