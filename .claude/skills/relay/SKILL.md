@@ -45,7 +45,7 @@ actually reachable still depends on whether *this* session was launched via `clo
 4. Report (plain JP) 「relay を OFF にしました（中継サーバーも停止）」.
 
 **status** (also the no-argument case)
-Read `.claude/.relay-status`, trim + uppercase to判定. Also run `bash clover/bin/relay-serve status` for the server state (8788/8791), and report both in plain JP (e.g. 「今は ON。中継サーバーも起動中（8788/8791 UP）」／「今は OFF（relay は動いていません）」). A missing file counts as OFF.
+Read `.claude/.relay-status`, trim + uppercase to decide. Also run `bash clover/bin/relay-serve status` for the server state (8788/8791), and report both in plain JP (e.g. 「今は ON。中継サーバーも起動中（8788/8791 UP）」／「今は OFF（relay は動いていません）」). A missing file counts as OFF.
 
 Toggle rules: write only `ON` / `OFF` (one word); create the file if missing; compare trimmed + case-insensitive.
 

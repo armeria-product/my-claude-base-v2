@@ -16,14 +16,24 @@
 //       advance/rewrite main locally even though they issue no `commit`)
 //   - the same commit check also applies to a `-C <path>` / `--git-dir=` / `--work-tree=` target
 //       repo: the branch is resolved IN that repo, not the hook process's cwd
+//   - gh pr merge ...           any flag form (e.g. --admin, --squash) and any global-flag
+//       placement (e.g. `gh --repo o/r pr merge 12`) — merging a PR is another way to advance main
 //
 // Allowed (NOT blocked): commits/pushes on any other branch (e.g. a work branch); `git merge main` onto a work branch;
 //   `git push origin main:<work-branch>` (destination = non-main); fetch / switch / checkout / branch / status / log / diff;
 //   `git merge/rebase --abort|--quit|--help` even while sitting on main/master (undo/inspect only,
-//   never advances history).
+//   never advances history); gh pr view/list/create/checkout/status/diff/comment/edit/ready/review,
+//   gh repo *, gh issue * (inspection / non-merge PR workflow — never advances main).
 //
 // Known limitation: undo/inspect detection is flag-based (--abort/--quit/--help); a `-h` alias
 // combined with other advancing flags in the same invocation is not specially disambiguated.
+//
+// Known limitation (gh, 2 items — deliberately left open, filed as tasks/todo.md Backlog items):
+//   (i) `gh api --method PUT repos/.../pulls/N/merge` (direct REST call) is not detected — API-level
+//       calls are out of scope for this guard by design.
+//   (ii) `gh.exe pr merge` is not detected: lib/parse-cmd.js's basename extraction lower-cases but
+//       does not strip a `.exe` suffix, so `cmd` resolves to `"gh.exe"`, not `"gh"`. Same pre-existing
+//       hole as `git.exe` for the git-side checks in this file (ruling GP2, pending).
 //
 // Command parsing goes through the shared tokenizer (lib/parse-cmd: quote-aware segment split,
 // then per-token unquoting) so a quoted commit message / heredoc that merely mentions "main"
@@ -32,8 +42,22 @@
 
 const { execSync } = require('node:child_process');
 const { segments } = require('./lib/parse-cmd');
+const { findSubcmdIndex } = require('./lib/git-parse');
 
 const PROTECTED = new Set(['main', 'master']);
+
+// gh global flags that consume the next token as a value (space-separated form), analogous to
+// GIT_GLOBAL_VALUE_FLAGS in lib/git-parse.js but for gh's own argv shape.
+// Correctness of the `gh pr merge` detection below depends on this set staying complete: a real gh
+// global value-flag missing from it would shift the subcommand index and could let a `gh ... pr
+// merge` slip through undetected. gh has no other such flag today (checked against gh's own
+// --help); revisit this set if gh adds one.
+const GH_GLOBAL_VALUE_FLAGS = new Set(['-R', '--repo']);
+
+const GH_MERGE_MESSAGE =
+  'BLOCKED: gh pr merge is not allowed here.\n' +
+  'main は取り込み提案(PR)をユーザー自身がマージしたときだけ進みます。PR の URL を報告して、' +
+  'マージはユーザーに任せてください（`gh pr view --web` で開けます）。';
 
 let data = '';
 process.stdin.on('data', (c) => (data += c));
@@ -47,28 +71,16 @@ process.stdin.on('end', () => {
   const verdict = checkCommand(command);
   if (verdict) {
     console.error(
-      `BLOCKED: ${verdict}.\n` +
-        `このリポジトリは main に直接コミット／プッシュしません。作業用ブランチで作業し、` +
-        `GitHub の取り込み提案(PR)経由で main に反映してください（例: git switch -c <topic>-$(date +%F) main）。`
+      typeof verdict === 'string'
+        ? `BLOCKED: ${verdict}.\n` +
+            `このリポジトリは main に直接コミット／プッシュしません。作業用ブランチで作業し、` +
+            `GitHub の取り込み提案(PR)経由で main に反映してください（例: git switch -c <topic>-$(date +%F) main）。`
+        : verdict.message
     );
     process.exit(2);
   }
   process.exit(0);
 });
-
-// Git global flags that consume the next token as a value — skip them (and their value) when locating
-// the subcommand, so `-C /repo commit` resolves to `commit`, not `/repo`. (Mirrors block-destructive-git.js.)
-const GIT_GLOBAL_VALUE_FLAGS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path']);
-function findSubcmdIndex(args) {
-  let i = 0;
-  while (i < args.length) {
-    const a = args[i];
-    if (GIT_GLOBAL_VALUE_FLAGS.has(a)) i += 2;
-    else if (a.startsWith('-')) i += 1;
-    else return i;
-  }
-  return -1;
-}
 
 const branchCache = new Map();
 // cwd === undefined -> resolve in the hook process's own working directory (cached under key '').
@@ -124,8 +136,21 @@ const MAIN_ADVANCING_SUBCMDS = new Set(['merge', 'pull', 'rebase']);
 // (abort/quit an in-progress merge or rebase, or just print help) — harmless even on a protected branch.
 const NON_ADVANCING_FLAGS = new Set(['--abort', '--quit', '--help', '-h']);
 
+// Return contract: null | string | { message: string }
+//   string      … a plain reason (as before). The caller wraps it in the fixed git-path template
+//                 (git 経路・文言不変).
+//   { message } … a finished message, printed as-is (gh 経路).
 function checkCommand(command) {
   for (const { cmd, args } of segments(command)) {
+    if (cmd === 'gh') {
+      const i = findSubcmdIndex(args, GH_GLOBAL_VALUE_FLAGS);
+      if (i >= 0 && args[i] === 'pr') {
+        const rest = args.slice(i + 1);
+        const j = findSubcmdIndex(rest, GH_GLOBAL_VALUE_FLAGS);
+        if (j >= 0 && rest[j] === 'merge') return { message: GH_MERGE_MESSAGE };
+      }
+      continue;
+    }
     if (cmd !== 'git') continue;
     const subIdx = findSubcmdIndex(args);
     if (subIdx === -1) continue;

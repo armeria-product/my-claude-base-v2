@@ -3,9 +3,12 @@
 // Enforces CLAUDE.md §1.5 "File/data deletion -> always confirm".
 //
 // Policy:
-//   - Recursive deletes (rm -r / -rf) are blocked by default -> Claude confirms with the user, then approves manually
-//   - Exception: allowed when the only targets are disposable build-output directories (node_modules, dist, etc.)
-//   - rm targeting root / home / parent directory / drive root is blocked unconditionally
+//   - rm with an ABSOLUTE target (POSIX /..., Windows C:\...), a home path (~/... , $HOME/...),
+//     a parent-relative path (../...), or a bare `*` is blocked unconditionally, regardless of flags.
+//     This check runs BEFORE the recursive-delete logic, so the SAFE_LEAF exception below is
+//     reachable only for relative targets (`rm -rf node_modules` passes; `rm -rf /repo/node_modules` does not).
+//   - Recursive deletes (rm -r / -rf) of RELATIVE targets are blocked unless every target's leaf name
+//     is a disposable build-output dir (node_modules, dist, ...) -> otherwise Claude confirms with the user.
 //   - find ... -delete is blocked unconditionally
 //   - find ... -exec/-execdir/-ok rm ... {} is blocked unconditionally (as dangerous as -delete)
 //   - ... | xargs rm ... is blocked when it carries a recursive/force flag (stdin-derived targets
@@ -34,6 +37,8 @@ const SAFE_LEAF =
 
 // Unconditional block targets (regardless of whether rm has -r)
 // ~/... and $HOME/... cover any subpath under home (e.g. ~/.ssh/id_rsa), not just the bare prefix.
+// (note: the leading `\/` alternative is already subsumed by `\/\S*`; left as-is on purpose —
+//  this hook's regex is never touched by comment-only fixes.)
 const FORBIDDEN_TARGET = /^(\/|~\/?\S*|\.\.(\/.*)?|\/\S*|[A-Za-z]:([\\/]\S*)?|\$HOME\/?\S*|\*)$/;
 
 // Destructive commands that a `find -exec` / `xargs` may invoke

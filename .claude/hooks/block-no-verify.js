@@ -8,6 +8,7 @@
 // so the -n check is scoped to git commit / git merge / git push only.
 
 const { segments, stripQuotedContent, stripHeredocs } = require('./lib/parse-cmd');
+const { findSubcmdIndex } = require('./lib/git-parse');
 
 const NO_VERIFY_LONG = /--no-verify\b/;
 
@@ -38,20 +39,6 @@ process.stdin.on('end', () => {
   }
 
   // Check for -n short form, scoped to relevant git subcommands
-  // Git global flags that consume the next token as a value must be skipped
-  // so their values are not mistaken for the subcommand.
-  const GIT_GLOBAL_VALUE_FLAGS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path']);
-  function findSubcmdIndex(args) {
-    let i = 0;
-    while (i < args.length) {
-      const a = args[i];
-      if (GIT_GLOBAL_VALUE_FLAGS.has(a)) { i += 2; }
-      else if (a.startsWith('-')) { i += 1; }
-      else { return i; }
-    }
-    return -1;
-  }
-
   for (const { cmd, args } of segments(command)) {
     if (cmd !== 'git') continue;
     const subIdx = findSubcmdIndex(args);

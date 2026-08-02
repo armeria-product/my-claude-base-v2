@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const rel = (p) => path.relative(ROOT, p).replace(/\\/g, '/');
@@ -65,6 +66,8 @@ for (const f of fs.readdirSync(agentsDir).filter((x) => x.endsWith('.md'))) {
   }
   if (EFFORT_MAX_AGENTS.has(fm.name) && fm.effort !== 'max')
     fail(`agent ${fm.name}: missing "effort: max" in frontmatter (CLAUDE.md §2 requires this pin to guarantee max-depth reasoning for the final quality gate)`);
+  if (EFFORT_MAX_AGENTS.has(fm.name) && fm.model !== 'opus')
+    fail(`agent ${fm.name}: model "${fm.model}" must be "opus" — CLAUDE.md §2's review floor is only mechanically enforced (block-review-floor.js) if the review-authority agents themselves stay pinned at opus`);
 }
 
 // ---- 2. Skills: frontmatter + subagent_type resolution ----
@@ -192,6 +195,28 @@ if (claudeMd)
     const slPath = path.join(ROOT, '.claude', 'scripts', 'statusline.js');
     if (fs.existsSync(slPath) && !/scope-lock/.test(read(slPath)))
       fail('statusline.js no longer reads scope-lock — the 🔒 indicator is gone (locks become invisible)');
+  }
+  // Review-floor wiring (CLAUDE.md §2 ¹): block-review-floor.js must stay armed on Task|Agent,
+  // and its BELOW_FLOOR set must still name all three below-floor tiers. Membership is checked
+  // against the BELOW_FLOOR = new Set([...]) literal specifically (not the whole file text), so
+  // a tier name merely quoted elsewhere (e.g. left behind in a comment after being dropped from
+  // the Set) doesn't false-pass. Each name is checked independently (not one ordered combined
+  // pattern) so a Set literal written in a different member order doesn't false-fail (cycle-1 C10).
+  {
+    const rf = eventsOf('block-review-floor.js');
+    if (!rf.some((e) => e.event === 'PreToolUse' && e.matcher.includes('Task') && e.matcher.includes('Agent')))
+      fail('block-review-floor.js is not registered under PreToolUse Task|Agent — the review-authority opus floor is no longer mechanically enforced');
+    const rfPath = path.join(ROOT, '.claude', 'hooks', 'block-review-floor.js');
+    if (fs.existsSync(rfPath)) {
+      const rfText = read(rfPath);
+      const belowFloorMatch = rfText.match(/BELOW_FLOOR\s*=\s*new Set\(\[([^\]]*)\]\)/);
+      if (!belowFloorMatch)
+        fail('block-review-floor.js: could not locate the BELOW_FLOOR = new Set([...]) definition — cannot verify its members');
+      else
+        for (const name of ['sonnet', 'haiku', 'inherit'])
+          if (!new RegExp(`['"]${name}['"]`).test(belowFloorMatch[1]))
+            fail(`block-review-floor.js no longer names "${name}" in its BELOW_FLOOR set — that tier silently stops being denied`);
+    }
   }
 }
 
@@ -369,6 +394,61 @@ for (const [relPath, must, why] of INVARIANTS) {
     const size = fs.statSync(lessonsPath).size;
     if (size > LESSONS_WARN_BYTES)
       warn(`tasks/lessons.md is ${(size / 1024).toFixed(1)}KB (>18KB) — session-start injection budget will start truncating older lessons; consider a distilled archive`);
+  }
+}
+
+// ---- 11. Hook health: node --check syntax + literal relative-require() resolution ----
+// Every safety hook require()s ./lib/* at the top of the file; one broken lib file makes every
+// hook throw during require and fail open with no CLI error and no journal entry (lessons.md
+// 2026-08-02 incident). This section only mechanically detects two specific classes of breakage:
+// (a) a syntax error (via `node --check`), and (b) a require() whose specifier is a literal
+// relative string (starts with ".") that doesn't resolve to any file. It does NOT catch a
+// require() that resolves but throws at load time (e.g. a top-level bug in the required module),
+// nor a non-literal specifier built via concatenation, a template string, or a variable — those
+// pass silently. Deliberately no require()-executor was added here to close that gap: actually
+// loading every hook module as part of validate would run its top-level code, which is a
+// side-effect validate must not have (CLAUDE.md §1.7).
+{
+  const hooksDir = path.join(ROOT, '.claude', 'hooks');
+  const hooksLibDir = path.join(hooksDir, 'lib');
+  const hookFiles = fs.readdirSync(hooksDir).filter((x) => x.endsWith('.js')).map((f) => path.join(hooksDir, f));
+  const hookLibFiles = fs.existsSync(hooksLibDir)
+    ? fs.readdirSync(hooksLibDir).filter((x) => x.endsWith('.js')).map((f) => path.join(hooksLibDir, f))
+    : [];
+  const hookHealthFiles = [...hookFiles, ...hookLibFiles];
+
+  for (const p of hookHealthFiles) {
+    try {
+      execFileSync(process.execPath, ['--check', p], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    } catch (e) {
+      const stderrText = String(e.stderr || e.message || '');
+      const errLine = stderrText.split('\n').find((l) => /Error/.test(l)) || stderrText.split('\n').find((l) => l.trim()) || 'unknown syntax error';
+      fail(`${rel(p)}: syntax error (node --check) — ${errLine.trim().slice(0, 160)}`);
+    }
+  }
+
+  // Relative require() target resolution, CJS-order (exact path, then +.js, +.json, +/index.js).
+  // node:-prefixed and bare (package) specifiers are skipped by construction — the capture group
+  // only matches specifiers starting with ".". Comment lines are excluded the same way section 9
+  // does (line-start "//" or "*"): parse-cmd.js:10 has a doc-comment example require whose target
+  // is not resolvable relative to the real file and would otherwise false-FAIL an unmodified tree.
+  // Known limitation (not currently hit, flagged so a future block comment doesn't surprise
+  // someone): this line-start exclusion does not cover a require() written inside a /* ... */
+  // block comment on a line that itself doesn't start with "//" or "*".
+  const resolveRequireTarget = (fromFile, spec) => {
+    const base = path.resolve(path.dirname(fromFile), spec);
+    return [base, `${base}.js`, `${base}.json`, path.join(base, 'index.js')].some((c) => fs.existsSync(c));
+  };
+  for (const p of hookHealthFiles) {
+    const lines = read(p).split('\n');
+    lines.forEach((line, i) => {
+      const trimmed = line.trim();
+      if (/^(\/\/|\*)/.test(trimmed)) return;
+      const m = trimmed.match(/require\(\s*['"](\.[^'"]+)['"]\s*\)/);
+      if (!m) return;
+      if (!resolveRequireTarget(p, m[1]))
+        fail(`${rel(p)}:${i + 1} — require("${m[1]}") does not resolve to any file (checked exact/.js/.json/index.js)`);
+    });
   }
 }
 
