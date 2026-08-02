@@ -182,7 +182,7 @@ function registerTests() {
     .split('<SANDBOX>').join(slash(SANDBOX))
     .split('<REPO>').join(slash(ROOT)));
 
-  const EXPECTED_SAMPLE_COUNT = 116;
+  const EXPECTED_SAMPLE_COUNT = 144;
   test('samples file integrity: JSON.parse succeeds, row count matches, set+name pairs unique', () => {
     const parsed = JSON.parse(raw
       .split('<SANDBOX_FREE>').join(slash(SANDBOX_FREE))
