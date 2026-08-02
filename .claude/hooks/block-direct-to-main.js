@@ -32,6 +32,7 @@
 
 const { execSync } = require('node:child_process');
 const { segments } = require('./lib/parse-cmd');
+const { findSubcmdIndex } = require('./lib/git-parse');
 
 const PROTECTED = new Set(['main', 'master']);
 
@@ -55,20 +56,6 @@ process.stdin.on('end', () => {
   }
   process.exit(0);
 });
-
-// Git global flags that consume the next token as a value — skip them (and their value) when locating
-// the subcommand, so `-C /repo commit` resolves to `commit`, not `/repo`. (Mirrors block-destructive-git.js.)
-const GIT_GLOBAL_VALUE_FLAGS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path']);
-function findSubcmdIndex(args) {
-  let i = 0;
-  while (i < args.length) {
-    const a = args[i];
-    if (GIT_GLOBAL_VALUE_FLAGS.has(a)) i += 2;
-    else if (a.startsWith('-')) i += 1;
-    else return i;
-  }
-  return -1;
-}
 
 const branchCache = new Map();
 // cwd === undefined -> resolve in the hook process's own working directory (cached under key '').

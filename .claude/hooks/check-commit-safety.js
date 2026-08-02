@@ -6,6 +6,7 @@
 
 const { execSync } = require('node:child_process');
 const { segments } = require('./lib/parse-cmd');
+const { findSubcmdIndex } = require('./lib/git-parse');
 
 // Large enough to hold multi-MB diffs without ENOBUFS (default execSync maxBuffer is 1MB).
 const DIFF_MAX_BUFFER = 64 * 1024 * 1024;
@@ -13,20 +14,6 @@ const DIFF_MAX_BUFFER = 64 * 1024 * 1024;
 const DEBUG_PATTERN = /(console\.log\s*\(|debugger;)/;
 const SECRET_PATTERN =
   /(sk-[a-zA-Z0-9]{20,}|sk-proj-[a-zA-Z0-9_-]{20,}|ghp_[a-zA-Z0-9]{36,}|github_pat_[a-zA-Z0-9_]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN (RSA |EC )?PRIVATE KEY)/i;
-
-// Git global flags that consume the next token as a value — skip them (and their value) when locating
-// the subcommand, so `-c x=y commit` / `-C /repo commit` resolve to `commit`. (Mirrors block-destructive-git.js.)
-const GIT_GLOBAL_VALUE_FLAGS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path']);
-function findSubcmdIndex(args) {
-  let i = 0;
-  while (i < args.length) {
-    const a = args[i];
-    if (GIT_GLOBAL_VALUE_FLAGS.has(a)) i += 2;
-    else if (a.startsWith('-')) i += 1;
-    else return i;
-  }
-  return -1;
-}
 
 // Detect a `git commit` invocation (any global flags) via the shared tokenizer, and whether
 // it passes -a/--all (including combined short flags like -am).
