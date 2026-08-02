@@ -48,6 +48,10 @@ const PROTECTED = new Set(['main', 'master']);
 
 // gh global flags that consume the next token as a value (space-separated form), analogous to
 // GIT_GLOBAL_VALUE_FLAGS in lib/git-parse.js but for gh's own argv shape.
+// Correctness of the `gh pr merge` detection below depends on this set staying complete: a real gh
+// global value-flag missing from it would shift the subcommand index and could let a `gh ... pr
+// merge` slip through undetected. gh has no other such flag today (checked against gh's own
+// --help); revisit this set if gh adds one.
 const GH_GLOBAL_VALUE_FLAGS = new Set(['-R', '--repo']);
 
 const GH_MERGE_MESSAGE =

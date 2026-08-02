@@ -373,10 +373,17 @@ for (const [relPath, must, why] of INVARIANTS) {
   }
 }
 
-// ---- 11. Hook health: node --check syntax + require() target resolution ----
+// ---- 11. Hook health: node --check syntax + literal relative-require() resolution ----
 // Every safety hook require()s ./lib/* at the top of the file; one broken lib file makes every
 // hook throw during require and fail open with no CLI error and no journal entry (lessons.md
-// 2026-08-02 incident). This section makes that class of breakage mechanically detectable.
+// 2026-08-02 incident). This section only mechanically detects two specific classes of breakage:
+// (a) a syntax error (via `node --check`), and (b) a require() whose specifier is a literal
+// relative string (starts with ".") that doesn't resolve to any file. It does NOT catch a
+// require() that resolves but throws at load time (e.g. a top-level bug in the required module),
+// nor a non-literal specifier built via concatenation, a template string, or a variable — those
+// pass silently. Deliberately no require()-executor was added here to close that gap: actually
+// loading every hook module as part of validate would run its top-level code, which is a
+// side-effect validate must not have (CLAUDE.md §1.7).
 {
   const hooksDir = path.join(ROOT, '.claude', 'hooks');
   const hooksLibDir = path.join(hooksDir, 'lib');
