@@ -39,7 +39,7 @@
 
 ```markdown
 # Session State — {context}
-## 🔥 START HERE — [YYYY-MM-DD HH:MM] — <現在地: ブランチ・最新SHA・一言>
+## START HERE — [YYYY-MM-DD HH:MM] — <現在地: ブランチ・最新SHA・一言>
 
 ### Lock
 <locked: slug / なし>
