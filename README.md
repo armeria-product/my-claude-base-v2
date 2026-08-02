@@ -75,7 +75,7 @@ CLAUDE.md            … 運用の憲法（§番号は各所から引用され�
   agents/            … サブエージェント定義 7体
   skills/            … スキル 15種（下記）
   commands/          … /save-session・/resume-session
-  hooks/             … フック 18本＋共有ライブラリ（下記）
+  hooks/             … フック 19本＋共有ライブラリ（下記）
   rules/             … パス連動ルール（agents / dev-projects / session-persistence）
   scripts/           … validate.mjs・statusline・doc変換（html2pdf / html2pptx / deckpack）・fusion-detect
   state/             … フック専用の状態置き場（スコープロック本体。Claude は書き込み不可・git 追跡外）
@@ -116,7 +116,7 @@ tmp/                 … 使い捨て作業ファイル
 - **/save-session** — スコープ照合→ジャーナルへ人間向けレポート追記（固定4節）→ session-state.md 更新→ SAVE マーカー。「/save-session 補完」で過去セッション分を後追い作成
 - **/resume-session** — 記録と git 実状態の突き合わせ→現在地報告→指示待ち
 
-## Hooks（18本）
+## Hooks（19本）
 
 **スコープロック系**: approve-lock.js（「承認」/「解除」の検知＝ロックの唯一の入口）/ scope-guard.js（Edit/Write の範囲外拒否）/ cmd-write-guard.js（Bash/PowerShell 書き込みの範囲外拒否＋ .claude/state の常時保護）
 
@@ -124,7 +124,7 @@ tmp/                 … 使い捨て作業ファイル
 
 **安全系（v1から移植・Bash|PowerShell 両対応）**: block-destructive-git.js / block-destructive-fs.js / block-secret-read.js / block-no-verify.js / block-direct-to-main.js / check-commit-safety.js
 
-**運用系**: check-prompt.js（受付ルーティングのヒント注入）/ format-on-write.js（dev/ 配下の自動整形）/ workflow-budget-guard.js（Workflow のトークン予算宣言の強制）/ relay-required-agent.js（relay OFF 時の外部モデル起動ブロック）/ clover-auto-install.js（clover ラッパーの自動設置）
+**運用系**: check-prompt.js（受付ルーティングのヒント注入）/ format-on-write.js（dev/ 配下の自動整形）/ workflow-budget-guard.js（Workflow のトークン予算宣言の強制）/ relay-required-agent.js（relay OFF 時の外部モデル起動ブロック）/ block-review-floor.js（レビュー権威の opus 下限を機械強制）/ clover-auto-install.js（clover ラッパーの自動設置）
 
 **共有ライブラリ**: lib/parse-cmd.js（引用符・heredoc対応のコマンド解析）/ lib/scope-match.js（glob照合・テスト付き）/ lib/scope-decision.js（許可判定チェーン）/ lib/journal-util.js（ジャーナル追記）
 

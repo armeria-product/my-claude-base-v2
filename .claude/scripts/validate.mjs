@@ -66,6 +66,8 @@ for (const f of fs.readdirSync(agentsDir).filter((x) => x.endsWith('.md'))) {
   }
   if (EFFORT_MAX_AGENTS.has(fm.name) && fm.effort !== 'max')
     fail(`agent ${fm.name}: missing "effort: max" in frontmatter (CLAUDE.md §2 requires this pin to guarantee max-depth reasoning for the final quality gate)`);
+  if (EFFORT_MAX_AGENTS.has(fm.name) && fm.model !== 'opus')
+    fail(`agent ${fm.name}: model "${fm.model}" must be "opus" — CLAUDE.md §2's review floor is only mechanically enforced (block-review-floor.js) if the review-authority agents themselves stay pinned at opus`);
 }
 
 // ---- 2. Skills: frontmatter + subagent_type resolution ----
@@ -193,6 +195,22 @@ if (claudeMd)
     const slPath = path.join(ROOT, '.claude', 'scripts', 'statusline.js');
     if (fs.existsSync(slPath) && !/scope-lock/.test(read(slPath)))
       fail('statusline.js no longer reads scope-lock — the 🔒 indicator is gone (locks become invisible)');
+  }
+  // Review-floor wiring (CLAUDE.md §2 ¹): block-review-floor.js must stay armed on Task|Agent,
+  // and its BELOW_FLOOR set must still name all three below-floor tiers. Each name is checked
+  // independently (not one ordered combined pattern) so a Set literal written in a different
+  // member order doesn't false-fail (cycle-1 C10).
+  {
+    const rf = eventsOf('block-review-floor.js');
+    if (!rf.some((e) => e.event === 'PreToolUse' && e.matcher.includes('Task') && e.matcher.includes('Agent')))
+      fail('block-review-floor.js is not registered under PreToolUse Task|Agent — the review-authority opus floor is no longer mechanically enforced');
+    const rfPath = path.join(ROOT, '.claude', 'hooks', 'block-review-floor.js');
+    if (fs.existsSync(rfPath)) {
+      const rfText = read(rfPath);
+      for (const name of ['sonnet', 'haiku', 'inherit'])
+        if (!new RegExp(`['"]${name}['"]`).test(rfText))
+          fail(`block-review-floor.js no longer names "${name}" in its BELOW_FLOOR set — that tier silently stops being denied`);
+    }
   }
 }
 

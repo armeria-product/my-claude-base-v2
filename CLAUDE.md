@@ -75,7 +75,7 @@ Standard tier names (`opus`/`sonnet`/`haiku`/`inherit`) pass through unchanged. 
 | **standard** | `sonnet` | implementation, debugging, verification, documents | executor, debugger, verifier, document-author |
 | **light** | `haiku` | exploration, file search, quick lookups | explorer |
 
-¹ **frontier authority convention**: frontier is a role slot resolving to `opus` today. **Review must never fall below `opus`** — pass `opus` explicitly on any path that would otherwise inherit the session model. Co-review seating (standing red-team second seat, external third seat when the relay trigger is met, optional lenses from the lens catalog, max 4 seats) — SOT: `.claude/skills/quality-loop/SKILL.md` Authority Co-Review.
+¹ **frontier authority convention**: frontier is a role slot resolving to `opus` today. **Review must never fall below `opus`** — pass `opus` explicitly on any path that would otherwise inherit the session model. Co-review seating (standing red-team second seat, external third seat when the relay trigger is met, optional lenses from the lens catalog, max 4 seats) — SOT: `.claude/skills/quality-loop/SKILL.md` Authority Co-Review. This floor is mechanically enforced by `block-review-floor.js` (PreToolUse Task|Agent): a `reviewer`/`planner` dispatch pinned to a below-floor model is denied.
 
 - An agent's tier is declared once, in its frontmatter `model:` alias. Skills/commands/docs must not restate concrete Claude model IDs (external-model aliases live in `clover/models.json`, outside this rule).
 - **Effort**: planner/reviewer pin `effort: max` in frontmatter (validate-enforced); other agents inherit the session level. Per-dispatch overrides allowed.
