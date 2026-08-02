@@ -9,6 +9,7 @@ const { execFileSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const SANDBOX = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox');
 const SANDBOX_FREE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-free');
+const SANDBOX_GIT = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-git');
 const SAMPLES_FILE = path.join(__dirname, 'hook-probes.samples.json');
 const PROTECTED_BRANCHES = new Set(['main', 'master']);
 
@@ -54,12 +55,25 @@ function buildSandboxFree() {
   ensureJournal(SANDBOX_FREE);
 }
 
+// A real (throwaway) git repo, for check-commit-safety.js: that hook inspects `git diff --cached`
+// against whatever repo the command is run in, so testing it — unlike every other hook here — needs
+// an actual staged change, not just a payload.cwd path. leaky.js is staged (not committed; the hook
+// never runs the commit itself, only the PreToolUse check before one) with a console.log so the
+// DEBUG_PATTERN deny branch is exercised without touching this repo's own git state.
+function buildSandboxGit() {
+  fs.mkdirSync(SANDBOX_GIT, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: SANDBOX_GIT });
+  fs.writeFileSync(path.join(SANDBOX_GIT, 'leaky.js'), 'function f() {\n  console.log("debug");\n}\n');
+  execFileSync('git', ['add', 'leaky.js'], { cwd: SANDBOX_GIT });
+}
+
 function loadRows() {
   const raw = fs.readFileSync(SAMPLES_FILE, 'utf8');
   const substituted = raw
     .split('<SANDBOX_FREE>').join(slash(SANDBOX_FREE))
     .split('<SANDBOX>').join(slash(SANDBOX))
-    .split('<REPO>').join(slash(ROOT));
+    .split('<REPO>').join(slash(ROOT))
+    .split('<SANDBOX_GIT>').join(slash(SANDBOX_GIT));
   return JSON.parse(substituted);
 }
 
@@ -158,6 +172,7 @@ function runDump() {
 
   buildSandbox();
   buildSandboxFree();
+  buildSandboxGit();
 
   const allRows = loadRows();
   const rows = setName ? allRows.filter((r) => r.set === setName) : allRows;
@@ -185,25 +200,37 @@ function registerTests() {
 
   buildSandbox();
   buildSandboxFree();
+  buildSandboxGit();
 
   const raw = fs.readFileSync(SAMPLES_FILE, 'utf8');
   const allRows = JSON.parse(raw
     .split('<SANDBOX_FREE>').join(slash(SANDBOX_FREE))
     .split('<SANDBOX>').join(slash(SANDBOX))
-    .split('<REPO>').join(slash(ROOT)));
+    .split('<REPO>').join(slash(ROOT))
+    .split('<SANDBOX_GIT>').join(slash(SANDBOX_GIT)));
 
-  const EXPECTED_SAMPLE_COUNT = 148;
+  const EXPECTED_SAMPLE_COUNT = 157;
   // Independently-hardcoded expectation (not re-derived from allRows) so this assertion can't
   // silently pass no matter what skipIf tags actually exist in the samples file — mirrors the
-  // EXPECTED_SAMPLE_COUNT literal above. Update both the count and this table together when a
-  // row's skipIf tag changes or a new skipIf-tagged row is added/removed.
-  const EXPECTED_SKIP_TAG_COUNTS = { 'protected-branch': 4, 'non-win32': 1 };
+  // EXPECTED_SAMPLE_COUNT literal above. Keyed by exact set/name (not just a per-tag count) so a
+  // mutation that moves a skipIf tag from one row to another same-tagged-count row is also
+  // caught — a plain count table can't distinguish "the right rows are tagged" from "some rows
+  // are tagged". Update this table together with EXPECTED_SAMPLE_COUNT when a row's skipIf tag
+  // changes or a new skipIf-tagged row is added/removed.
+  const EXPECTED_SKIP_TAGS = {
+    'S-git-env/ge-commit-plain': 'protected-branch',
+    'S-git-env/ge-push-bare': 'protected-branch',
+    'S-git-env/ge-reset-hard-bare': 'protected-branch',
+    'S-git-env/ge-commit-amend': 'protected-branch',
+    'S-state/state-ps-setlocation-bypass': 'non-win32',
+  };
 
   test('samples file integrity: JSON.parse succeeds, row count matches, set+name pairs unique', () => {
     const parsed = JSON.parse(raw
       .split('<SANDBOX_FREE>').join(slash(SANDBOX_FREE))
       .split('<SANDBOX>').join(slash(SANDBOX))
-      .split('<REPO>').join(slash(ROOT)));
+      .split('<REPO>').join(slash(ROOT))
+    .split('<SANDBOX_GIT>').join(slash(SANDBOX_GIT)));
     assert.strictEqual(parsed.length, EXPECTED_SAMPLE_COUNT);
     const seen = new Set();
     for (const r of parsed) {
@@ -213,16 +240,17 @@ function registerTests() {
     }
   });
 
-  test('samples file integrity: skipIf tag counts match the expected table', () => {
+  test('samples file integrity: skipIf tags match the expected set/name table', () => {
     const parsed = JSON.parse(raw
       .split('<SANDBOX_FREE>').join(slash(SANDBOX_FREE))
       .split('<SANDBOX>').join(slash(SANDBOX))
-      .split('<REPO>').join(slash(ROOT)));
+      .split('<REPO>').join(slash(ROOT))
+    .split('<SANDBOX_GIT>').join(slash(SANDBOX_GIT)));
     const actual = {};
     for (const r of parsed) {
-      if (r.skipIf) actual[r.skipIf] = (actual[r.skipIf] || 0) + 1;
+      if (r.skipIf) actual[`${r.set}/${r.name}`] = r.skipIf;
     }
-    assert.deepStrictEqual(actual, EXPECTED_SKIP_TAG_COUNTS);
+    assert.deepStrictEqual(actual, EXPECTED_SKIP_TAGS);
   });
 
   const branch = currentBranch();
@@ -246,10 +274,10 @@ function registerTests() {
   // covers exactly the sets present in the samples file below.
   const EXPECTED_SET_COUNTS = {
     'S-git-pure': 26,
-    'S-git-env': 13,
+    'S-git-env': 14,
     'S-gh': 15,
-    'S-state': 17,
-    'S-lock': 18,
+    'S-state': 23,
+    'S-lock': 20,
     'S-fs': 18,
     'S-prompt': 8,
     'S-session': 5,

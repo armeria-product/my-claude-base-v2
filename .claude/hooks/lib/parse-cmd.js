@@ -11,7 +11,11 @@
 //   for (const { cmd, args } of segments(command)) { ... }
 //
 // Each returned object:
-//   cmd   – normalized command name (basename, lower-case wrapper stripped)
+//   cmd   – normalized command name (basename, lower-case, wrapper stripped; trailing .exe/.cmd
+//           is stripped EXCEPT when the name (optionally preceded by subshell-entry `(`s) is a
+//           CWD_BUILTIN — cd/pushd/popd stay suffixed, e.g. `cd.exe` normalizes to `cd.exe`, not
+//           `cd`. A consumer that detects a cd via `cmd === 'cd'` will therefore under-detect a
+//           suffixed form by design — see the CWD_BUILTINS comment below.)
 //   args  – token array after cmd (flags + targets, no env-vars; outer quotes stripped, content kept)
 //   raw   – trimmed segment string after heredoc-strip (quotes kept as-is)
 
@@ -91,13 +95,27 @@ function unquoteToken(t) {
   return t;
 }
 
-// Shell builtins with no corresponding real executable on PATH: `cd.exe`/`pushd.exe`/`popd.exe`
-// are not files, so a real shell asked to run one fails with "command not found" and leaves the
-// cwd unchanged. Suffix-stripping these names would make lib/cmd-targets.js's exact-match cwd
-// tracking (`case 'cd':`, and the liberal cd/pushd tracking used for .claude/state protection)
-// believe a no-op/failed invocation moved the cwd — see the comment at the strip site below for
-// the two fail-open bypasses this produced. `popd` is included even though no consumer currently
-// tracks it, as the same no-real-executable reasoning applies.
+// A child process — which is all `cd.exe`/`pushd.exe`/`popd.exe` could ever be, even if such a
+// file existed — can never change its parent shell's cwd; cd/pushd/popd only work at all because
+// the shell runs them as builtins in its own process. So suffix-stripping these names would be
+// wrong even if a real `cd.exe` shim showed up on PATH tomorrow: invoking it as a subprocess is a
+// cwd no-op for the parent shell regardless. (Today there is a second, weaker reason too — no
+// such executable exists, so a real shell asked to run `cd.exe` fails with "command not found",
+// also a no-op, but for a PATH-dependent reason a future environment could remove. The
+// child-process reason above is the one this exception actually rests on.) Suffix-stripping would
+// make lib/cmd-targets.js's exact-match cwd tracking (`case 'cd':`) and its liberal cd/pushd
+// tracking (used for .claude/state protection) believe a no-op invocation moved the cwd — see the
+// comment at the strip site below for the bypasses this produced, both in the plain form and, in
+// a later review round, in the parenthesized/subshell-entry form.
+//
+// Scope of this exception — exactly: a CWD_BUILTINS name, optionally preceded by one or more
+// literal `(` (subshell entry, e.g. `(cd.exe`, `((pushd.exe`), with a trailing `.exe`/`.cmd`
+// suffix. It is NOT a general fix for the cwd-desync class and must not be read as closing it:
+// `env cd ..`, `sudo cd ..`, and `command cd ..` hit the same no-op-treated-as-a-move bug today
+// through a different, still-open path (the wrapper-prefix peel in step 2 below compares raw
+// tokens and does not recognize `.exe`-suffixed wrappers, so it never reaches this exception at
+// all) — see tasks/todo.md. `popd` is included even though no consumer currently tracks it, as
+// the same child-process reasoning applies.
 const CWD_BUILTINS = new Set(['cd', 'pushd', 'popd']);
 
 /**
@@ -129,18 +147,34 @@ function normalizeSegment(seg) {
   //    alone (ruling G1) as a boundary marker for the unhandled case.
   //
   //    Exception: a name in CWD_BUILTINS (`cd`/`pushd`/`popd`) is NOT suffix-stripped, even if
-  //    it resolves to e.g. `cd.exe` — see the CWD_BUILTINS comment above. Concretely, without
-  //    this exception `cd.exe sub; cp a.txt other/b.txt` made cmd-targets.js's cwd tracker
-  //    believe cwd moved to `sub/` when a real shell never left the top level (scope-lock
-  //    escape: the cp target then falsely resolves inside an allow-listed dir), and
-  //    `cd .claude; cd.exe ..; echo x > state/f` made it believe cwd left `.claude` when a
-  //    real shell never did (defeats the unconditional .claude/state write protection). Both
-  //    were found in review and are pinned as samples (hook-probes.samples.json:
-  //    lock-cd-exe-fake-cwd-move-escape, state-cd-exe-fake-cwd-move-defeat).
+  //    it resolves to e.g. `cd.exe` — see the CWD_BUILTINS comment above. The membership check
+  //    itself is done against the suffix-stripped name with any leading subshell-entry `(`s also
+  //    stripped (`cwdBuiltinCandidate` below), so the exception applies uniformly whether the
+  //    builtin appears bare (`cd.exe`) or subshell-glued (`(cd.exe`, `((pushd.exe`) — this is a
+  //    single general rule, not a list of paren-prefixed spellings, so it does not need a new
+  //    entry for every possible amount of `(` nesting. A bare `(` with no attached builtin name
+  //    (e.g. the space-separated `( cd.exe`, where `(` and `cd.exe` tokenize as two separate
+  //    words) is unaffected by this exception — it is a different, already-opaque command name
+  //    and is handled (or not) by whatever downstream logic sees an unrecognized `cmd === '('`.
+  //
+  //    Concretely, without this exception `cd.exe sub; cp a.txt other/b.txt` made
+  //    cmd-targets.js's cwd tracker believe cwd moved to `sub/` when a real shell never left the
+  //    top level (scope-lock escape: the cp target then falsely resolves inside an allow-listed
+  //    dir), and `cd .claude; cd.exe ..; echo x > state/f` made it believe cwd left `.claude`
+  //    when a real shell never did (defeats the unconditional .claude/state write protection).
+  //    Both were found in review and are pinned as samples (hook-probes.samples.json:
+  //    lock-cd-exe-fake-cwd-move-escape, state-cd-exe-fake-cwd-move-defeat). A later review round
+  //    found the same two bypasses again in the parenthesized/subshell-entry form specifically —
+  //    the paren-stripped-but-not-suffix-stripped membership check above closes those too (pinned
+  //    alongside the same two samples). Backlog note: today, the plain (non-parenthesized) form's
+  //    safety in the non-nested case also happens to rest on cmd-write-guard.js checking the
+  //    union of its precise and liberal target lists, not on this exception alone; after this fix
+  //    this exception is what actually carries the parenthesized form too — see tasks/todo.md.
   //
   //    This strip is NOT an exhaustive fix for suffixed commands — only the plain
-  //    `<basename>.exe`/`<basename>.cmd` case. Known residual gaps (see plan Table C), plus
-  //    further out-of-scope gap classes surfaced in review, that this does NOT fix:
+  //    `<basename>.exe`/`<basename>.cmd` case (optionally subshell-`(`-prefixed). Known residual
+  //    gaps (see plan Table C), plus further out-of-scope gap classes surfaced in review, that
+  //    this does NOT fix:
   //      - an unquoted path containing spaces (e.g. `C:/Program Files/Git/bin/git.exe push`
   //        resolves to `cmd === 'program'`, not `git`)
   //      - a backslash-separated path (this function only splits on `/`, not `\`)
@@ -148,7 +182,10 @@ function normalizeSegment(seg) {
   //        matches the raw text `/\beval\s/`, which does not match `eval.exe `, so the inner
   //        command is never parsed and the whole call is treated as an opaque command)
   //      - wrapper-prefix peeling (step 2 above) compares raw tokens (`sudo`, `command`, `env`),
-  //        so `sudo.exe`/`env.exe` are not recognized as wrappers and stay opaque
+  //        so `sudo.exe`/`env.exe` are not recognized as wrappers and stay opaque — and, for the
+  //        CWD_BUILTINS exception specifically, `env cd ..`/`sudo cd ..`/`command cd ..` (no
+  //        `.exe` at all) hit the same no-op-treated-as-a-move bug via this same peel step,
+  //        before this exception is ever reached — see the CWD_BUILTINS comment above
   //      - block-destructive-fs.js's own private basename resolvers (separate from this module)
   //        are not suffix-aware either, e.g. `find ... -exec rm.exe {} \;` / `xargs rm.exe`
   //      - other PATHEXT suffixes beyond `.exe`/`.cmd` are untouched (`.com`, `.ps1`), as is
@@ -159,7 +196,8 @@ function normalizeSegment(seg) {
   const rawCmd = tokens[idx];
   const basename = rawCmd.replace(/^\\/, '').split('/').pop().toLowerCase();
   const strippedBasename = basename.replace(/\.(exe|cmd)$/, '');
-  const cmd = CWD_BUILTINS.has(strippedBasename) ? basename : strippedBasename;
+  const cwdBuiltinCandidate = strippedBasename.replace(/^\(+/, '');
+  const cmd = CWD_BUILTINS.has(cwdBuiltinCandidate) ? basename : strippedBasename;
   idx++;
 
   const args = tokens.slice(idx);

@@ -122,9 +122,9 @@ CLAUDE.md            … 運用ルールの本体（§番号は各所から引�
 clover/              … 外部モデル中継（自己完結のサブプロジェクト・ルート直下）
 docs/                … PDF変換のセットアップ手順などのガイド
 tasks/               … todo / lessons / session-state（+ history/ に全量保持）+ journal/（機械ジャーナル＋レポート・追記専用）— いずれも git 追跡外。journal はどのプロジェクトを触っていても分岐しないルート1本のタイムライン
-plans/               … /plan の成果物（PLAN.md / scope.json / deviations.md・git 追跡外）
+plans/               … /plan の成果物（PLAN.md / scope.json / deviations.md・git 追跡外・/plan が初回に生成するため、フレッシュな clone 直後には存在しない）
 dev/                 … 製品プロジェクトの置き場（各自が独立したgitリポジトリを持てる・git 追跡外なので、最初の製品を置くまでフレッシュな clone 直後には存在しない）
-tmp/                 … 使い捨ての作業ファイル
+tmp/                 … 使い捨ての作業ファイル（git 追跡外・使う側が必要時に作るため、フレッシュな clone 直後には存在しない）
 ```
 
 ---
@@ -148,7 +148,7 @@ tmp/                 … 使い捨ての作業ファイル
   ```bash
   node --test ".claude/hooks/lib/*.test.js" ".claude/scripts/*.test.mjs"
   ```
-  現時点で全247件のテストのうち、pass/skip の内訳はブランチと OS に依存します（`main`/`master` ブランチでは protected-branch タグの4件、非 win32 環境では non-win32 タグの1件がそれぞれ skip されるため）。作業ブランチ・win32（このリポジトリの標準環境）では247 pass・0 skip、`main`・非win32 の組み合わせでは242 pass・5 skip になります。skip 件数の期待値は `hook-probes.test.js` の `EXPECTED_SKIP_TAG_COUNTS` を正とします。
+  現時点で全256件のテストのうち、pass/fail/skip の内訳はブランチと OS に依存します（`main`/`master` ブランチでは protected-branch タグの4件が、非 win32 環境では non-win32 タグの1件が、それぞれ OS/ブランチ非依存の単純な分岐条件で skip されるため）。加えて非 win32 環境では、`scope-match.test.js` の `normalizeRel detects outside-root paths` が Windows のドライブレター（`C:\`）を前提にした実装のため fail します（既知の不具合。詳細は `tasks/todo.md` の Backlog を参照）。作業ブランチ・win32（このリポジトリの標準環境）では256 pass・0 fail・0 skip（実測）。作業ブランチ・非win32 では254 pass・1 fail・1 skip（Docker の `node:20` イメージで実測）。`main`/`master`・非win32 の組み合わせは実測していませんが、protected-branch の4件は上記の通りブランチ名だけで決まる単純な加算のため、250 pass・1 fail・5 skip になる計算です。skip 件数の期待値は `hook-probes.test.js` の `EXPECTED_SKIP_TAGS` を正とします。
 - **clover の全テスト**（clover は自己完結のサブプロジェクトなので別コマンド）:
   ```bash
   RELAY_ROUTER_NO_LISTEN=1 RELAY_SHIM_NO_LISTEN=1 node --test clover/test/*.test.mjs
