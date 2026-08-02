@@ -114,9 +114,18 @@ function normalizeSegment(seg) {
 
   if (idx >= tokens.length) return [];
 
-  // 3. Resolve command to basename (handles /bin/rm, /usr/bin/env, etc.)
+  // 3. Resolve command to basename (handles /bin/rm, /usr/bin/env, etc.), then strip a
+  //    trailing Windows executable suffix so `git.exe`/`gh.cmd`/etc. match the same guards as
+  //    the bare command name. Only `.exe` and `.cmd` are stripped — `.bat` is deliberately left
+  //    alone (ruling G1) as a boundary marker for the unhandled case.
+  //    Known residual gaps this does NOT fix (see plan Table C): an unquoted path containing
+  //    spaces (e.g. `C:/Program Files/Git/bin/git.exe push` resolves to `cmd === 'program'`,
+  //    not `git`), a backslash-separated path (this function only splits on `/`, not `\`), and
+  //    `eval.exe "<inner>"` (the basename strips to `eval`, but extractEvalArg() below matches
+  //    the raw text `/\beval\s/`, which does not match `eval.exe `, so the inner command is
+  //    never parsed and the whole call is treated as an opaque command).
   const rawCmd = tokens[idx];
-  const cmd = rawCmd.replace(/^\\/, '').split('/').pop().toLowerCase();
+  const cmd = rawCmd.replace(/^\\/, '').split('/').pop().toLowerCase().replace(/\.(exe|cmd)$/, '');
   idx++;
 
   const args = tokens.slice(idx);
