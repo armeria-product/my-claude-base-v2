@@ -136,7 +136,7 @@ tmp/                 … 使い捨て作業ファイル
 
 ## 検証
 
-- `node .claude/scripts/validate.mjs` — 構造検査＋不変条件 canary（スコープロック配線・記録配線・規範文言の消失検知など約30項目）
+- `node .claude/scripts/validate.mjs` — 構造検査＋不変条件 canary（スコープロック配線・記録配線・規範文言の消失検知など約30項目）。フックの構文（`node --check`）と相対 require の解決先も検査する
 - `node --test .claude/hooks/lib/scope-match.test.js` — glob 照合の単体テスト
 - `RELAY_ROUTER_NO_LISTEN=1 RELAY_SHIM_NO_LISTEN=1 node --test clover/test/*.test.mjs` — clover 全テスト
 

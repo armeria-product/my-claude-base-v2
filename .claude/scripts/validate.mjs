@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const rel = (p) => path.relative(ROOT, p).replace(/\\/g, '/');
@@ -369,6 +370,54 @@ for (const [relPath, must, why] of INVARIANTS) {
     const size = fs.statSync(lessonsPath).size;
     if (size > LESSONS_WARN_BYTES)
       warn(`tasks/lessons.md is ${(size / 1024).toFixed(1)}KB (>18KB) — session-start injection budget will start truncating older lessons; consider a distilled archive`);
+  }
+}
+
+// ---- 11. Hook health: node --check syntax + require() target resolution ----
+// Every safety hook require()s ./lib/* at the top of the file; one broken lib file makes every
+// hook throw during require and fail open with no CLI error and no journal entry (lessons.md
+// 2026-08-02 incident). This section makes that class of breakage mechanically detectable.
+{
+  const hooksDir = path.join(ROOT, '.claude', 'hooks');
+  const hooksLibDir = path.join(hooksDir, 'lib');
+  const hookFiles = fs.readdirSync(hooksDir).filter((x) => x.endsWith('.js')).map((f) => path.join(hooksDir, f));
+  const hookLibFiles = fs.existsSync(hooksLibDir)
+    ? fs.readdirSync(hooksLibDir).filter((x) => x.endsWith('.js')).map((f) => path.join(hooksLibDir, f))
+    : [];
+  const hookHealthFiles = [...hookFiles, ...hookLibFiles];
+
+  for (const p of hookHealthFiles) {
+    try {
+      execFileSync(process.execPath, ['--check', p], { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+    } catch (e) {
+      const stderrText = String(e.stderr || e.message || '');
+      const errLine = stderrText.split('\n').find((l) => /Error/.test(l)) || stderrText.split('\n').find((l) => l.trim()) || 'unknown syntax error';
+      fail(`${rel(p)}: syntax error (node --check) — ${errLine.trim().slice(0, 160)}`);
+    }
+  }
+
+  // Relative require() target resolution, CJS-order (exact path, then +.js, +.json, +/index.js).
+  // node:-prefixed and bare (package) specifiers are skipped by construction — the capture group
+  // only matches specifiers starting with ".". Comment lines are excluded the same way section 9
+  // does (line-start "//" or "*"): parse-cmd.js:10 has a doc-comment example require whose target
+  // is not resolvable relative to the real file and would otherwise false-FAIL an unmodified tree.
+  // Known limitation (not currently hit, flagged so a future block comment doesn't surprise
+  // someone): this line-start exclusion does not cover a require() written inside a /* ... */
+  // block comment on a line that itself doesn't start with "//" or "*".
+  const resolveRequireTarget = (fromFile, spec) => {
+    const base = path.resolve(path.dirname(fromFile), spec);
+    return [base, `${base}.js`, `${base}.json`, path.join(base, 'index.js')].some((c) => fs.existsSync(c));
+  };
+  for (const p of hookHealthFiles) {
+    const lines = read(p).split('\n');
+    lines.forEach((line, i) => {
+      const trimmed = line.trim();
+      if (/^(\/\/|\*)/.test(trimmed)) return;
+      const m = trimmed.match(/require\(\s*['"](\.[^'"]+)['"]\s*\)/);
+      if (!m) return;
+      if (!resolveRequireTarget(p, m[1]))
+        fail(`${rel(p)}:${i + 1} — require("${m[1]}") does not resolve to any file (checked exact/.js/.json/index.js)`);
+    });
   }
 }
 
