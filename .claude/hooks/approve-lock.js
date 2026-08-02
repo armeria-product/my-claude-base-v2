@@ -192,7 +192,17 @@ function arm(root, stateDir, lockPath, payload, namedSlug) {
   fs.writeFileSync(
     lockPath,
     JSON.stringify(
-      { status: 'locked', slug, plan: planRel, allow, forbid, tasks: scope.tasks || [], approvedAt: new Date().toISOString(), history },
+      {
+        status: 'locked',
+        slug,
+        plan: planRel,
+        allow,
+        forbid,
+        tasks: scope.tasks || [],
+        securityReview: scope.securityReview === true,
+        approvedAt: new Date().toISOString(),
+        history,
+      },
       null,
       2
     )
@@ -211,6 +221,9 @@ function arm(root, stateDir, lockPath, payload, namedSlug) {
     `[scope-lock] 🔒 ロックしました — slug: ${slug} / 計画: ${planRel}`,
     `allow(${allow.length}): ${allow.slice(0, 3).join(', ')}${allow.length > 3 ? ' …' : ''}${forbid.length ? ` / forbid(${forbid.length}): ${forbid.slice(0, 2).join(', ')}${forbid.length > 2 ? ' …' : ''}` : ''}`,
     '常時書き込み可: journal/ tasks/ tmp/ と計画フォルダ自身。範囲外への書き込みはフックが拒否し、その意図は plans/' + slug + '/deviations.md に記録して提案に回すこと（実装は再承認後）。',
+    scope.securityReview === true
+      ? 'セキュリティ審査の常時同席が有効（scope.json の securityReview）— このロック中の全コードレビューで reviewer(target:security) を自動で並列に立てること。'
+      : null,
     prev && prev.status === 'locked' ? `旧ロック（${prev.slug}）は置き換えました。` : null,
     broad.length ? `⚠ allow に過度に広いパターン（${broad.join(', ')}）が含まれます — ロックの意味が薄いことをユーザーに一言伝えてください。` : null,
     'ユーザーに1行で開始を報告し、計画（' + planRel + '）の Phase 1 から自走を開始してください。',
