@@ -19,7 +19,8 @@ const IMPLICIT_FORBID = [
 ];
 
 function alwaysAllow(lock) {
-  const list = ['journal/**', 'tasks/**', 'dev/*/tasks/**', 'tmp/**', 'dev/*/tmp/**'];
+  // tasks/** covers the journal too (tasks/journal/**) and the session-state history
+  const list = ['tasks/**', 'dev/*/tasks/**', 'tmp/**', 'dev/*/tmp/**'];
   const plan = String(lock.plan || '').replace(/\\/g, '/');
   const planDir = plan.includes('/') ? plan.replace(/\/[^/]*$/, '') : '';
   if (planDir) list.push(planDir + '/**');

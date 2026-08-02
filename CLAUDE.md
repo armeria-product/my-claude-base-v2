@@ -14,8 +14,8 @@
 
 Multi-project hub. Each product lives under `dev/{name}/` (own git repo, own `tasks/` mirror).
 
-- `tasks/` — todo.md / lessons.md / session-state.md (+ `history/` = full archive, never rotated)
-- `journal/YYYY-MM/DD.md` — append-only work journal: hooks write machine lines; /save-session appends the human report. **Never rotate or delete journal entries.**
+- `tasks/` — todo.md / lessons.md / session-state.md (+ `history/` = full archive, never rotated) + `journal/`
+- `tasks/journal/YYYY-MM/DD.md` — append-only work journal: hooks write machine lines; /save-session appends the human report. **Never rotate or delete journal entries.** ONE global timeline: always at the workspace root's `tasks/journal/` — the dev-mode routing below never applies to it.
 - `plans/{slug}/` — PLAN.md + scope.json (+ deviations.md) produced by /plan
 - `.claude/` — agents / skills / commands / rules / hooks / scripts, plus `state/` = **hook-owned runtime state (scope lock). Claude never writes there; permissions.deny + cmd-write-guard enforce it.**
 - `clover/` — external-model relay, a self-contained code sub-project at the repo root (routing convention: `.claude/skills/relay/SKILL.md`)
@@ -128,7 +128,7 @@ Conclusion first (1-3 lines: what changed, verification result). Then ≤5 one-l
    - The user's whole-message 「承認」 arms `.claude/state/scope-lock.json` via the approve-lock hook — Claude cannot write that file. 「解除」 unlocks. The lock persists across sessions (all sessions sharing this project dir) until replaced or unlocked.
    - While locked: writes outside `allow` are denied by scope-guard / cmd-write-guard (subagents included; records dirs stay writable). A denied intent → one line in `plans/{slug}/deviations.md`, surfaced as a proposal at /save-session, implemented only after the user re-approves.
    - The lock implicitly forbids editing the enforcement chain itself (settings.json / hooks / validate.mjs) — **a plan whose target is the harness runs unlocked**.
-3. **Journal**: hooks append every edit / command / delegation / denial to `journal/YYYY-MM/DD.md` automatically. Append-only, never rotated (§0).
+3. **Journal**: hooks append every edit / command / delegation / denial to `tasks/journal/YYYY-MM/DD.md` automatically. Append-only, never rotated (§0).
 
 ---
 

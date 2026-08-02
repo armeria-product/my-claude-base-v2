@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>品質保証 / 検証設計 — .claude ハーネス設計ガイド</title>
+
+<!-- 完全オフライン・単体で開ける自己完結HTML。外部フォント/CDN/@import は使わない。
+     インラインの <style>/<script> のみ（ネット取得ゼロ）。見出しは端末内蔵フォントで出す。 -->
+
+<style>
+/* =========================================================================
+   .claude ハーネス設計ガイド — 04. 品質保証 / 検証設計
+   本文は <main id="content"> の中だけ差し替える。CSSと下部JSは触らない前提。
+   ========================================================================= */
+*, *::before, *::after { box-sizing: border-box; }
+
+:root{
+  --bg:#f7f6f1;
+  --surface:#ffffff;
+  --surface-2:#f1efe7;
+  --surface-3:#eae7db;
+  --ink:#171613;
+  --ink-2:#3d3b34;
+  --muted:#6e6c62;
+  --faint:#9a978a;
+  --line:#e5e2d5;
+  --line-2:#d7d3c4;
+
+  --accent:#d97757;
+  --accent-ink:#ab4c2d;
+  --accent-soft:#f6e6de;
+  --accent-line:#eac9ba;
+
+  --blue:#6a9bcc;  --blue-ink:#3f6f9f;  --blue-soft:#e5edf5;
+  --green:#788c5d; --green-ink:#516738; --green-soft:#e8ede0; --green-line:#cfd8c0;
+  --amber:#cc9544; --amber-ink:#8f5f18; --amber-soft:#f6ecd7; --amber-line:#e6d3a6;
+  --red-ink:#ab4635; --red-soft:#f4e2df; --red-line:#e6c6c0;
+
+  --read:940px; --toc-width:244px; --gap:52px; --page-max:1560px;
+  --radius:7px; --radius-sm:5px;
+
+  --font-head:-apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic UI",
+              "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+  --font-body:-apple-system, BlinkMacSystemFont, "Segoe UI",
+              "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif;
+  --font-mono:ui-monospace, "SF Mono", "SFMono-Regular", "Cascadia Code",
+              "JetBrains Mono", "Source Code Pro", Consolas, Menlo, monospace;
+}
+
+html{ -webkit-text-size-adjust:100%; scroll-behavior:smooth; }
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--font-body); font-size:16.5px; line-height:1.68;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+
+.progress{
+  position:fixed; top:0; left:0; height:3px; width:0%;
+  background:var(--accent); z-index:100; transition:width .12s linear;
+}
+
+.layout{
+  display:grid; grid-template-columns:var(--toc-width) minmax(0, 1fr);
+  align-items:start; gap:var(--gap);
+  max-width:var(--page-max); margin:0 auto; padding:60px 56px 160px;
+}
+
+/* ---- 目次（モノスペース番号つき） ---- */
+.toc{ position:sticky; top:60px; align-self:start; max-height:calc(100vh - 92px); overflow-y:auto; }
+.toc__title{
+  font-family:var(--font-mono); font-size:11px; font-weight:600;
+  letter-spacing:.12em; text-transform:uppercase; color:var(--faint);
+  margin:0 0 14px; padding-left:14px;
+}
+.toc__list{ display:flex; flex-direction:column; gap:1px; counter-reset:toc; }
+.toc a{
+  display:flex; gap:9px; text-decoration:none; color:var(--muted);
+  font-size:13px; line-height:1.4; padding:5px 12px 5px 13px;
+  border-left:2px solid var(--line); border-radius:0 3px 3px 0;
+  transition:color .15s, border-color .15s, background .15s;
+}
+.toc a.lvl-2{ counter-increment:toc; counter-reset:tocsub; }
+.toc a.lvl-2::before{
+  content:counter(toc, decimal-leading-zero);
+  flex:0 0 auto; font-family:var(--font-mono); font-size:11px; color:var(--faint); font-weight:600;
+  font-variant-numeric:tabular-nums;
+}
+.toc a:hover{ color:var(--ink); background:var(--surface-2); }
+.toc a.active{ color:var(--accent-ink); border-left-color:var(--accent); font-weight:600; }
+.toc a.active::before{ color:var(--accent); }
+.toc a.lvl-3{ counter-increment:tocsub; padding-left:22px; font-size:12.5px; color:var(--faint); }
+.toc a.lvl-3::before{
+  content:counter(toc, decimal-leading-zero) "." counter(tocsub);
+  flex:0 0 auto; font-family:var(--font-mono); font-size:10.5px; color:var(--line-2); font-weight:600;
+  font-variant-numeric:tabular-nums;
+}
+.toc a.lvl-3.active{ color:var(--accent-ink); }
+.toc a.lvl-3.active::before{ color:var(--accent); }
+
+/* =========================== 本文 =========================== */
+.content{ min-width:0; counter-reset:sec fig; }
+.content > *{ max-width:var(--read); }
+
+.content h1{
+  font-family:var(--font-head); font-size:37px; line-height:1.18; font-weight:700;
+  letter-spacing:-.02em; margin:0 0 12px; color:var(--ink); text-wrap:balance;
+}
+.content h2{
+  counter-increment:sec; counter-reset:sub;
+  font-family:var(--font-head); font-size:23px; line-height:1.3; font-weight:700;
+  letter-spacing:-.01em; margin:60px 0 20px; padding-top:20px;
+  color:var(--ink); scroll-margin-top:26px; text-wrap:balance;
+  display:grid; grid-template-columns:auto 1fr; align-items:baseline; column-gap:16px;
+  border-top:2px solid var(--ink);
+}
+.content h2::before{
+  content:counter(sec, decimal-leading-zero);
+  font-family:var(--font-mono); font-size:14px; font-weight:700;
+  color:#fff; background:var(--accent); letter-spacing:0;
+  padding:3px 9px; border-radius:5px; align-self:center; line-height:1.3;
+  font-variant-numeric:tabular-nums; translate:0 -1px;
+}
+.content h3{
+  counter-increment:sub;
+  font-family:var(--font-head); font-size:17.5px; line-height:1.4; font-weight:600;
+  margin:36px 0 12px; color:var(--ink); scroll-margin-top:26px;
+  display:grid; grid-template-columns:auto 1fr; align-items:baseline; column-gap:12px;
+}
+.content h3::before{
+  content:counter(sec, decimal-leading-zero) "." counter(sub);
+  font-family:var(--font-mono); font-size:12.5px; font-weight:600;
+  color:var(--accent-ink); letter-spacing:0; font-variant-numeric:tabular-nums;
+}
+.content h4{
+  font-family:var(--font-mono); font-size:12px; font-weight:600;
+  letter-spacing:.05em; text-transform:uppercase; color:var(--muted); margin:26px 0 10px;
+}
+
+.content p{ margin:0 0 17px; text-wrap:pretty; }
+.content ul, .content ol{ margin:0 0 17px; padding-left:24px; }
+.content li{ margin:0 0 7px; text-wrap:pretty; }
+.content li::marker{ color:var(--accent); }
+.content ul ul, .content ol ol, .content ul ol, .content ol ul{ margin:7px 0; }
+.content strong{ font-weight:600; color:var(--ink); }
+.content em{ font-style:italic; }
+.content a{
+  color:var(--accent-ink); text-decoration:none;
+  border-bottom:1px solid var(--accent-line); transition:border-color .15s;
+}
+.content a:hover{ border-bottom-color:var(--accent); }
+.content hr{ border:none; border-top:1px solid var(--line); margin:40px 0; }
+
+.content :not(pre) > code{
+  font-family:var(--font-mono); font-size:.85em;
+  background:var(--surface-3); color:var(--ink-2);
+  padding:.12em .42em; border-radius:4px; border:1px solid var(--line);
+  overflow-wrap:break-word; word-break:normal;
+}
+.content tbody td:first-child code{ white-space:nowrap; }
+
+/* --- ドキュメントヘッダ --- */
+.doc-eyebrow{
+  display:inline-flex; align-items:center; gap:9px;
+  font-family:var(--font-mono); font-size:11.5px; font-weight:700;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--accent-ink);
+  background:var(--accent-soft); border:1px solid var(--accent-line); white-space:nowrap;
+  padding:4px 11px 4px 10px; border-radius:5px; margin:0 0 18px;
+}
+.doc-eyebrow::before{ content:""; width:8px; height:8px; border-radius:2px; background:var(--accent); }
+
+/* --- 戻りリンク（ガイド入口へ） --- */
+.backlink{
+  display:inline-flex; align-items:center; gap:6px; text-decoration:none;
+  font-family:var(--font-mono); font-size:12.5px; color:var(--muted);
+  border:1px solid var(--line-2); border-radius:999px; padding:5px 13px 5px 11px;
+  margin:0 0 22px; transition:all .15s;
+}
+.backlink::before{ content:"←"; font-size:13px; }
+.backlink:hover{ color:var(--accent-ink); border-color:var(--accent-line); background:var(--accent-soft); }
+
+.content h1{ margin-bottom:14px; }
+.doc-subtitle{
+  font-size:18px; color:var(--ink-2); margin:0 0 24px; line-height:1.55; max-width:62ch; text-wrap:pretty;
+  padding-left:15px; border-left:3px solid var(--accent-line);
+}
+.doc-meta{
+  display:flex; flex-wrap:wrap; align-items:stretch; gap:0; margin:0;
+  border:1px solid var(--line-2); border-radius:var(--radius); overflow:hidden;
+  background:var(--surface);
+}
+.meta-chip{
+  display:inline-flex; flex-direction:column; align-items:flex-start; gap:3px;
+  font-size:14.5px; color:var(--ink); white-space:nowrap; background:none;
+  border:none; border-right:1px solid var(--line); padding:11px 20px; flex:1 1 auto;
+  font-variant-numeric:tabular-nums;
+}
+.meta-chip b{
+  font-family:var(--font-mono); font-weight:600; color:var(--faint);
+  font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+}
+.doc-meta .badge{
+  align-self:stretch; display:inline-flex; margin-left:auto; border-radius:0;
+  padding:0 20px; background:var(--surface-2); border:none; border-left:1px solid var(--line-2);
+}
+
+/* --- バッジ --- */
+.badge{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--font-mono); font-size:11.5px; font-weight:600;
+  letter-spacing:.03em; padding:4px 9px; border-radius:4px; line-height:1.5;
+  border:1px solid transparent; white-space:nowrap; text-transform:uppercase;
+}
+.badge::before{ content:""; width:6px; height:6px; border-radius:2px; background:currentColor; }
+.badge--todo   { color:var(--muted);      background:var(--surface-3); border-color:var(--line-2); }
+.badge--doing  { color:var(--accent-ink); background:var(--accent-soft); border-color:var(--accent-line); }
+.badge--done   { color:var(--green-ink);  background:var(--green-soft);  border-color:var(--green-line); }
+.badge--blocked{ color:var(--red-ink);    background:var(--red-soft);    border-color:var(--red-line); }
+.badge--warn   { color:var(--amber-ink);  background:var(--amber-soft);  border-color:var(--amber-line); }
+
+/* --- コールアウト --- */
+.callout{
+  margin:24px 0; padding:15px 20px; border:1px solid var(--line);
+  border-left-width:4px; border-radius:var(--radius-sm); background:var(--surface);
+}
+.callout > :last-child{ margin-bottom:0; }
+.callout p{ margin-bottom:10px; }
+.callout__label{
+  font-family:var(--font-mono); font-size:11px; font-weight:600;
+  letter-spacing:.06em; text-transform:uppercase; margin:0 0 6px;
+}
+.callout--note      { border-left-color:var(--blue);   background:var(--blue-soft); }
+.callout--note .callout__label{ color:var(--blue-ink); }
+.callout--tip       { border-left-color:var(--green);  background:var(--green-soft); }
+.callout--tip .callout__label{ color:var(--green-ink); }
+.callout--warn      { border-left-color:var(--amber);  background:var(--amber-soft); }
+.callout--warn .callout__label{ color:var(--amber-ink); }
+.callout--important { border-left-color:var(--accent); background:var(--accent-soft); }
+.callout--important .callout__label{ color:var(--accent-ink); }
+
+/* --- コードブロック --- */
+.codeblock{
+  margin:24px 0; border:1px solid var(--line-2); border-radius:var(--radius);
+  overflow:hidden; background:#fbfaf6;
+}
+.codeblock__bar{
+  display:flex; align-items:center; gap:10px;
+  padding:8px 12px 8px 14px; background:var(--surface-2); border-bottom:1px solid var(--line);
+}
+.codeblock__bar::before{
+  content:"›_"; flex:0 0 auto; font-family:var(--font-mono); font-size:13px; font-weight:700;
+  color:var(--accent); line-height:1;
+}
+.codeblock__lang{
+  font-family:var(--font-mono); font-size:11.5px; font-weight:600;
+  color:var(--ink-2); letter-spacing:.04em; text-transform:uppercase;
+  padding:2px 8px; background:var(--surface); border:1px solid var(--line); border-radius:4px;
+}
+.codeblock__copy{
+  margin-left:auto; font-family:var(--font-mono); font-size:11.5px; color:var(--muted);
+  background:transparent; border:1px solid var(--line-2); border-radius:4px;
+  padding:3px 11px; cursor:pointer; transition:all .15s;
+}
+.codeblock__copy:hover{ color:var(--ink); border-color:var(--faint); background:var(--surface); }
+.codeblock__copy.copied{ color:var(--green-ink); border-color:var(--green-line); background:var(--green-soft); }
+
+.content pre{
+  margin:0; padding:16px 18px; overflow-x:auto;
+  font-family:var(--font-mono); font-size:14px; line-height:1.65;
+  color:#2b2a26; background:transparent; -webkit-overflow-scrolling:touch;
+}
+.content pre code{ font-family:inherit; font-size:inherit; background:none; border:none; padding:0; color:inherit; }
+.content > pre{ border:1px solid var(--line-2); border-radius:var(--radius); background:#fbfaf6; }
+
+.content pre.tree{
+  background:var(--surface-2); border:1px solid var(--line-2); border-radius:var(--radius);
+  padding:16px 18px; font-size:13.5px; line-height:1.75; color:var(--ink-2);
+}
+
+/* --- テーブル --- */
+.table-wrap{ margin:26px 0; overflow-x:auto; border:1px solid var(--line-2); border-radius:var(--radius); }
+.content table{ border-collapse:collapse; width:100%; font-size:15px; font-variant-numeric:tabular-nums; }
+.content thead th{
+  text-align:left; font-family:var(--font-mono); font-weight:600; font-size:11px;
+  letter-spacing:.05em; text-transform:uppercase; color:#fff; background:var(--ink);
+  padding:11px 16px; border-right:1px solid rgba(255,255,255,.14);
+  white-space:nowrap;
+}
+.content thead th:last-child{ border-right:none; }
+.content tbody td{
+  padding:11px 16px; border-bottom:1px solid var(--line); border-right:1px solid var(--line);
+  vertical-align:top;
+}
+.content tbody td:last-child{ border-right:none; }
+.content tbody td:first-child{ font-weight:600; color:var(--ink); }
+.content tbody tr:last-child td{ border-bottom:none; }
+.content tbody tr:nth-child(even){ background:rgba(120,120,110,.035); }
+.content tbody tr:hover{ background:var(--surface-2); }
+
+/* --- 引用 --- */
+.content blockquote{
+  margin:24px 0; padding:2px 20px; border-left:3px solid var(--line-2);
+  color:var(--muted); font-style:italic;
+}
+.content blockquote p:last-child{ margin-bottom:0; }
+
+/* --- ステップ（角丸スクエア番号） --- */
+.content ol.steps{ list-style:none; counter-reset:step; padding-left:0; margin:22px 0; }
+.content ol.steps > li{
+  counter-increment:step; position:relative; padding-left:48px; margin:0 0 20px; min-height:32px;
+}
+.content ol.steps > li::before{
+  content:counter(step, decimal-leading-zero); position:absolute; left:0; top:-1px;
+  width:32px; height:32px; border-radius:6px;
+  background:var(--accent-soft); color:var(--accent-ink); border:1px solid var(--accent-line);
+  font-family:var(--font-mono); font-weight:600; font-size:13px;
+  display:flex; align-items:center; justify-content:center;
+}
+.content ol.steps > li > strong:first-child{ display:block; margin-bottom:4px; }
+
+/* --- タスク --- */
+.content ul.tasks{ list-style:none; padding-left:0; margin:20px 0; }
+.content ul.tasks li{ display:flex; align-items:flex-start; gap:11px; margin:0 0 10px; line-height:1.6; }
+.content ul.tasks li::marker{ content:none; }
+.content ul.tasks input[type="checkbox"]{
+  appearance:none; -webkit-appearance:none; flex:0 0 auto;
+  width:19px; height:19px; margin:3px 0 0; border:1.5px solid var(--line-2);
+  border-radius:4px; background:var(--surface); cursor:pointer; position:relative; transition:all .15s;
+}
+.content ul.tasks input[type="checkbox"]:hover{ border-color:var(--accent); }
+.content ul.tasks input[type="checkbox"]:checked{ background:var(--accent); border-color:var(--accent); }
+.content ul.tasks input[type="checkbox"]:checked::after{
+  content:""; position:absolute; left:5.5px; top:2px; width:5px; height:9px;
+  border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg);
+}
+.content ul.tasks input[type="checkbox"]:checked + span{
+  color:var(--muted); text-decoration:line-through; text-decoration-color:var(--faint);
+}
+
+/* --- トレードオフ --- */
+.tradeoff{
+  display:grid; grid-template-columns:1fr auto 1fr; align-items:stretch;
+  margin:24px 0; border:1px solid var(--line-2); border-radius:var(--radius); overflow:hidden;
+}
+.tradeoff__side{ padding:16px 20px; background:var(--surface); min-width:0; }
+.tradeoff__mid{
+  display:flex; align-items:center; justify-content:center; padding:0 4px;
+  background:var(--surface-2); color:var(--accent-ink); font-size:20px;
+  border-left:1px solid var(--line-2); border-right:1px solid var(--line-2);
+}
+.tradeoff__head{ font-family:var(--font-mono); font-weight:600; font-size:13px; letter-spacing:.02em; margin:0 0 8px; color:var(--ink); }
+.tradeoff__side p:last-child, .tradeoff__side ul:last-child{ margin-bottom:0; }
+.tradeoff__side ul{ padding-left:18px; margin:0; }
+.tradeoff__side li{ margin-bottom:5px; }
+
+/* --- 図 --- */
+.figure{
+  counter-increment:fig; position:relative;
+  margin:28px 0; padding:34px 20px 16px;
+  background:
+    linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 22px 22px,
+    linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 22px 22px,
+    var(--surface);
+  border:1px solid var(--line-2); border-radius:var(--radius); text-align:center;
+}
+.figure::before{
+  content:"FIG " counter(fig, decimal-leading-zero);
+  position:absolute; top:0; left:0;
+  font-family:var(--font-mono); font-weight:700; font-size:10.5px; letter-spacing:.08em;
+  color:var(--accent-ink); background:var(--accent-soft);
+  border-right:1px solid var(--accent-line); border-bottom:1px solid var(--accent-line);
+  border-radius:var(--radius) 0 8px 0; padding:5px 12px 5px 11px;
+}
+.figure svg{ width:100%; height:auto; max-width:800px; display:block; margin:0 auto; }
+.figure figcaption{
+  margin-top:14px; padding-top:12px; border-top:1px dashed var(--line-2);
+  font-size:13px; color:var(--muted); line-height:1.55; text-align:center;
+}
+.legend{
+  display:flex; flex-wrap:wrap; justify-content:center; gap:8px 18px;
+  margin:14px 0 2px; font-family:var(--font-mono); font-size:11.5px; color:var(--ink-2);
+}
+.legend span{ display:inline-flex; align-items:center; gap:7px; }
+.legend span::before{
+  content:""; width:11px; height:11px; border-radius:2px; background:var(--faint);
+  border:1px solid var(--line-2);
+}
+.legend .lg-primary::before{ background:var(--accent-soft); border-color:var(--accent-line); }
+.legend .lg-fallback::before{ background:var(--blue-soft);   border-color:var(--blue); }
+.legend .lg-ok::before{       background:var(--green-soft);  border-color:var(--green-line); }
+
+/* --- ステータスボード --- */
+.board{
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
+  gap:14px; margin:24px 0;
+}
+.board__card{
+  border:1px solid var(--line-2); border-radius:var(--radius); background:var(--surface);
+  padding:16px 18px; display:flex; flex-direction:column; gap:8px; min-width:0;
+}
+.board__card--crit{ border-left:4px solid var(--accent); }
+.board__id{
+  font-family:var(--font-mono); font-size:11.5px; font-weight:700;
+  color:var(--accent-ink); letter-spacing:.03em;
+}
+.board__title{ font-weight:600; font-size:14.5px; color:var(--ink); line-height:1.4; overflow-wrap:anywhere; }
+.board__meta{ font-size:12px; color:var(--muted); display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.board__files{ font-family:var(--font-mono); font-size:11.5px; color:var(--ink-2); overflow-wrap:anywhere; }
+
+/* --- footer.sot（正本一覧） --- */
+footer.sot{
+  margin:60px 0 0; padding-top:20px; border-top:1px solid var(--line);
+  font-size:12.5px; color:var(--faint); line-height:1.7;
+}
+footer.sot code{ font-size:.92em; }
+
+:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:2px; }
+.content a:focus-visible{ border-bottom-color:transparent; }
+
+/* ============================ レスポンシブ ============================ */
+@media (max-width:1024px){
+  .layout{ grid-template-columns:minmax(0, 1fr); padding:48px 32px 120px; }
+  .toc{ display:none; }
+  .content{ max-width:var(--read); margin:0 auto; }
+  .content > *, .content > pre.tree{ max-width:none; }
+}
+@media (max-width:640px){
+  body{ font-size:16px; }
+  .layout{ padding:32px 18px 90px; }
+  .content h1{ font-size:28px; }
+  .content h2{ font-size:20px; margin-top:48px; }
+  .content pre{ font-size:13px; }
+  .tradeoff{ grid-template-columns:1fr; }
+  .tradeoff__mid{ border:none; border-top:1px solid var(--line-2); border-bottom:1px solid var(--line-2); padding:5px; font-size:16px; }
+}
+
+/* ============================== 印刷 ============================== */
+@media print{
+  .progress, .toc, .codeblock__copy{ display:none !important; }
+  body{ background:#fff; color:#000; font-size:11pt; }
+  .layout{ display:block; max-width:none; margin:0; padding:0; }
+  .content{ max-width:none; }
+  .content a{ color:#000; border-bottom:none; }
+  .content h2{ break-before:page; }
+  .content h2, .content h3{ break-after:avoid; }
+  .content p, .content li{ orphans:3; widows:3; }
+  .callout, .codeblock, .content pre, .content pre.tree, .table-wrap, .tradeoff, ol.steps>li, .figure, .board__card{ break-inside:avoid; }
+  *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  @page{ size:A4; margin:20mm 18mm; }
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{ transition:none !important; }
+  html{ scroll-behavior:auto; }
+}
+
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+
+<div class="layout">
+  <aside class="toc" aria-label="目次">
+    <div class="toc__title">目次</div>
+    <nav class="toc__list" id="tocList"></nav>
+  </aside>
+
+  <main class="content" id="content">
+
+    <a class="backlink" href="index.html">ガイド入口へ</a>
+
+    <div class="doc-eyebrow">品質保証</div>
+    <h1>品質保証 / 検証設計</h1>
+    <p class="doc-subtitle">quality-loop（作りながら質を上げる審査ループ）と check（完了報告直前の独立ゲート）による2段階の品質保証と、HTML資料の自己完結チェックの考え方をまとめる。</p>
+    <div class="doc-meta">
+      <span class="meta-chip"><b>対象</b> quality-loop / check / doc の検証設計</span>
+      <span class="meta-chip"><b>正本</b> quality-loop・check・doc の各 SKILL.md</span>
+      <span class="meta-chip"><b>最終確認</b> 2026-07-30</span>
+      <span class="badge badge--done">現状の repo で裏取り済み</span>
+    </div>
+
+    <h2>2段階の品質ゲート</h2>
+    <p>このハーネスの品質保証は、大きく2段階に分かれる。</p>
+    <ul>
+      <li><strong>quality-loop</strong> ―― 成果物を作る過程そのものに組み込まれた、worker / authority 分離の審査ループ。</li>
+      <li><strong>check</strong> ―― 「終わりました」と報告する<strong>直前</strong>に必ず通す、独立した最終ゲート。</li>
+    </ul>
+    <p>quality-loop は「作りながら質を上げる」役割、check は「本当に完了と言えるか」を出口で確認する役割、という位置づけ。</p>
+
+    <h2>quality-loop — Writer/Reviewer Separation の実装</h2>
+    <p>CLAUDE.md §1.3「Never approve your own code」の運用形。原則は単純で、<strong>成果物を作った人は、それを自分で承認してはならない</strong>。</p>
+    <div class="table-wrap">
+      <table>
+        <caption>Loop Contract（最大3サイクル）</caption>
+        <thead>
+          <tr><th scope="col">ステップ</th><th scope="col">内容</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1. Worker</td><td>成果物を作る（既存の成果物を入力にすることもある）</td></tr>
+          <tr><td>2. Authority</td><td>frontier tier（下限 opus）が独立コンテキストで審査。verdict は APPROVE / REQUEST_CHANGES。worker の弁明は見えない。コード成果物は使い捨ての worktree を使い、敵対的変異検証（あえて壊してみるテスト）も行う</td></tr>
+          <tr><td>3. 差し戻し</td><td>REQUEST_CHANGES なら、指摘全文＋「指摘箇所のみ修正・範囲拡大禁止」の制約とともに worker へ</td></tr>
+          <tr><td>4. 再審査</td><td>CRITICAL/HIGH は必ず修正。MEDIUM/LOW は worker の裁量（却下理由を記録）。テストや判定ロジックに触れた修正は、壊す→RED確認→戻す→PASS確認という変異検証の証拠が要る。3サイクル目でも未APPROVEならユーザーへエスカレーション</td></tr>
+          <tr><td>5. Verifier</td><td>APPROVE 後、証拠ベースの最終検証（テスト・diff・ログ）を実行</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>計画・設計・アーキテクチャの審査（planner self-review・<code>reviewer target:architecture</code>）と、通常のコードレビュー（<code>reviewer target:code</code>）は、<strong>サイクル1に限り</strong>2席の常設審査体制で動く ―― frontier authority による仕様適合レビューに、relay の状態に関係なく常に同席する同格の「赤チーム視点」（あら探し役、verdict は出さない）が加わる。さらに (1) relay ゲートが ON、(2) このセッション自体が relay 経由で動いている、(3) <code>models.json</code> の先頭エイリアスが辞書に存在する、の3条件が揃うと、外部モデルが3人目の co-reviewer として加わる。サイクル2以降の再審査は frontier authority 単独に戻る。どの構成でも最終的な APPROVE / REQUEST_CHANGES の判定権は常に frontier authority 側に残り、赤チーム席・外部 co-reviewer 席は判定を出さない。セキュリティレビュー（<code>reviewer target:security</code>）と verifier は対象外のまま。複数の審査結果は Fusion Composition の手順（<code>reviewer target:fusion</code> による統合 → <code>fusion-detect.mjs</code> による機械的な分岐判定 → 再照会は最大1回）で1つにまとめる。<code>/improve</code> の無人ループだけは、実行コストを一定に保つため co-review を行わず authority 単独で審査する。</p>
+
+    <div class="callout callout--important">
+      <div class="callout__label">なぜ自分でレビューできないのか</div>
+      <p>Writer/Reviewer Separation の根拠はシンプル。自分が書いたものを自分で審査すると、見落としを見落としたまま承認してしまう構造的なリスクがある。だから常に<strong>別インスタンス・独立コンテキスト</strong>の authority を立てる、というのがこのハーネスの一貫した設計判断（例外は1〜2行の自明な修正のみ）。ただし「別モデル」までは常に保証されるわけではない ―― 計画系の成果物では worker と authority が同じモデルで動くこともあり、モデルそのものが変わる独立性は、条件を満たして外部モデルが co-reviewer として同席したときに限られる。</p>
+    </div>
+
+    <h2>check skill — 完了報告前の単一入口</h2>
+    <p><code>check</code> は変更対象を自動判別し、適切な検証を実行する。</p>
+    <div class="table-wrap">
+      <table>
+        <caption>check skill の対象判定と実行内容</caption>
+        <thead>
+          <tr><th scope="col">変更対象</th><th scope="col">実行する検証</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>ハーネス本体（<code>.claude/</code>・<code>CLAUDE.md</code>・<code>README.md</code>）</td><td><code>node .claude/scripts/validate.mjs</code> による整合性スキャン</td></tr>
+          <tr><td>製品コード（<code>dev/**</code> 等）</td><td>verifier agent の6フェーズ（下記）</td></tr>
+          <tr><td>UI変更を含む場合</td><td>上記に加え、<code>/preview</code>（起動→スクリーンショット→コンソール確認）</td></tr>
+          <tr><td>HTML資料（<code>doc</code> skill / §10成果物）</td><td>自己完結性lint（下記参照）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>1〜2行の自明な修正や、ハーネスに影響しない純粋な docs のみはスキップ可能だが、それ以外は FAIL のまま「完了」を報告することはない。</p>
+
+    <h3>verifier の検証パイプライン（6フェーズ）</h3>
+    <p>「動くはず」ではなく、テスト出力・diff・ログ・grep結果のような証拠だけを根拠にする（CLAUDE.md §1.2）。</p>
+    <div class="table-wrap">
+      <table>
+        <caption>verifier agent の6フェーズ</caption>
+        <thead>
+          <tr><th scope="col">フェーズ</th><th scope="col">内容</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1. Understand</td><td>変更が何をすべきだったか、期待される挙動、失敗の見え方を確認する</td></tr>
+          <tr><td>2. Build / Type</td><td>自動検出したツールでビルド・型チェックを実行。FAILならここで即座に報告し、残りのフェーズは行わない</td></tr>
+          <tr><td>3. Lint</td><td>linterを実行し所見を報告する（自動修正はしない）</td></tr>
+          <tr><td>4. Test</td><td>テストスイートを実行し、成功/失敗/スキップ件数と失敗の詳細を報告する</td></tr>
+          <tr><td>5. Behavioral + Regression</td><td>変更前後の挙動差を証拠として示し、関連機能への影響と、コード中に残った<code>console.log</code>等のdebug artifactを確認する</td></tr>
+          <tr><td>6. Verdict + Diff Review</td><td><code>git diff</code>で変更ファイルの意図を確認し、PASS / FAIL / INCOMPLETEを証拠つきで判定する</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>HTML資料の自己完結チェック</h2>
+    <p>ユーザーが読むための資料（レポート・分析結果・ガイド等）は CLAUDE.md §10 に従い、外部依存ゼロの自己完結HTMLとして作る。check はこれを許可リスト方式で検証する。</p>
+
+    <h3>禁止される外部参照</h3>
+    <ul>
+      <li><code>http://</code> / <code>https://</code> を指す <code>href</code> / <code>src</code> / <code>srcset</code></li>
+      <li>プロトコル相対の <code>//host</code> 参照</li>
+      <li>外部の <code>@import</code> / CSS <code>url(...)</code></li>
+      <li>外部を指す <code>&lt;script src&gt;</code> / <code>&lt;link&gt;</code> / <code>&lt;iframe&gt;</code></li>
+      <li>外部Webフォント・CDN読み込み</li>
+    </ul>
+
+    <h3>許可されるもの</h3>
+    <ul>
+      <li>インラインの <code>&lt;style&gt;</code> / <code>&lt;script&gt;</code>（<code>src</code>属性がないもの）</li>
+      <li><code>data:</code> URIによる画像埋め込み</li>
+      <li>インラインSVG（<code>xmlns="http://…"</code>のような名前空間宣言は取得ではないため対象外）</li>
+      <li>同一文書内フラグメント（<code>href="#toc"</code>等）</li>
+    </ul>
+    <div class="callout callout--note">
+      <div class="callout__label">複数ページのガイドでの相対リンク</div>
+      <p>この lint が主眼に置くのは、スタイルシート・スクリプト・画像のような「そのページ自身の描画に要るリソース」が外へ抜けていないかで、単体でコピー・添付しても壊れない、という §10 の1ファイル完結の保証を守るためのもの。ただし check skill 自身の実行規則は、同一文書内フラグメント以外の相対パスやremote参照は1件でもあればFAILと明記しており、字面どおりに読めば本ガイドのように同じフォルダ内の複数ページを行き来する<code>&lt;a href="index.html"&gt;</code>のようなナビゲーションリンクも対象に含まれてしまう。つまりこれは解釈の幅の問題ではなく、正本どうしが実際に矛盾している状態 ―― check skill の文字どおりの規則と、本ガイド自身が採用した相対ナビゲーション ―― であり、どちらを優先するかはユーザーの裁定を仰ぐまで未確定として扱う。</p>
+    </div>
+
+    <h3>PASS / FAIL 判定表</h3>
+    <div class="table-wrap">
+      <table>
+        <caption>自己完結lintの判定基準</caption>
+        <thead>
+          <tr><th scope="col">検出内容</th><th scope="col">判定</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>remote参照（<code>http(s)://</code> または <code>//host</code>）が1件でもある</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
+          <tr><td>外部CDN・外部Webフォントの読み込みがある</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
+          <tr><td>インラインの<code>&lt;script&gt;</code>のみで<code>src</code>属性なし</td><td><span class="badge badge--done">PASS</span></td></tr>
+          <tr><td>すべての参照が同一文書内フラグメント・<code>data:</code>・インラインSVG</td><td><span class="badge badge--done">PASS</span></td></tr>
+          <tr><td><code>&lt;code&gt;</code>/<code>&lt;pre&gt;</code>内にURL文字列が引用として書かれているだけ</td><td><span class="badge badge--done">PASS</span>（引用は対象外）</td></tr>
+          <tr><td>通常のHTMLで、同一文書内フラグメント以外の相対パス参照（他ファイルへの<code>href</code>等）がある</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
+          <tr><td>梱包済みスライド（<code>*.deck.html</code>）内の <code>&lt;script src="&lt;uuid&gt;"&gt;</code> 等、同梱資源への参照</td><td><span class="badge badge--done">PASS</span>（<code>.deck.html</code>限定の例外。remote参照だけがFAIL）</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>FAILが1件でもあれば、document-authorへ差し戻して修正 → 再検証、という流れ。この資料セット自身の自己監査結果: 本文中のコマンド例のURLはすべて<code>&lt;code&gt;</code>内の引用。実際のリンクは、大半が同じフォルダ内の相対パス（<code>index.html</code>等への行き来）だが、<code>index.html</code>から<code>docs/</code>直下の<code>settings-reference.html</code>・<code>weasyprint-setup.html</code>へ1階層上がる相対リンクが2件ある ―― これも上表の「通常のHTMLでの相対パス参照」に該当し、前段のコールアウトで触れた正本どうしの矛盾がそのまま当てはまる。</p>
+
+    <h2>検証設計の全体図</h2>
+    <div class="legend">
+      <span class="lg-primary">Authority（frontier）</span>
+      <span class="lg-ok">Verifier</span>
+      <span class="lg-fallback">check skill（独立ゲート）</span>
+    </div>
+    <figure class="figure">
+      <svg viewBox="0 0 820 340" role="img"
+           aria-label="worker が成果物を作り、authorityが独立審査し、APPROVEになるまで差し戻すquality-loopと、完了報告直前にcheck skillが対象別に独立検証する2段階の品質ゲート構造">
+        <defs>
+          <marker id="qc-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+                  markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#8f8c7f"/>
+          </marker>
+        </defs>
+
+        <rect x="20" y="20" width="200" height="60" rx="9" fill="#ffffff" stroke="#d7d3c4"/>
+        <text x="120" y="46" text-anchor="middle" font-size="13.5" fill="#171613" font-weight="700">Worker</text>
+        <text x="120" y="64" text-anchor="middle" font-size="10.5" fill="#6e6c62">成果物を作る</text>
+
+        <rect x="290" y="20" width="220" height="60" rx="9" fill="#f6e6de" stroke="#eac9ba"/>
+        <text x="400" y="46" text-anchor="middle" font-size="13.5" fill="#ab4c2d" font-weight="700">Authority（frontier）</text>
+        <text x="400" y="64" text-anchor="middle" font-size="10.5" fill="#3d3b34">独立コンテキストで審査</text>
+
+        <line x1="220" y1="50" x2="286" y2="50" stroke="#8f8c7f" stroke-width="1.5" marker-end="url(#qc-arrow)"/>
+        <path d="M400,80 C400,110 250,110 130,116" fill="none" stroke="#ab4635" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#qc-arrow)"/>
+        <text x="270" y="105" text-anchor="middle" font-size="10.5" fill="#ab4635">REQUEST_CHANGES</text>
+
+        <rect x="560" y="20" width="220" height="60" rx="9" fill="#e8ede0" stroke="#cfd8c0"/>
+        <text x="670" y="46" text-anchor="middle" font-size="13.5" fill="#516738" font-weight="700">Verifier</text>
+        <text x="670" y="64" text-anchor="middle" font-size="10.5" fill="#3d3b34">証拠ベースの最終検証</text>
+
+        <line x1="510" y1="42" x2="556" y2="42" stroke="#8f8c7f" stroke-width="1.5" marker-end="url(#qc-arrow)"/>
+        <text x="530" y="30" text-anchor="middle" font-size="10.5" fill="#516738">APPROVE</text>
+
+        <rect x="120" y="200" width="580" height="100" rx="10" fill="#e5edf5" stroke="#6a9bcc"/>
+        <text x="410" y="228" text-anchor="middle" font-size="14" fill="#3f6f9f" font-weight="700">check skill — 完了報告直前の独立ゲート</text>
+        <text x="410" y="252" text-anchor="middle" font-size="11" fill="#3d3b34">ハーネス本体 → validate.mjs／製品コード → verifier 6フェーズ</text>
+        <text x="410" y="270" text-anchor="middle" font-size="11" fill="#3d3b34">HTML資料 → 自己完結lint（remote参照ゼロを確認）</text>
+        <text x="410" y="288" text-anchor="middle" font-size="10.5" fill="#6e6c62">FAIL → 差し戻して修正 → 再実行するまで「完了」を報告しない</text>
+
+        <line x1="670" y1="80" x2="670" y2="150" stroke="#8f8c7f" stroke-width="1.5"/>
+        <line x1="670" y1="150" x2="410" y2="196" stroke="#8f8c7f" stroke-width="1.5" marker-end="url(#qc-arrow)"/>
+      </svg>
+      <figcaption>quality-loop は成果物を作る過程の品質ゲート、check はその後の完了報告直前に立つ独立ゲート。両者は別の関門として重ねて機能する。</figcaption>
+    </figure>
+
+    <div class="callout callout--warn">
+      <div class="callout__label">HTML資料の二重チェック</div>
+      <p>doc skill の手順では、document-author 自身が自己検証したあとも、check が独立に自己完結性を再検証する（producer のセルフチェックとは別の関門、CLAUDE.md §1.3の考え方）。生成者自身の確認だけでは終わらせない、という設計。</p>
+    </div>
+
+    <footer class="sot">
+      正本一覧: .claude/skills/check/SKILL.md・.claude/skills/quality-loop/SKILL.md・.claude/skills/doc/SKILL.md・.claude/agents/verifier.md・.claude/agents/document-author.md・CLAUDE.md（§1.2 / §1.3 / §6.1 / §10）。2026-07-30 時点の repo 現物と突き合わせて記述。
+    </footer>
+
+  </main>
+</div>
+
+<script>
+/* このJSは触らない前提。目次生成・scroll-spy・コピー・テーブル枠を自動化する。 */
+(function(){
+  var content = document.getElementById('content');
+  if(!content) return;
+
+  /* --- 1. コードブロックにバー＋コピーを付与（.tree / .no-enhance は除外） --- */
+  function copyText(text, btn){
+    var done = function(){
+      btn.textContent = 'コピー済み'; btn.classList.add('copied');
+      setTimeout(function(){ btn.textContent = 'コピー'; btn.classList.remove('copied'); }, 1600);
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(function(){ legacy(); });
+    } else { legacy(); }
+    function legacy(){
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      try{ document.execCommand('copy'); done(); }catch(e){}
+      document.body.removeChild(ta);
+    }
+  }
+
+  Array.prototype.forEach.call(content.querySelectorAll('pre'), function(pre){
+    if(pre.closest('.codeblock')) return;
+    if(pre.classList.contains('tree') || pre.classList.contains('no-enhance')) return;
+
+    var code = pre.querySelector('code');
+    var lang = '';
+    if(code){
+      Array.prototype.forEach.call(code.classList, function(c){
+        if(c.indexOf('language-') === 0) lang = c.slice(9);
+      });
+    }
+    if(!lang && pre.dataset.lang) lang = pre.dataset.lang;
+
+    var wrap = document.createElement('div'); wrap.className = 'codeblock';
+    var bar  = document.createElement('div'); bar.className = 'codeblock__bar';
+    var lbl  = document.createElement('span'); lbl.className = 'codeblock__lang';
+    lbl.textContent = lang || 'code';
+    var btn  = document.createElement('button');
+    btn.type = 'button'; btn.className = 'codeblock__copy'; btn.textContent = 'コピー';
+    btn.addEventListener('click', function(){ copyText(pre.innerText.replace(/\n$/, ''), btn); });
+    bar.appendChild(lbl); bar.appendChild(btn);
+
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(bar); wrap.appendChild(pre);
+  });
+
+  /* --- 2. テーブルを横スクロール枠でラップ --- */
+  Array.prototype.forEach.call(content.querySelectorAll('table'), function(t){
+    if(t.closest('.table-wrap')) return;
+    var w = document.createElement('div'); w.className = 'table-wrap';
+    t.parentNode.insertBefore(w, t); w.appendChild(t);
+  });
+
+  /* --- 3. 目次を h2/h3 から自動生成 --- */
+  var tocList = document.getElementById('tocList');
+  var heads = [].slice.call(content.querySelectorAll('h2, h3'));
+  var items = [];
+  heads.forEach(function(h, i){
+    if(!h.id){
+      var slug = h.textContent.trim().toLowerCase()
+        .replace(/[^\w\u3040-\u30ff\u4e00-\u9faf]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
+      h.id = 'sec-' + i + (slug ? '-' + slug : '');
+    }
+    var a = document.createElement('a');
+    a.href = '#' + h.id; a.textContent = h.textContent;
+    a.className = (h.tagName === 'H3') ? 'lvl-3' : 'lvl-2';
+    tocList.appendChild(a);
+    items.push({ a: a, h: h });
+  });
+  var tocEl = document.querySelector('.toc');
+  if(items.length === 0 && tocEl){ tocEl.style.display = 'none'; }
+
+  /* --- 4. スクロール進捗 ＋ 現在地ハイライト --- */
+  var progress = document.getElementById('progress');
+  function onScroll(){
+    var st = window.pageYOffset || document.documentElement.scrollTop;
+    var dh = document.documentElement.scrollHeight - window.innerHeight;
+    if(progress) progress.style.width = (dh > 0 ? (st / dh * 100) : 0) + '%';
+
+    var idx = 0;
+    for(var i = 0; i < items.length; i++){
+      if(items[i].h.getBoundingClientRect().top <= 120) idx = i; else break;
+    }
+    items.forEach(function(it, i){ it.a.classList.toggle('active', i === idx); });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  onScroll();
+})();
+</script>
+</body>
+</html>

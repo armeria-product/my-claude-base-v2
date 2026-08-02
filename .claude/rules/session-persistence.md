@@ -16,9 +16,11 @@ paths:
 Centralizes location detection and bootstrap for `session-state.md` / `lessons.md` / `todo.md` / `roadmap.md`.
 This rule fires on any write attempt to the 8 paths above.
 
-> **journal/ is outside this rule**: the work journal (`journal/YYYY-MM/DD.md`) lives at the
-> workspace root only, is written by hooks (journal.js / session-journal.js) and appended to by
-> /save-session, and is **append-only, never rotated, never routed per product**.
+> **The journal is outside this rule's routing**: the work journal (`tasks/journal/YYYY-MM/DD.md`)
+> lives under the workspace root's `tasks/` ONLY — it is ONE global timeline, written by hooks
+> (journal.js / session-journal.js) and appended to by /save-session, **append-only, never
+> rotated, and never routed to `dev/{name}/tasks/`** even in dev mode (the dev-mode tasks
+> routing below applies to the 4 state files, not to the journal).
 
 ## 1. Product Context Detection
 
@@ -111,7 +113,7 @@ Reader = the next Claude session. **This file duplicates nothing**: next actions
 
 ```markdown
 # Session State — {product}
-## START HERE — [YYYY-MM-DD HH:MM] — <branch・latest SHA> → journal/YYYY-MM/DD.md の HH:MM レポート
+## START HERE — [YYYY-MM-DD HH:MM] — <branch・latest SHA> → tasks/journal/YYYY-MM/DD.md の HH:MM レポート
 ```
 
 **Hygiene rules**: (1) `## START HERE` appears **exactly once** and the whole file stays ~2 lines; (2) no Next / Blockers / Lock sections — writing them here recreates the duplication this contract exists to prevent; (3) overwrite-save only — the archive-session-state.js hook copies the previous version to `history/session-state-YYYYMMDD-HHMM.md` first, and history is **never rotated or deleted** (full retention); (4) identify commits by SHA.

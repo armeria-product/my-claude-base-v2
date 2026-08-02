@@ -220,7 +220,7 @@ function arm(root, stateDir, lockPath, payload, namedSlug) {
   const parts = [
     `[scope-lock] 🔒 ロックしました — slug: ${slug} / 計画: ${planRel}`,
     `allow(${allow.length}): ${allow.slice(0, 3).join(', ')}${allow.length > 3 ? ' …' : ''}${forbid.length ? ` / forbid(${forbid.length}): ${forbid.slice(0, 2).join(', ')}${forbid.length > 2 ? ' …' : ''}` : ''}`,
-    '常時書き込み可: journal/ tasks/ tmp/ と計画フォルダ自身。範囲外への書き込みはフックが拒否し、その意図は plans/' + slug + '/deviations.md に記録して提案に回すこと（実装は再承認後）。',
+    '常時書き込み可: tasks/（journal・history 含む）・tmp/ と計画フォルダ自身。範囲外への書き込みはフックが拒否し、その意図は plans/' + slug + '/deviations.md に記録して提案に回すこと（実装は再承認後）。',
     scope.securityReview === true
       ? 'セキュリティ審査の常時同席が有効（scope.json の securityReview）— このロック中の全コードレビューで reviewer(target:security) を自動で並列に立てること。'
       : null,

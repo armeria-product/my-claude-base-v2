@@ -35,9 +35,11 @@ function projectRoot(payload) {
   return path.resolve(payload.cwd || process.cwd());
 }
 
-// journal/YYYY-MM/DD.md for a given date (default today), creating dir + header on demand
+// tasks/journal/YYYY-MM/DD.md for a given date (default today), creating dir + header on
+// demand. The journal is ONE global timeline: always under the workspace root's tasks/,
+// never routed per product (dev-mode tasks routing does not apply to it).
 function journalFile(root, d = new Date()) {
-  const dir = path.join(root, 'journal', `${d.getFullYear()}-${two(d.getMonth() + 1)}`);
+  const dir = path.join(root, 'tasks', 'journal', `${d.getFullYear()}-${two(d.getMonth() + 1)}`);
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${two(d.getDate())}.md`);
   if (!fs.existsSync(file)) {
@@ -53,6 +55,7 @@ function journalFile(root, d = new Date()) {
 function journalPath(root, d) {
   return path.join(
     root,
+    'tasks',
     'journal',
     `${d.getFullYear()}-${two(d.getMonth() + 1)}`,
     `${two(d.getDate())}.md`

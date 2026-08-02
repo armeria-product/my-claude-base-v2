@@ -35,7 +35,7 @@ v1 で実際に起きた2つの問題 — ①計画承認後の自走中に「�
 
 | 層 | 何が | 誰が書く | いつ |
 |---|---|---|---|
-| 機械ジャーナル `journal/YYYY-MM/DD.md` | 全ツール実行・委任・拒否の1行ログ | フック（自動） | 毎操作 |
+| 機械ジャーナル `tasks/journal/YYYY-MM/DD.md` | 全ツール実行・委任・拒否の1行ログ | フック（自動） | 毎操作 |
 | 人間向けレポート（同ファイル末尾） | 固定4節の平易な日本語まとめ | /save-session | 区切りごと |
 | 再開メモ `tasks/session-state.md` | 30行以内の機械用スナップショット | /save-session | 区切りごと |
 
@@ -80,8 +80,7 @@ CLAUDE.md            … 運用の憲法（§番号は各所から引用され�
   scripts/           … validate.mjs・statusline・doc変換（html2pdf / html2pptx / deckpack）・fusion-detect
   state/             … フック専用の状態置き場（スコープロック本体。Claude は書き込み不可・git 追跡外）
 clover/              … 外部モデル中継（自己完結のサブプロジェクト・ルート直下）
-journal/             … 機械ジャーナル＋レポート（追記専用・git 追跡外）
-tasks/               … todo / lessons / session-state（+ history/ 全量保持・git 追跡外）
+tasks/               … todo / lessons / session-state（+ history/ 全量保持）+ journal/（機械ジャーナル＋レポート・追記専用）— いずれも git 追跡外。journal は dev モードでも分岐しないルート1本のタイムライン
 plans/               … /plan の成果物（PLAN.md / scope.json / deviations.md・git 追跡外）
 dev/                 … 製品プロジェクト置き場（各自が独立 git リポジトリ）
 tmp/                 … 使い捨て作業ファイル

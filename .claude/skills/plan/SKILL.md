@@ -197,7 +197,7 @@ Additionally output `{base}/scope.json` — the machine-readable contract the ap
 
 Set `"securityReview": true` when the planned work touches auth/permissions, payments, API endpoints / external input surfaces, DB/query/migration, secrets, or dangerous operations (shell/eval/external sends) — the flag is carried into the lock and **every code review during the locked run auto-seats the security track** (SOT: quality-loop Security Track). When in doubt, set it true — the user cannot interject mid-run.
 
-Glob subset: `**` (any depth) / `*` (one segment) / exact path; a trailing `/` means the whole directory. **Prefer folder-level allow globs** so legitimate helpers and tests fit without re-approval. Records (journal/ tasks/ tmp/ and `{base}/` itself) are always writable — don't list them. Never propose `**`-class breadth (a lock that allows everything locks nothing; the hook warns the user). While locked, the enforcement chain (`.claude/settings.json` / hooks / validate.mjs) is implicitly forbidden — a plan whose target is the harness itself must state that it runs **unlocked**.
+Glob subset: `**` (any depth) / `*` (one segment) / exact path; a trailing `/` means the whole directory. **Prefer folder-level allow globs** so legitimate helpers and tests fit without re-approval. Records (tasks/ — journal・history 含む — tmp/ and `{base}/` itself) are always writable — don't list them. Never propose `**`-class breadth (a lock that allows everything locks nothing; the hook warns the user). While locked, the enforcement chain (`.claude/settings.json` / hooks / validate.mjs) is implicitly forbidden — a plan whose target is the harness itself must state that it runs **unlocked**.
 
 ### Approval Handoff (the user gate that arms the lock)
 

@@ -13,7 +13,7 @@
 
 ### 1. 記録を読む
 - `{tasks-dir}/session-state.md` はポインタ（2行）— 指している journal レポート節が「前回の到達点と次にやること」の本体（SessionStart フックが最新レポート節を注入済みなら再読不要）
-- 必要なら前日の `journal/YYYY-MM/DD.md` も遡る（機械行＝実際に何をしたかの記録）
+- 必要なら前日の `tasks/journal/YYYY-MM/DD.md` も遡る（機械行＝実際に何をしたかの記録）
 - SessionStart の注入に「レポート未生成セッション」の警告があれば、その ID の journal 区間も読む
 
 ### 2. 現実と突き合わせる（食い違いは黙って直さず、報告する）

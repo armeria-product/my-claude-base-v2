@@ -17,7 +17,7 @@
 `.claude/state/scope-lock.json` が `status:"locked"` の場合：`git status --porcelain`（scope が dev/{name} を指す場合はその製品リポジトリで実行）の変更ファイル一覧を lock の `allow` と照合し、範囲外の変更ファイルがあれば **逸脱として** レポートの「確認してほしいこと」に列挙する。ロックが無ければこのステップはスキップ。
 
 ### 3. ジャーナルの機械行を読む
-当日の `journal/YYYY-MM/DD.md` から、セッション開始時に注入された自分の journal ID（`[xxxxxxxx]`）の行を拾い、実際に何をしたかの素材にする（記憶ではなく記録を正とする）。
+当日の `tasks/journal/YYYY-MM/DD.md` から、セッション開始時に注入された自分の journal ID（`[xxxxxxxx]`）の行を拾い、実際に何をしたかの素材にする（記憶ではなく記録を正とする）。journal は dev モードでも分岐しない**ルート1本のタイムライン**（session-persistence.md 冒頭注記）。
 
 ### 4. 人間向けレポートを当日ジャーナル末尾に追記
 文体契約（厳守）: 見出しは**結論を1行で**。平易な日本語（直訳ジャーゴン禁止 — CLAUDE.md §Language）。各項目1行。ファイル一覧や技術詳細は書かない（機械行が既にある）。
@@ -39,7 +39,7 @@
 
 ```markdown
 # Session State — {context}
-## START HERE — [YYYY-MM-DD HH:MM] — <ブランチ・最新SHA> → journal/YYYY-MM/DD.md の HH:MM レポート
+## START HERE — [YYYY-MM-DD HH:MM] — <ブランチ・最新SHA> → tasks/journal/YYYY-MM/DD.md の HH:MM レポート
 ```
 
 **次にやること・保留・確認事項をここに書かない** — それらの唯一の家はステップ4のジャーナルレポート（SessionStart フックが最新レポート節を必ず注入する）。ロック状態も書かない（`.claude/state/scope-lock.json` が正で、これも注入される）。このファイルの役割は「製品ごとの再開アンカー＋どのレポートが現在地かのポインタ」だけ。

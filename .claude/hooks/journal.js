@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PostToolUse hook: append one machine line per tool call to journal/YYYY-MM/DD.md
+// PostToolUse hook: append one machine line per tool call to tasks/journal/YYYY-MM/DD.md
 //
 // Registered matcher: Edit|Write|NotebookEdit|Bash|PowerShell|Task|Agent|ExitPlanMode
 // The journal is written by this hook (an OS process outside the model), so the record

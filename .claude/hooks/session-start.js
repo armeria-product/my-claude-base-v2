@@ -85,7 +85,7 @@ process.stdin.on('end', () => {
 function journalToday(projectDir) {
   const d = new Date();
   const two = (n) => String(n).padStart(2, '0');
-  return path.join(projectDir, 'journal', `${d.getFullYear()}-${two(d.getMonth() + 1)}`, `${two(d.getDate())}.md`);
+  return path.join(projectDir, 'tasks', 'journal', `${d.getFullYear()}-${two(d.getMonth() + 1)}`, `${two(d.getDate())}.md`);
 }
 
 // The journal is the single home of 次にやること/保留 (the session report) — session-state.md
