@@ -1,0 +1,29 @@
+{
+  
+  "models": [
+    {
+      "alias": "gpt-5.6-sol",
+      "model": "gpt-5.6-sol",
+      "format": "openai",
+      "via": "codex",
+      "effort": "xhigh",
+      "verbosity": "medium"
+    },
+    {
+      "alias": "gpt-5.6-terra",
+      "model": "gpt-5.6-terra",
+      "format": "openai",
+      "via": "codex",
+      "effort": "high",
+      "verbosity": "medium"
+    },
+    {
+      "alias": "gpt-5.6-luna",
+      "model": "gpt-5.6-luna",
+      "format": "openai",
+      "via": "codex",
+      "effort": "medium",
+      "verbosity": "medium"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+# clover: `claude` と打つだけで中継（router/shim）経由の Claude Code を起動するラッパー。
+# 使い方: この中身を ~/.bashrc または ~/.zshrc に追記してシェルを再起動する。
+# <REPO> は自分のクローン先の絶対パスに置き換える。
+# もっと簡単: `node clover/bin/install.mjs` を実行すれば自動でインストールできる。
+#
+# Node ランチャーは中継を立てて「claude に渡す環境変数」を KEY=VALUE 形式で1行ずつ返す
+# （claude 自体は spawn しない）。この env で /model ピッカーに clover の GPT モデルが1件出る
+# （ANTHROPIC_CUSTOM_MODEL_OPTION）＋接続先が中継に向く。`env ... command claude "$@"` は
+# 関数定義を迂回して本物を起動し、env はこの1コマンドにだけ効く（呼び出し後にリークしない）。
+claude() {
+  local line
+  local env_args=()
+  while IFS= read -r line; do
+    [ -n "$line" ] && env_args+=("$line")
+  done < <(node "<REPO>/clover/bin/clover-launch.mjs" 2>/dev/null)
+  if [ ${#env_args[@]} -gt 0 ]; then
+    echo "clover: relay connected (GPT available in /model)" >&2
+    # `env` execs the real claude via PATH (execvp ignores shell functions, so no recursion) and
+    # scopes these vars to just this one process (no leak into the calling shell).
+    env "${env_args[@]}" claude "$@"
+    local rc=$?
+    local session_file=""
+    for a in "${env_args[@]}"; do
+      case "$a" in
+        CLOVER_SESSION_FILE=*) session_file="${a#CLOVER_SESSION_FILE=}" ;;
+      esac
+    done
+    [ -n "$session_file" ] && rm -f "$session_file"
+    for p in 8788 8791; do
+      curl -s -m 2 -X POST "http://127.0.0.1:$p/__clover/shutdown" >/dev/null 2>&1
+    done
+    return $rc
+  else
+    echo "clover: relay unavailable - plain Claude (no GPT)" >&2
+    # No relay: `command` bypasses this function to run the real claude unchanged.
+    command claude "$@"
+  fi
+}
+
+# 中継を使わず本物の claude を直接使いたい時の逃げ道（上の関数定義を1回だけバイパスする）:
+#   command claude --version

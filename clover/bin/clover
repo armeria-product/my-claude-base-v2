@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# 統合リレイ clover の起動ランチャ。
+# これ1つを実行すると router(8788)+shim(8791) が立ち上がり、claude がその中継経由で動く。
+# 無印（マーカー無し）は Claude にそのまま素通しされるのが既定＝固定モデルを強制しない。
+# claude を閉じると（trap で）shim/router も一緒に終了する＝中継が居残らない。
+set -u
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SHIM="$DIR/../src/codex-responses-shim.mjs"
+ROUTER="$DIR/../src/router.mjs"
+LOG="$DIR/../relay.log"
+HOST=127.0.0.1
+SHIM_PORT="${SHIM_PORT:-8791}"
+ROUTER_PORT="${ROUTER_PORT:-8788}"
+
+# codex に未ログイン（auth.json 無し/トークン欠落）でも clover は router 単独（無印素通し）で動かしたいので、
+# 案内だけ出して続行する（codex 経由のリクエスト時のみ shim 側で失敗する＝許容）。
+if ! node -e 'const fs=require("fs"),os=require("os"),p=require("path");try{const a=JSON.parse(fs.readFileSync(p.join(os.homedir(),".codex","auth.json"),"utf8"));process.exit(a&&a.tokens&&a.tokens.access_token&&a.tokens.account_id?0:1)}catch{process.exit(1)}' 2>/dev/null; then
+  echo "clover: codex にまだログインしていないようです（~/.codex/auth.json が見つからない、またはトークンが入っていません）。" >&2
+  echo "  codex 経由のモデルは使えませんが、Claude の通常利用（無印素通し）はそのまま動きます。" >&2
+  echo "  codex を使いたい場合は先にログインしてください:" >&2
+  echo "" >&2
+  echo "      codex login" >&2
+  echo "" >&2
+fi
+
+SHIM_PID=""
+ROUTER_PID=""
+cleanup() {
+  [ -n "$SHIM_PID" ] && kill "$SHIM_PID" 2>/dev/null
+  [ -n "$ROUTER_PID" ] && kill "$ROUTER_PID" 2>/dev/null
+}
+trap cleanup EXIT INT TERM
+
+wait_up() {
+  for _ in 1 2 3 4 5 6 7 8; do
+    curl -sf --max-time 1 "http://$HOST:$1/" >/dev/null 2>&1 && return 0
+    sleep 0.5
+  done
+  return 1
+}
+
+# shim（既に動いていれば再利用）
+if ! curl -sf --max-time 1 "http://$HOST:$SHIM_PORT/" >/dev/null 2>&1; then
+  PORT="$SHIM_PORT" node "$SHIM" >>"$LOG" 2>&1 &
+  SHIM_PID=$!
+fi
+if ! curl -sf --max-time 1 "http://$HOST:$ROUTER_PORT/" >/dev/null 2>&1; then
+  PORT="$ROUTER_PORT" node "$ROUTER" >>"$LOG" 2>&1 &
+  ROUTER_PID=$!
+fi
+
+# shim を起動した場合は listen 完了を待つ（codex 経由の最初の1リクエストが ECONNREFUSED にならないように）。
+# shim は無印素通しには不要なので、立たなくても warn して継続する。
+if [ -n "$SHIM_PID" ]; then
+  wait_up "$SHIM_PORT" || echo "clover: shim($SHIM_PORT) の起動確認に失敗（codex 経由は一時失敗しうる／無印=Claude 素通しは動作）。" >&2
+fi
+
+if ! wait_up "$ROUTER_PORT"; then
+  echo "clover: 中継の起動に失敗しました。ポート $ROUTER_PORT/$SHIM_PORT の使用状況を確認してください。" >&2
+  exit 1
+fi
+
+echo "clover: 統合リレイ経由で Claude Code を起動します（このウィンドウを閉じる/終了すると中継も止まります）"
+# 無印（マーカー無し）は Claude へ素通しするので、claude の通常の認証情報をそのまま使わせる
+# （ダミートークンを強制しない＝強制すると素通しが Anthropic で 401 になる）。
+# codex 経由（マーカー付き）のリクエストは下流 shim が OAuth を付与するため、ここでトークンを固定しない。
+# /model ピッカーに先頭モデル1件を出す（サブスク認証では gateway discovery が発火しないため
+# ANTHROPIC_CUSTOM_MODEL_OPTION を使う。clover ラッパー経路と挙動を揃える）。2件目以降は
+# /model claude-<alias> で指定して使う。
+CUSTOM_ID="$(node -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const m=(c.models||[])[0];if(m&&m.alias)process.stdout.write("claude-"+m.alias)}catch{}' "$DIR/../models.json" 2>/dev/null)"
+CUSTOM_NAME="$(node -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const m=(c.models||[])[0];if(m&&m.alias)process.stdout.write((m.model||m.alias)+" (clover)")}catch{}' "$DIR/../models.json" 2>/dev/null)"
+if [ -n "$CUSTOM_ID" ]; then
+  ANTHROPIC_BASE_URL="http://$HOST:$ROUTER_PORT" ANTHROPIC_CUSTOM_MODEL_OPTION="$CUSTOM_ID" ANTHROPIC_CUSTOM_MODEL_OPTION_NAME="$CUSTOM_NAME" claude "$@"
+else
+  ANTHROPIC_BASE_URL="http://$HOST:$ROUTER_PORT" claude "$@"
+fi

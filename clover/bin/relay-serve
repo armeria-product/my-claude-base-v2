@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# clover の中継サーバー(router 8788 / shim 8791)を起動/停止/確認する。
+# /relay on|off から呼ばれ、relay を ON にしたら中継が即立ち上がるようにする。
+# 起動は nohup で常駐（セッションを跨いで生きる）。停止はポート占有プロセスを確実に kill。
+set -u
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SHIM="$DIR/../src/codex-responses-shim.mjs"
+ROUTER="$DIR/../src/router.mjs"
+LOG="$DIR/../relay.log"
+HOST=127.0.0.1
+SHIM_PORT="${SHIM_PORT:-8791}"
+ROUTER_PORT="${ROUTER_PORT:-8788}"
+
+up() { curl -sf --max-time 1 "http://$HOST:$1/" >/dev/null 2>&1; }
+
+kill_port() {
+  local port="$1"
+  if command -v taskkill >/dev/null 2>&1; then
+    # Windows (Git Bash): ポートを LISTEN しているプロセスを force kill
+    local pids pid
+    pids=$(netstat -ano 2>/dev/null | grep -E "[:.]$port[[:space:]].*LISTENING" | awk '{print $NF}' | sort -u)
+    for pid in $pids; do
+      case "$pid" in ''|*[!0-9]*) : ;; *) taskkill //PID "$pid" //F >/dev/null 2>&1 ;; esac
+    done
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -ti:"$port" 2>/dev/null | xargs -r kill 2>/dev/null
+  fi
+}
+
+start() {
+  # ランチャー経由の中継（アイドルリーパー有効=x_clover_idle_ms>0）が居座っている場合は、
+  # relay-serve の常駐に切り替える前に一度止める（IDLE_MS未設定の常駐と衝突させないため）。
+  if up "$ROUTER_PORT"; then
+    idle_ms=$(curl -s --max-time 1 "http://$HOST:$ROUTER_PORT/v1/models" 2>/dev/null | grep -oE '"x_clover_idle_ms":[0-9]+' | grep -oE '[0-9]+')
+    if [ -n "$idle_ms" ] && [ "$idle_ms" -gt 0 ] 2>/dev/null; then
+      kill_port "$ROUTER_PORT"
+      kill_port "$SHIM_PORT"
+      sleep 0.3
+    fi
+  fi
+
+  if ! up "$SHIM_PORT"; then
+    nohup env PORT="$SHIM_PORT" node "$SHIM" >>"$LOG" 2>&1 &
+    disown 2>/dev/null || true
+  fi
+  if ! up "$ROUTER_PORT"; then
+    nohup env PORT="$ROUTER_PORT" node "$ROUTER" >>"$LOG" 2>&1 &
+    disown 2>/dev/null || true
+  fi
+  for _ in 1 2 3 4 5 6 7 8; do up "$ROUTER_PORT" && break; sleep 0.5; done
+  if up "$ROUTER_PORT" && up "$SHIM_PORT"; then
+    echo "clover 中継 起動OK（router=$ROUTER_PORT / shim=$SHIM_PORT）"
+  elif up "$ROUTER_PORT"; then
+    echo "clover 中継 起動（router=$ROUTER_PORT）。shim=$SHIM_PORT が未応答（codex 経由のみ影響／無印素通しは動作）。" >&2
+  else
+    echo "clover 中継の起動に失敗しました（router=$ROUTER_PORT が未応答）。" >&2
+    return 1
+  fi
+}
+
+stop() {
+  kill_port "$ROUTER_PORT"
+  kill_port "$SHIM_PORT"
+  sleep 0.3
+  if up "$ROUTER_PORT" || up "$SHIM_PORT"; then
+    echo "clover 中継 停止を試みましたが一部応答が残っています（router=$(up "$ROUTER_PORT" && echo UP || echo down) / shim=$(up "$SHIM_PORT" && echo UP || echo down)）。" >&2
+    return 1
+  fi
+  echo "clover 中継 停止（router=$ROUTER_PORT / shim=$SHIM_PORT）"
+}
+
+status() {
+  echo "router $ROUTER_PORT: $(up "$ROUTER_PORT" && echo UP || echo down)"
+  echo "shim   $SHIM_PORT: $(up "$SHIM_PORT" && echo UP || echo down)"
+}
+
+case "${1:-status}" in
+  start) start ;;
+  stop) stop ;;
+  status) status ;;
+  *) echo "usage: relay-serve start|stop|status" >&2; exit 2 ;;
+esac

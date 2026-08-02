@@ -1,0 +1,50 @@
+# clover: run `claude` and it launches Claude Code through the relay (router/shim).
+# Setup: append this block to your PowerShell profile ($PROFILE), then restart the shell.
+# Replace <REPO> with your clone's absolute path (this repo: D:\my-claude-base).
+# Easier: run `node clover/bin/install.mjs` instead of copying this by hand.
+# ASCII-only on purpose: PowerShell 5.1 reads a BOM-less profile as the ANSI code page,
+# so non-ASCII comments here could corrupt parsing. See README for the Japanese explanation.
+#
+# The Node launcher only brings up the relay and prints KEY=VALUE env lines (it never spawns
+# claude). Those lines add the clover GPT model to the /model picker (ANTHROPIC_CUSTOM_MODEL_OPTION)
+# and point Claude Code at the relay. This function then launches the real claude natively (& operator),
+# so argument handling is exactly the same as a normal PowerShell claude invocation.
+function claude {
+  $out = & node "<REPO>\clover\bin\clover-launch.mjs" 2>$null
+  # Pick the real claude executable (not this function), limited to what PowerShell can launch.
+  # npm ships both claude.cmd and an extensionless sh shim (which PS cannot run), so allowlist
+  # by extension and order deterministically (.exe > .com > .cmd > .bat).
+  $order = @('.exe', '.com', '.cmd', '.bat')
+  $real = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue |
+          Where-Object { $order -contains $_.Extension.ToLower() } |
+          Sort-Object { $order.IndexOf($_.Extension.ToLower()) } | Select-Object -First 1
+  if (-not $real) { Write-Error 'real claude executable not found'; return }
+  # Apply each KEY=VALUE line the launcher printed, saving prior values to restore afterward so a
+  # pre-existing gateway/custom-model setup is not clobbered.
+  $restore = @{}
+  $sessionFile = $null
+  foreach ($line in @($out)) {
+    if ($line -match '^([^=]+)=(.*)$') {
+      $n = $matches[1]; $v = $matches[2]
+      if ($n -eq 'CLOVER_SESSION_FILE') { $sessionFile = $v; continue }
+      $restore[$n] = [Environment]::GetEnvironmentVariable($n, 'Process')
+      [Environment]::SetEnvironmentVariable($n, $v, 'Process')
+    }
+  }
+  # One-line status so a silent fallback (launcher failed, relay down) is visible at a glance.
+  if ($restore.Count -gt 0) { Write-Host 'clover: relay connected (GPT available in /model)' }
+  else { Write-Host 'clover: relay unavailable - plain Claude (no GPT)' }
+  try { & $real.Source @args }
+  finally {
+    foreach ($n in $restore.Keys) { [Environment]::SetEnvironmentVariable($n, $restore[$n], 'Process') }
+    if ($sessionFile) {
+      Remove-Item $sessionFile -ErrorAction SilentlyContinue
+      foreach ($p in @(8788, 8791)) {
+        try { $null = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:$p/__clover/shutdown" -TimeoutSec 2 } catch {}
+      }
+    }
+  }
+}
+
+# Escape hatch to run the real claude directly (bypassing the function above):
+#   $c = @('.exe','.com','.cmd','.bat'); & ((Get-Command claude -CommandType Application | Where-Object { $c -contains $_.Extension.ToLower() } | Select-Object -First 1).Source) --version
