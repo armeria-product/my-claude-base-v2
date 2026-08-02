@@ -31,9 +31,15 @@
 // Known limitation (gh, 2 items — deliberately left open, filed as tasks/todo.md Backlog items):
 //   (i) `gh api --method PUT repos/.../pulls/N/merge` (direct REST call) is not detected — API-level
 //       calls are out of scope for this guard by design.
-//   (ii) `gh.exe pr merge` is not detected: lib/parse-cmd.js's basename extraction lower-cases but
-//       does not strip a `.exe` suffix, so `cmd` resolves to `"gh.exe"`, not `"gh"`. Same pre-existing
-//       hole as `git.exe` for the git-side checks in this file (ruling GP2, pending).
+//   (ii) `gh.exe pr merge` / `gh.cmd pr merge` ARE now detected: lib/parse-cmd.js strips a trailing
+//       `.exe`/`.cmd` suffix from the resolved basename (ruling GP2), so both resolve to `cmd === "gh"`
+//       here, same as the git-side checks in this file. Residual gaps parse-cmd.js does NOT fix (see
+//       plan Table C): an unquoted path containing spaces (e.g. `C:/Program Files/gh/bin/gh.exe pr merge`
+//       resolves to `cmd === "program"`, not `"gh"`); a backslash-separated path (only `/` is split, not
+//       `\`); `eval.exe "gh pr merge 12"` (the basename strips to `eval`, but extractEvalArg() matches
+//       raw text `/\beval\s/`, which does not match `eval.exe `, so the inner command is never parsed).
+//       `.bat` is deliberately NOT stripped (ruling G1): `gh.bat pr merge` still resolves to
+//       `cmd === "gh.bat"` and is not detected.
 //
 // Command parsing goes through the shared tokenizer (lib/parse-cmd: quote-aware segment split,
 // then per-token unquoting) so a quoted commit message / heredoc that merely mentions "main"
