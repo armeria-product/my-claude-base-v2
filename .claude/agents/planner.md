@@ -1,7 +1,7 @@
 ---
 name: planner
 description: "戦略立案エージェント。非自明な実装の前に使う。コードベースを調査し、依存関係・リスク・却下した代替案を伴う段階的な計画へ分解する（軽量チェックリストは todo.md、大規模実装の手順リストは roadmap.md、設計本体は plans/{slug}/PLAN.md へ出力）。Self-Review Mode では計画を独立した批評者として検証し APPROVE/REVISE/REJECT を判定する。「計画して」「設計して」「計画をレビューして」で発動。"
-model: opus
+model: fable
 effort: max
 ---
 

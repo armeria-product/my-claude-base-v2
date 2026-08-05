@@ -93,8 +93,10 @@ Steps with no dependencies run in parallel:
 ## Quality Gate
 - Verify evidence at the completion of each step
 - Review steps (reviewer / planner self-review) follow the **quality-loop skill's Loop Contract**:
-  the authority follows the frontier authority convention (CLAUDE.md §2 ¹); floor is opus,
-  with send-back → fix → re-review for up to 3 cycles
+  the authority allowlist is native `fable | opus` (CLAUDE.md §2 ¹; quality-loop is the operational SOT):
+  Fable by default, or explicit Opus only after the Fable failure is reported and recorded; lower tiers,
+  unknown/external authority ids, mixed standing pairs, and silent fallback are forbidden; send-back →
+  fix → re-review runs for up to 3 cycles
 - plan/design/architecture authority reviews (planner self-review, and `reviewer target:architecture` —
   e.g. in the refactor/research paths) and normal code review (`reviewer target:code`) additionally
   follow quality-loop's Authority Co-Review: a same-tier red-team second seat always attends cycle 1,

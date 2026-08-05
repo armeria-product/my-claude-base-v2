@@ -51,7 +51,7 @@ Minimum code that solves the problem — no speculative features, flexibility, o
 Before any external-model route: check `.claude/.relay-status`. `ON` → external models may be called (still confirm the live connection per the relay skill). `OFF`/absent → standard Claude only; ask once if it matters.
 
 ### 1.9 External Model Routing (conductor summary)
-Standard tier names (`opus`/`sonnet`/`haiku`/`inherit`) pass through unchanged. Any other model name → alias lookup in `clover/models.json`, then spawn a worker with `RELAY-MODEL:<alias>` as the prompt's first line. Unknown name → ask, never silently fall back. Details: `.claude/skills/relay/SKILL.md`.
+Native model names (`fable`/`opus`/`sonnet`/`haiku`/`inherit`) pass through unchanged; native Fable is relay-independent and must never be translated to an external alias. Any other model name → alias lookup in `clover/models.json`, then spawn a worker with `RELAY-MODEL:<alias>` as the prompt's first line. Unknown name → ask, never silently fall back. Details: `.claude/skills/relay/SKILL.md`.
 
 ### 1.10 Critical Partnership — Challenge the Request
 - Treat development requests as **hypotheses, not orders**. Product-shaped work → research the domain (comparables, table-stakes, complaints) and volunteer gap proposals before being asked; small requests → verify premises only.
@@ -70,12 +70,12 @@ Standard tier names (`opus`/`sonnet`/`haiku`/`inherit`) pass through unchanged. 
 
 | Tier | Resolution | Use for | Agents (tier owner) |
 |---|---|---|---|
-| **frontier (authority)** | `opus` — role slot ¹ | quality-loop review, final quality calls | (dispatch convention ¹) |
-| **heavy** | `opus` | planning, architecture, code/security review, hard debugging | planner, reviewer |
+| **frontier (authority)** | native `fable` default; explicit `opus` fallback ¹ | quality-loop review, final quality calls | planner, reviewer (authority convention ¹) |
+| **heavy** | native `fable` default; explicit `opus` fallback ¹ | planning, architecture, code/security review, hard debugging | planner, reviewer |
 | **standard** | `sonnet` | implementation, debugging, verification, documents | executor, debugger, verifier, document-author |
 | **light** | `haiku` | exploration, file search, quick lookups | explorer |
 
-¹ **frontier authority convention**: frontier is a role slot resolving to `opus` today. **Review must never fall below `opus`** — pass `opus` explicitly on any path that would otherwise inherit the session model. Co-review seating (standing red-team second seat, external third seat when the relay trigger is met, optional lenses from the lens catalog, max 4 seats) — SOT: `.claude/skills/quality-loop/SKILL.md` Authority Co-Review. This floor is mechanically enforced by `block-review-floor.js` (PreToolUse Task|Agent): a `reviewer`/`planner` dispatch pinned to a below-floor model is denied.
+¹ **frontier authority convention**: the authority allowlist is exactly native `fable | opus`. Planner/reviewer default to Fable in frontmatter. If a Fable dispatch fails because of availability, a usage limit, or startup failure, report and record that failure, then retry the same role with explicit `model: opus`; explicit model input has priority over frontmatter. Never switch silently, mix Fable and Opus in the standing pair, or lower to `sonnet`/`haiku`/`inherit`; unknown and external clover ids are also denied for authority roles. Co-review seating (standing **Fable×2**, or **Opus×2 after the recorded Fable failure**; external third seat when the relay trigger is met; optional lenses from the lens catalog; max 4 seats) — SOT: `.claude/skills/quality-loop/SKILL.md` Authority Co-Review. `block-review-floor.js` mechanically enforces the allowlist on PreToolUse Task|Agent. Native Fable remains relay-independent; the reserved clover alias prefix `fable*` stays forbidden to prevent collisions.
 
 - An agent's tier is declared once, in its frontmatter `model:` alias. Skills/commands/docs must not restate concrete Claude model IDs (external-model aliases live in `clover/models.json`, outside this rule).
 - **Effort**: planner/reviewer pin `effort: max` in frontmatter (validate-enforced); other agents inherit the session level. Per-dispatch overrides allowed.
@@ -86,7 +86,7 @@ Standard tier names (`opus`/`sonnet`/`haiku`/`inherit`) pass through unchanged. 
 
 - **Before claiming done**: run the `check` skill (§6.1).
 - **Commit Protocol**: message body in plain Japanese (conventional prefix, trailer keys, identifiers stay English). Important changes add trailers: `Constraint:` / `Rejected:` / `Confidence:` / `Not-tested:`.
-- **Git Workflow — never land on main**: one branch per work unit (`<topic>-<YYYY-MM-DD>` from up-to-date main), commit → push → one PR per branch; **main advances only when the user merges**. `block-direct-to-main.js` enforces. Report git results in plain Japanese (what was saved where, what the user can do next).
+- **Git Workflow — never land on main**: one branch per work unit (`<YYYY-MM-DD>-<topic>` from up-to-date main), commit → push → one PR per branch; **main advances only when the user merges**. `block-direct-to-main.js` enforces. Report git results in plain Japanese (what was saved where, what the user can do next).
 - **Scope lock**: while a plan is locked (§7), every write is hook-gated to the approved scope; out-of-scope diffs are review findings (reviewer's Scope Conformance dimension).
 
 ---

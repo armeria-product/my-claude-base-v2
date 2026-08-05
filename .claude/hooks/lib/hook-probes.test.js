@@ -52,6 +52,20 @@ function buildSandbox() {
 
 function buildSandboxFree() {
   fs.mkdirSync(path.join(SANDBOX_FREE, '.claude', 'state'), { recursive: true });
+  fs.mkdirSync(path.join(SANDBOX_FREE, '.claude', 'agents'), { recursive: true });
+  fs.mkdirSync(path.join(SANDBOX_FREE, 'clover'), { recursive: true });
+  fs.writeFileSync(
+    path.join(SANDBOX_FREE, '.claude', 'agents', 'reviewer.md'),
+    '---\nname: reviewer\nmodel: fable\neffort: max\n---\n'
+  );
+  fs.writeFileSync(
+    path.join(SANDBOX_FREE, '.claude', 'agents', 'reviewer-clover.md'),
+    '---\nname: reviewer-clover\nmodel: claude-probe-ext\neffort: max\n---\n'
+  );
+  fs.writeFileSync(
+    path.join(SANDBOX_FREE, 'clover', 'models.json'),
+    JSON.stringify({ models: [{ alias: 'probe-ext', model: 'probe-ext-upstream', format: 'openai', via: 'codex' }] })
+  );
   ensureJournal(SANDBOX_FREE);
 }
 
@@ -209,7 +223,7 @@ function registerTests() {
     .split('<REPO>').join(slash(ROOT))
     .split('<SANDBOX_GIT>').join(slash(SANDBOX_GIT)));
 
-  const EXPECTED_SAMPLE_COUNT = 157;
+  const EXPECTED_SAMPLE_COUNT = 167;
   // Independently-hardcoded expectation (not re-derived from allRows) so this assertion can't
   // silently pass no matter what skipIf tags actually exist in the samples file — mirrors the
   // EXPECTED_SAMPLE_COUNT literal above. Keyed by exact set/name (not just a per-tag count) so a
@@ -281,7 +295,7 @@ function registerTests() {
     'S-fs': 18,
     'S-prompt': 8,
     'S-session': 5,
-    'S-agent': 23,
+    'S-agent': 33,
     'S-secret': 5,
   };
 

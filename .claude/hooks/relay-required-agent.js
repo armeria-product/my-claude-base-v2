@@ -2,7 +2,8 @@
 // PreToolUse hook (Task/Agent): blocks a subagent spawn that requires an external relay model
 // when the relay is OFF (CLAUDE.md §1.8 ON/OFF gate). Two independent routes are checked (OR):
 //   1. Legacy: the agent definition's frontmatter pins model: to a clover relay model id
-//      (claude-<alias> from clover/models.json).
+//      (claude-<alias> from clover/models.json). Native aliases, including `fable`, do not match
+//      this route and remain relay-independent.
 //   2. Primary (relay skill convention): a `RELAY-MODEL:<alias>` marker on the prompt's true
 //      first line, matching the router's own acceptance surface (clover/src/router.mjs):
 //      noise blocks (e.g. <system-reminder>...</system-reminder>) are stripped first, then the
@@ -114,7 +115,7 @@ process.stdin.on('end', () => {
     `BLOCKED: サブエージェント "${subagentType || '(unnamed)'}" は外部モデル (${model}) を使う設定です。\n` +
       `いまは relay が OFF のため使えません（relay 経由で起動していないと "model may not exist" で失敗します）。\n` +
       `使う場合は relay を ON にしてください: /relay on\n` +
-      `一時的に通常モデルで動かすなら、model 指定を opus/sonnet/haiku に変えてください。`
+      `一時的に native モデルで動かすなら、役割の規約に合う model 指定へ変えてください（権威ロールは fable | opus のみ）。`
   );
   process.exit(2);
 });

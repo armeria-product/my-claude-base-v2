@@ -4,7 +4,7 @@
 // Output: if the command would land on main/master directly, write a message to stderr + exit 2 (block);
 //         otherwise exit 0.
 //
-// This repository never commits to main directly. Each work unit lives on its own `<topic>-<YYYY-MM-DD>`
+// This repository never commits to main directly. Each work unit lives on its own `<YYYY-MM-DD>-<topic>`
 // branch, and main advances ONLY when the user merges the Pull Request (CLAUDE.md §3 Git Workflow).
 //
 // Blocked:
