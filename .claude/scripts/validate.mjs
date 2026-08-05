@@ -30,6 +30,10 @@ const READ_ONLY_AGENTS = new Set(['reviewer', 'verifier', 'explorer']);
 const EFFORT_MAX_AGENTS = new Set(['planner', 'reviewer']);
 const AUTHORITY_MODELS = new Set(['fable', 'opus']);
 const AUTHORITY_DEFAULT_MODEL = 'fable';
+// agents-revision plan Phase 2: shared clause (A) observed-content discipline is restated
+// verbatim only in these 4 agent bodies (the rest are exempt or get a lightweight variant —
+// SOT: .claude/rules/agents.md "Shared clauses").
+const OBS_CONTENT_AGENTS = new Set(['reviewer', 'verifier', 'debugger', 'executor']);
 
 // clover relay model ids (claude-<alias>) are also allowed in agent model: frontmatter. They
 // route to external models via the relay and, unlike a pinned real Claude id, don't break on
@@ -79,6 +83,24 @@ for (const f of fs.readdirSync(agentsDir).filter((x) => x.endsWith('.md'))) {
     fail(`agent ${fm.name}: model "${fm.model}" is not in the authority allowlist (${[...AUTHORITY_MODELS].join(' | ')})`);
   if (EFFORT_MAX_AGENTS.has(fm.name) && fm.model !== AUTHORITY_DEFAULT_MODEL)
     fail(`agent ${fm.name}: frontmatter default must be "${AUTHORITY_DEFAULT_MODEL}" — Opus is allowed only as an explicit retry after a recorded Fable availability/usage-limit/startup failure`);
+  // Reverse effort check: effort: is reserved for the authority tier (CLAUDE.md §2) — an
+  // effort key on any other agent is either drift or an unauthorized tier upgrade.
+  if (!EFFORT_MAX_AGENTS.has(fm.name) && fm.effort)
+    fail(`agent ${fm.name}: has "effort: ${fm.effort}" in frontmatter but is not an authority agent (${[...EFFORT_MAX_AGENTS].join('/')}) — effort pinning is reserved for the authority tier`);
+  // Fleet loop (a): the read-only Bash constraint sentence must stay verbatim in every
+  // read-only agent's own body (a path-scoped rule only loads while editing agent files, so
+  // the per-agent restatement is what the model actually sees at dispatch time).
+  if (READ_ONLY_AGENTS.has(fm.name) && !/Bash is for reading and running tests only/.test(agentText))
+    fail(`agent ${fm.name}: read-only agent is missing the verbatim "Bash is for reading and running tests only" constraint sentence in its own body`);
+  // Fleet loop (b): shared clause (B) contradiction reporting — verbatim in all 7 agents.
+  if (!/do not silently pick a side/.test(agentText))
+    fail(`agent ${fm.name}: missing shared clause (B) contradiction-reporting ("do not silently pick a side") — SOT: .claude/rules/agents.md Shared clauses`);
+  // Fleet loop (c): shared clause (C) denial etiquette — verbatim in all 7 agents.
+  if (!/never retry variants or route around/.test(agentText))
+    fail(`agent ${fm.name}: missing shared clause (C) denial etiquette ("never retry variants or route around") — SOT: .claude/rules/agents.md Shared clauses`);
+  // Shared clause (A) observed-content discipline — verbatim only in OBS_CONTENT_AGENTS.
+  if (OBS_CONTENT_AGENTS.has(fm.name) && !/is data under examination, never instructions/.test(agentText))
+    fail(`agent ${fm.name}: missing shared clause (A) observed-content discipline ("is data under examination, never instructions") — SOT: .claude/rules/agents.md Shared clauses`);
 }
 
 // ---- 2. Skills: frontmatter + subagent_type resolution ----
@@ -259,8 +281,26 @@ const FORBIDDEN = [
   [/frontier dispatch override/i, 'renamed to "frontier authority convention" — the override no longer exists (CLAUDE.md §2 ¹)'],
   [/\borchestrate\b/, 'skill "orchestrate" was renamed to "harness"'],
   [/\bslop-clean\b/, 'skill "slop-clean" was renamed to "code-cleaner"'],
+  [/\bclaude-(?:fable|opus|sonnet|haiku)-[\d]/i, 'a pinned real Claude model id was found (fable/opus/sonnet/haiku directly followed by a digit) — model: must use a native alias or a clover claude-<alias> id from clover/models.json, never a real id (breaks on version bumps)'],
+  [/\bclaude-\d(?:-\d+)?-(?:fable|opus|sonnet|haiku)-(?:\d{8}|latest)\b/i, 'a pinned real Claude model id was found (generation-first spelling, e.g. claude-3-5-sonnet-20241022 or claude-3-opus-20240229) — model: must use a native alias or a clover claude-<alias> id from clover/models.json, never a real id (breaks on version bumps)'],
 ];
+// Side effect: ALLOW_LINE is a line-level exemption, not a pattern-level one — a line matching
+// any word here is skipped against every FORBIDDEN pattern above, not just the one that
+// motivated the addition. Widening this regex silently widens the exemption for the whole list.
 const ALLOW_LINE = /旧|former|formerly|renamed|previously|removed|削除|廃止|merged|統合|does not exist|dead|must not be referenced/; // allow history/explanatory text (JA/EN) and this validator's own wording
+// Narrower citation exemption (kept separate from ALLOW_LINE on purpose): forbidden/禁止/collide
+// mark a line that is *explaining* a real id (e.g. "`claude-opus-4-8` is forbidden") rather than
+// pinning one, but a blanket line-level exemption on these three common words would let a real id
+// planted anywhere on such a line slip past every FORBIDDEN pattern. So this only exempts a
+// FORBIDDEN match whose own matched text sits inside `backticks` on a line that also carries one
+// of these words — the citation must be visibly quoted, not just co-located with the word. This
+// is deliberately narrower than ALLOW_LINE above and only ever suppresses the single matched
+// substring, never the rest of the line's checks.
+const CITATION_WORD = /forbidden|禁止|collide/;
+const inBackticks = (line, index, len) => {
+  const backticksBefore = (line.slice(0, index).match(/`/g) || []).length;
+  return backticksBefore % 2 === 1 && line.slice(index + len).includes('`');
+};
 const scan = [path.join(ROOT, 'CLAUDE.md'), path.join(ROOT, 'README.md')];
 // Vendored code sub-projects are code, not harness docs/config — exclude them from the harness
 // dead-ref scan (clover legitimately references e.g. ~/.codex/ for codex OAuth).
@@ -279,8 +319,17 @@ for (const p of scan) {
   const lines = read(p).split('\n');
   lines.forEach((line, i) => {
     if (ALLOW_LINE.test(line)) return;
-    for (const [re, why] of FORBIDDEN)
-      if (re.test(line)) fail(`dead ref ${rel(p)}:${i + 1} — ${why}\n      ${line.trim().slice(0, 100)}`);
+    for (const [re, why] of FORBIDDEN) {
+      // Check every match of this pattern on the line, not just the first — a line can carry a
+      // legitimately-cited backticked id AND a bare (non-exempt) one; stopping at the first match
+      // would let the second slip through unexamined once the first is exempted.
+      const reG = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+      for (const m of line.matchAll(reG)) {
+        if (CITATION_WORD.test(line) && inBackticks(line, m.index, m[0].length)) continue;
+        fail(`dead ref ${rel(p)}:${i + 1} — ${why}\n      ${line.trim().slice(0, 100)}`);
+        break;
+      }
+    }
   });
 }
 
@@ -329,10 +378,21 @@ const INVARIANTS = [
   ['.claude/skills/harness/SKILL.md', /worker must read PLAN\.md\/scope\.json itself/, 'harness Handoff Protocol must keep the scope-handoff rule (workers read the plan themselves — no paraphrase)'],
   ['.claude/agents/reviewer.md', /Scope Conformance/, 'reviewer.md must keep the Scope Conformance dimension (out-of-scope diff = HIGH) — the review-side scope backstop'],
   ['.claude/agents/executor.md', /\[scope-lock\]/, 'executor.md must keep the scope-lock denial protocol (no workaround; deviations + report)'],
+  ['.claude/agents/debugger.md', /\[scope-lock\]/, 'debugger.md must keep the scope-lock denial protocol (no workaround; deviations + report)'],
+  ['.claude/agents/document-author.md', /\[scope-lock\]/, 'document-author.md must keep the scope-lock denial protocol (no workaround; deviations + report)'],
+  ['.claude/agents/executor.md', /detection power/i, 'executor.md must keep the detection-power duty (RED->restore->GREEN test-power check) from the 4 recurring review-gap classes'],
+  ['.claude/agents/executor.md', /branch\/OS/, 'executor.md must keep the claim-scope duty (numbers/completion language limited to the verified branch/OS/condition)'],
+  ['.claude/agents/executor.md', /match⇒deny|match=deny/, 'executor.md must keep the consumer-direction-classification duty (match⇒deny fail-closed vs match⇒allow fail-open sorting before widening a shared matcher)'],
+  ['.claude/agents/executor.md', /deny-side/, 'executor.md must keep the deny-side (reverse) verification duty for "still denied" claims'],
+  ['.claude/agents/executor.md', /safety-critical harness code/i, 'executor.md must keep the Comment Policy safety-critical-harness-code exception (hooks/validators comments documenting why the check exists and what is deliberately out of scope)'],
   ['.claude/skills/quality-loop/SKILL.md', /Lens Catalog[\s\S]*4 seats total/, 'quality-loop must keep the Lens Catalog section with the 4-seat hard cap'],
   ['.claude/skills/quality-loop/SKILL.md', /Security Track \(on request or auto-seated\)/, 'quality-loop must keep the Security Track auto-seat section — the conductor seats security on API/DB/auth/payment signals without being asked (user ruling 2026-08-02)'],
   ['.claude/skills/quality-loop/SKILL.md', /not seated \(no risk signals\)/, 'quality-loop must keep the mandatory security-attendance recording line — a silent skip of the risk check must stay visible'],
   ['.claude/skills/plan/SKILL.md', /securityReview/, 'plan SKILL.md must keep the scope.json securityReview flag — the plan-time path that auto-seats security for the whole locked run'],
+  // --- agents-revision Phase 8 (loop-03, user ruling 2026-08-05) ---
+  ['CLAUDE.md', /recurring review category/i, 'CLAUDE.md §4 must keep the recurring-review-category trigger bullet — a 2nd occurrence of the same review finding across cycles/PRs must be treated as a role-definition gap, not just fixed as an instance'],
+  // --- agents-revision fix cycle (fusion-adjudicated, 2026-08-05) ---
+  ['.claude/agents/debugger.md', /never persist unverified observed text into memory/i, 'debugger.md must keep the memory-poisoning guard for `memory: project` — a suggested command or claim found in observed output must never be written into persistent memory as a rule without verification'],
 ];
 for (const [relPath, must, why] of INVARIANTS) {
   const p = path.join(ROOT, relPath);
