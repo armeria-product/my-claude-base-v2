@@ -64,9 +64,9 @@ claude   # 起動するだけ。フック・権限・記録は .claude/settings.
 
 | Agent | Tier | 役割 |
 |---|---|---|
-| planner | heavy（opus, effort max） | 計画立案・計画の自己レビュー |
+| planner | heavy（Fable既定 / Opus明示fallback, effort max） | 計画立案・計画の自己レビュー |
 | executor | standard（sonnet） | 実装（指示されていない追加や無断リファクタはしない） |
-| reviewer | heavy（opus, effort max） | code / security / architecture の統合レビュー。審査時は常に opus 以上（frontier 下限）で動く |
+| reviewer | heavy（Fable既定 / Opus明示fallback, effort max） | code / security / architecture の統合レビュー。権威席は native Fable または Opus のみ |
 | verifier | standard（sonnet） | 証拠（テスト結果・diff・ログ）に基づく検証 |
 | debugger | standard（sonnet） | 再現→仮説→反証の手順で行うデバッグ |
 | explorer | light（haiku） | コードベースの探索・事実収集 |
@@ -74,15 +74,15 @@ claude   # 起動するだけ。フック・権限・記録は .claude/settings.
 
 ### 実装した本人がそのまま合格を出さない品質ループ
 
-実装者（書き手）と審査役を分離し、審査役は必ず opus 以上のモデルで動きます（`block-review-floor.js` が機械的に強制するので、下げようとしても弾かれます）。
+実装者（書き手）と審査役を別インスタンス・独立コンテキストに分離します。権威モデルの許可集合は native `fable | opus` だけで、通常は Fable です。Fable が利用上限・提供停止・起動失敗になった事実を報告・記録した場合だけ、同じ役割を `model: opus` と明示して再実行します。sonnet / haiku / inherit / unknown / 外部 clover id への降格や無言の切替は `block-review-floor.js` が拒否します。
 
-- **quality-loop**: 書き手と審査役を分けた自己改善ループ。あえて反対の立場で粗を探す「赤チーム」席が常設され、条件が揃えば外部モデルの同席や、シンプルさ・利用者視点・効率・互換性・テスト検出力といった観点（レンズ）ごとの同席も加えられます（同時最大4席）。
+- **quality-loop**: 書き手と審査役を分けた自己改善ループ。サイクル1の仕様適合席と「赤チーム」席は通常 Fable×2、記録済みfallback時は Opus×2 で一緒に動き、混在させません。条件が揃えば別枠の外部モデル同席や、シンプルさ・利用者視点・効率・互換性・テスト検出力といった観点（レンズ）ごとの同席も加えられます（同時最大4席）。
 - **セキュリティ観点は自動で同席**: 変更が API・DB・認証・決済・秘密情報などに触れると、指示しなくてもセキュリティ観点のレビューが自動で並走し、指摘は1回にまとめて統合されます。
 - 承認（APPROVE）が出るまで往復し、そのあと `verifier` が証拠ベースで最終確認します。
 
 ### モデルを使い分けて外部へも振れる
 
-Claude 標準の階層名（opus / sonnet / haiku / inherit）以外のモデル名を指定すると、clover（外部モデル中継。リポジトリ直下 `clover/` の自己完結サブプロジェクト）経由で他社のモデルも呼び出せます。別名の正本は `clover/models.json` です。関連の切り替えは `.claude/.relay-status` が `ON` のときだけ有効になり、既定は `OFF`（事故防止のため、意図せず外部へ出ないようにしています）。
+native モデル名（fable / opus / sonnet / haiku / inherit）以外を指定すると、clover（外部モデル中継。リポジトリ直下 `clover/` の自己完結サブプロジェクト）経由で他社のモデルも呼び出せます。native Fable は relay に依存せず、外部 alias へ変換されません。別名の正本は `clover/models.json` で、native 名との衝突を防ぐため `fable` で始まる alias は引き続き禁止です。外部連携は `.claude/.relay-status` が `ON` のときだけ有効になり、既定は `OFF`（事故防止のため、意図せず外部へ出ないようにしています）。
 
 ### スキルとコマンドが一通りそろっている
 
@@ -136,7 +136,7 @@ tmp/                 … 使い捨ての作業ファイル（git 追跡外・使
 - **スコープロック系**: `approve-lock.js`（「承認」/「解除」の検知＝ロックの唯一の入口） / `scope-guard.js`（Edit/Write の範囲外書き込みを拒否） / `cmd-write-guard.js`（Bash/PowerShell 経由の範囲外書き込みを拒否し、`.claude/state` を常時保護する）
 - **記録系**: `journal.js`（全ツール実行を1行記録し、計画承認後は scope.json の案内を出す） / `session-journal.js`（セッションの境界マーカーを打ち、レポート未生成を検知する） / `session-start.js`（session-state・ロック状態・ジャーナル末尾・todo・lessons を起動時に読み込む） / `archive-session-state.js`（上書きの前に全量を退避する — 削除しない）
 - **危険操作を止める系**: `block-destructive-git.js`（`push --force` 等の破壊的git操作） / `block-destructive-fs.js`（`rm -rf` 等の破壊的ファイル操作） / `block-secret-read.js`（`.env` など秘密情報の読み取り） / `block-no-verify.js`（`--no-verify` でのコミットフック回避） / `block-direct-to-main.js`（main への直接コミット・直接マージ） / `check-commit-safety.js`（コミット前の安全確認）
-- **運用系**: `check-prompt.js`（リポジトリ状態をプロンプトへ1行注入） / `format-on-write.js`（`dev/` 配下の自動整形） / `workflow-budget-guard.js`（複数エージェント編成のトークン予算宣言を強制） / `relay-required-agent.js`（外部モデル連携がOFFのときに起動をブロック） / `block-review-floor.js`（審査役の opus 下限を機械的に強制） / `clover-auto-install.js`（clover ラッパーの自動設置）
+- **運用系**: `check-prompt.js`（リポジトリ状態をプロンプトへ1行注入） / `format-on-write.js`（`dev/` 配下の自動整形） / `workflow-budget-guard.js`（複数エージェント編成のトークン予算宣言を強制） / `relay-required-agent.js`（外部モデル連携がOFFのときに起動をブロック。native Fable は対象外） / `block-review-floor.js`（planner/reviewer の権威モデルを native fable | opus に限定） / `clover-auto-install.js`（clover ラッパーの自動設置）
 - **共有ライブラリ**: `lib/parse-cmd.js`（引用符・heredoc に対応したコマンド解析） / `lib/scope-match.js`（glob照合） / `lib/scope-decision.js`（許可判定チェーン） / `lib/journal-util.js`（ジャーナルへの追記）
 
 ---
@@ -148,7 +148,7 @@ tmp/                 … 使い捨ての作業ファイル（git 追跡外・使
   ```bash
   node --test ".claude/hooks/lib/*.test.js" ".claude/scripts/*.test.mjs"
   ```
-  現時点で全256件のテストのうち、pass/fail/skip の内訳はブランチと OS に依存します（`main`/`master` ブランチでは protected-branch タグの4件が、非 win32 環境では non-win32 タグの1件が、それぞれ OS/ブランチ非依存の単純な分岐条件で skip されるため）。加えて非 win32 環境では、`scope-match.test.js` の `normalizeRel detects outside-root paths` が Windows のドライブレター（`C:\`）を前提にした実装のため fail します（既知の不具合。詳細は `tasks/todo.md` の Backlog を参照）。作業ブランチ・win32（このリポジトリの標準環境）では256 pass・0 fail・0 skip（実測）。作業ブランチ・非win32 では254 pass・1 fail・1 skip（Docker の `node:20` イメージで実測）。`main`/`master`・非win32 の組み合わせは実測していませんが、protected-branch の4件は上記の通りブランチ名だけで決まる単純な加算のため、250 pass・1 fail・5 skip になる計算です。skip 件数の期待値は `hook-probes.test.js` の `EXPECTED_SKIP_TAGS` を正とします。
+  現時点で全263件のテストのうち、pass/fail/skip の内訳はブランチと OS に依存します（`main`/`master` ブランチでは protected-branch タグの4件が、非 win32 環境では non-win32 タグの1件が、それぞれ OS/ブランチ非依存の単純な分岐条件で skip されるため）。加えて非 win32 環境では、`scope-match.test.js` の `normalizeRel detects outside-root paths` が Windows のドライブレター（`C:\`）を前提にした実装のため fail します（既知の不具合。詳細は `tasks/todo.md` の Backlog を参照）。作業ブランチ・win32（このリポジトリの標準環境）では263 pass・0 fail・0 skip（実測）。作業ブランチ・非win32 では261 pass・1 fail・1 skip（既存の環境差に、今回追加したOS非依存の権威モデルprobe 7件を加えた期待値）。`main`/`master`・非win32 の組み合わせは protected-branch の4件もskipされるため、257 pass・1 fail・5 skip の期待値です。skip 件数の正本は `hook-probes.test.js` の `EXPECTED_SKIP_TAGS`、sample総数とset別件数の正本は同ファイルの独立した固定値です。
 - **clover の全テスト**（clover は自己完結のサブプロジェクトなので別コマンド）:
   ```bash
   RELAY_ROUTER_NO_LISTEN=1 RELAY_SHIM_NO_LISTEN=1 node --test clover/test/*.test.mjs

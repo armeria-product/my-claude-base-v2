@@ -22,11 +22,14 @@ const warns = [];
 const fail = (m) => fails.push(m);
 const warn = (m) => warns.push(m);
 
-const MODEL_ALIASES = new Set(['opus', 'sonnet', 'haiku', 'inherit']);
+const MODEL_ALIASES = new Set(['fable', 'opus', 'sonnet', 'haiku', 'inherit']);
 const READ_ONLY_AGENTS = new Set(['reviewer', 'verifier', 'explorer']);
-// CLAUDE.md §2: planner/reviewer pin effort:max because it's the sole mechanism guaranteeing
-// max-depth reasoning for the final quality gate — losing the pin silently downgrades the gate.
+// CLAUDE.md §2: planner/reviewer default to native Fable, permit only native Fable or Opus in an
+// authority dispatch, and pin effort:max. Opus is an explicit retry after a recorded Fable failure,
+// not a frontmatter default and never a silent/lower-tier fallback.
 const EFFORT_MAX_AGENTS = new Set(['planner', 'reviewer']);
+const AUTHORITY_MODELS = new Set(['fable', 'opus']);
+const AUTHORITY_DEFAULT_MODEL = 'fable';
 
 // clover relay model ids (claude-<alias>) are also allowed in agent model: frontmatter. They
 // route to external models via the relay and, unlike a pinned real Claude id, don't break on
@@ -42,6 +45,12 @@ function cloverModelIds() {
   }
 }
 const CLOVER_MODEL_IDS = cloverModelIds();
+
+// Native Fable and external relay aliases are separate namespaces. Keep every `fable*` clover
+// alias reserved so a `claude-fable...` id cannot collide with the native model name.
+for (const id of CLOVER_MODEL_IDS)
+  if (id.replace(/^claude-/, '').startsWith('fable'))
+    fail(`clover model id "${id}" uses reserved fable* alias prefix — native Fable must remain relay-independent`);
 
 function frontmatter(text) {
   const m = text.match(/^---\n([\s\S]*?)\n---/);
@@ -66,8 +75,10 @@ for (const f of fs.readdirSync(agentsDir).filter((x) => x.endsWith('.md'))) {
   }
   if (EFFORT_MAX_AGENTS.has(fm.name) && fm.effort !== 'max')
     fail(`agent ${fm.name}: missing "effort: max" in frontmatter (CLAUDE.md §2 requires this pin to guarantee max-depth reasoning for the final quality gate)`);
-  if (EFFORT_MAX_AGENTS.has(fm.name) && fm.model !== 'opus')
-    fail(`agent ${fm.name}: model "${fm.model}" must be "opus" — CLAUDE.md §2's review floor is only mechanically enforced (block-review-floor.js) if the review-authority agents themselves stay pinned at opus`);
+  if (EFFORT_MAX_AGENTS.has(fm.name) && !AUTHORITY_MODELS.has(fm.model))
+    fail(`agent ${fm.name}: model "${fm.model}" is not in the authority allowlist (${[...AUTHORITY_MODELS].join(' | ')})`);
+  if (EFFORT_MAX_AGENTS.has(fm.name) && fm.model !== AUTHORITY_DEFAULT_MODEL)
+    fail(`agent ${fm.name}: frontmatter default must be "${AUTHORITY_DEFAULT_MODEL}" — Opus is allowed only as an explicit retry after a recorded Fable availability/usage-limit/startup failure`);
 }
 
 // ---- 2. Skills: frontmatter + subagent_type resolution ----
@@ -196,26 +207,39 @@ if (claudeMd)
     if (fs.existsSync(slPath) && !/scope-lock/.test(read(slPath)))
       fail('statusline.js no longer reads scope-lock — the 🔒 indicator is gone (locks become invisible)');
   }
-  // Review-floor wiring (CLAUDE.md §2 ¹): block-review-floor.js must stay armed on Task|Agent,
-  // and its BELOW_FLOOR set must still name all three below-floor tiers. Membership is checked
-  // against the BELOW_FLOOR = new Set([...]) literal specifically (not the whole file text), so
-  // a tier name merely quoted elsewhere (e.g. left behind in a comment after being dropped from
-  // the Set) doesn't false-pass. Each name is checked independently (not one ordered combined
-  // pattern) so a Set literal written in a different member order doesn't false-fail (cycle-1 C10).
+  // Authority-allowlist wiring (CLAUDE.md §2 ¹): block-review-floor.js must stay armed on
+  // Task|Agent. The hook's executable Set literals must allow exactly fable/opus and must continue
+  // naming all lower tiers as denied. Checking the literal bodies gives the requested mutation
+  // power: deleting either allowed authority model or adding sonnet to the allowlist turns validate
+  // RED even if the name remains elsewhere in comments/messages.
   {
     const rf = eventsOf('block-review-floor.js');
     if (!rf.some((e) => e.event === 'PreToolUse' && e.matcher.includes('Task') && e.matcher.includes('Agent')))
-      fail('block-review-floor.js is not registered under PreToolUse Task|Agent — the review-authority opus floor is no longer mechanically enforced');
+      fail('block-review-floor.js is not registered under PreToolUse Task|Agent — the review-authority fable|opus allowlist is no longer mechanically enforced');
     const rfPath = path.join(ROOT, '.claude', 'hooks', 'block-review-floor.js');
     if (fs.existsSync(rfPath)) {
       const rfText = read(rfPath);
-      const belowFloorMatch = rfText.match(/BELOW_FLOOR\s*=\s*new Set\(\[([^\]]*)\]\)/);
-      if (!belowFloorMatch)
-        fail('block-review-floor.js: could not locate the BELOW_FLOOR = new Set([...]) definition — cannot verify its members');
-      else
+      const allowedMatch = rfText.match(/ALLOWED_AUTHORITY_MODELS\s*=\s*new Set\(\[([^\]]*)\]\)/);
+      if (!allowedMatch) {
+        fail('block-review-floor.js: could not locate ALLOWED_AUTHORITY_MODELS = new Set([...]) — cannot verify the authority allowlist');
+      } else {
+        const allowed = [...allowedMatch[1].matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]);
+        for (const name of ['fable', 'opus'])
+          if (!allowed.includes(name))
+            fail(`block-review-floor.js authority allowlist is missing "${name}" — that native authority model silently stops being accepted`);
+        for (const name of allowed)
+          if (!AUTHORITY_MODELS.has(name))
+            fail(`block-review-floor.js authority allowlist contains forbidden model "${name}" — only fable | opus may hold authority`);
+      }
+
+      const deniedMatch = rfText.match(/DENIED_AUTHORITY_MODELS\s*=\s*new Set\(\[([^\]]*)\]\)/);
+      if (!deniedMatch) {
+        fail('block-review-floor.js: could not locate DENIED_AUTHORITY_MODELS = new Set([...]) — cannot verify named lower-tier denials');
+      } else {
         for (const name of ['sonnet', 'haiku', 'inherit'])
-          if (!new RegExp(`['"]${name}['"]`).test(belowFloorMatch[1]))
-            fail(`block-review-floor.js no longer names "${name}" in its BELOW_FLOOR set — that tier silently stops being denied`);
+          if (!new RegExp(`['"]${name}['"]`).test(deniedMatch[1]))
+            fail(`block-review-floor.js no longer names "${name}" in DENIED_AUTHORITY_MODELS — the policy drift becomes invisible`);
+      }
     }
   }
 }
@@ -232,7 +256,6 @@ const FORBIDDEN = [
   [/(?:^|[^\w/])\/checkpoint\b|commands\/checkpoint\b/, 'the /checkpoint command was removed in v2 — native /rewind covers it'],
   [/skills\/audit\b|(?:^|[^\w/])\/audit\b/, 'the audit skill was folded into quality-loop (request the security track: 「quality-loop でセキュリティ観点でも厳しく検査」)'],
   [/(?:^|[^\w/])\/wrap\b/, 'there is no /wrap skill — the enhanced /save-session owns the report/save flow'],
-  [/^(?!.*never name an alias starting with).*\bfable\b/i, 'fable is no longer a dispatch target — the frontier authority runs at `opus` (CLAUDE.md §2 ¹); relay/SKILL.md\'s alias-collision list is the only allowed mention'],
   [/frontier dispatch override/i, 'renamed to "frontier authority convention" — the override no longer exists (CLAUDE.md §2 ¹)'],
   [/\borchestrate\b/, 'skill "orchestrate" was renamed to "harness"'],
   [/\bslop-clean\b/, 'skill "slop-clean" was renamed to "code-cleaner"'],
@@ -279,7 +302,7 @@ if (fs.existsSync(rulesDir))
 // in the build phase that creates their subject file (a canary for a not-yet-created file would
 // otherwise hard-fail every earlier phase).
 const INVARIANTS = [
-  ['CLAUDE.md', /never fall below[\s`]*opus/i, 'CLAUDE.md must still state the opus-floor sentence ("never fall below opus")'],
+  ['CLAUDE.md', /authority allowlist is exactly native `fable \| opus`/i, 'CLAUDE.md must keep the exact native Fable-or-Opus authority allowlist'],
   ['CLAUDE.md', /Critical Partnership/, 'CLAUDE.md §1.10 "Critical Partnership" section heading must remain present'],
   ['CLAUDE.md', /Objections require evidence/, 'CLAUDE.md §1.10 must still state the evidence-backed objection sentence — dropping it silently reverts the harness to yes-manning or unsupported contrarianism'],
   ['CLAUDE.md', /hypotheses, not orders/, 'CLAUDE.md §1.10\'s framing of development requests as hypotheses, not orders must remain'],
@@ -289,7 +312,10 @@ const INVARIANTS = [
   ['.claude/commands/save-session.md', /SAVE マーカー/, 'save-session must keep the SAVE-marker step — the crash/unreported-session scan keys on it'],
   ['.claude/rules/session-persistence.md', /never rotated or deleted/i, 'session-persistence §6.2 must keep the full-retention sentence for session-state history'],
   // --- carried from v1 (subject files exist as of Phase 4) ---
-  ['.claude/skills/quality-loop/SKILL.md', /below opus is forbidden/i, 'quality-loop\'s Authority row must still state "Below opus is forbidden"'],
+  ['.claude/skills/quality-loop/SKILL.md', /Fable×2[\s\S]*Opus×2/, 'quality-loop must keep the standing same-model authority pair: Fable×2 normally or Opus×2 after recorded fallback'],
+  ['.claude/skills/quality-loop/SKILL.md', /never a mixed pair/i, 'quality-loop must explicitly forbid mixed Fable/Opus standing pairs'],
+  ['.claude/skills/quality-loop/SKILL.md', /Never switch silently/i, 'quality-loop must forbid silent Fable-to-Opus fallback'],
+  ['.claude/skills/quality-loop/SKILL.md', /sonnet[\s`/,-]+haiku[\s`/,-]+inherit[\s\S]{0,80}forbidden/i, 'quality-loop must keep lower-tier authority models forbidden'],
   ['.claude/agents/reviewer.md', /adversarial verification/i, 'reviewer.md must still carry the "Adversarial Verification" section heading'],
   ['.claude/agents/reviewer.md', /green-on-mutation/i, 'reviewer.md\'s mutation-check bullet ("Green-on-mutation = the test has no detection power") must remain present'],
   ['.claude/agents/reviewer.md', /defect-class checklist/i, 'reviewer.md\'s "Defect-Class Checklist" heading must remain present'],

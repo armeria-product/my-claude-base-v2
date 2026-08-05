@@ -1,41 +1,28 @@
 #!/usr/bin/env node
-// PreToolUse hook (Task/Agent): denies a reviewer/planner dispatch pinned below the CLAUDE.md
-// §2 review floor ("Review must never fall below `opus`"). REVIEW_AUTHORITY names the two roles
-// that footnote governs; BELOW_FLOOR names the resolved-model values that fail it.
+// PreToolUse hook (Task/Agent): enforces the CLAUDE.md §2 authority-model allowlist for
+// reviewer/planner dispatches. Authority is a capability role, not an ordinal model floor:
+// only native `fable` or `opus` may hold it. Lower tiers, inherit, unknown model names, external
+// clover ids, and unresolved models are denied.
 //
-// Model resolution order (Task 0 measurement, 2026-08-02): route 1 reads tool_input.model
-// directly -- when the Agent tool call sets a model, it appears verbatim under that exact field
-// name (same name as the tool's own parameter). When absent, route 2 falls back to
-// .claude/agents/<subagent_type>.md's frontmatter `model:` field, mirroring
-// relay-required-agent.js's Route 1 (lines 74-89). The Agent tool's own model parameter enum is
-// sonnet|opus|haiku|fable, but fable is a dead dispatch target (CLAUDE.md never names it as a
-// tier and validate.mjs's FORBIDDEN dead-ref scan forbids reintroducing it) -- so `inherit` is
-// reachable ONLY via the frontmatter fallback (route 2), never via route 1.
+// Model resolution order: tool_input.model is authoritative when present. Otherwise the hook
+// falls back to .claude/agents/<subagent_type>.md frontmatter `model:`. This preserves the Agent
+// contract that an explicit dispatch model overrides the agent default, including an explicitly
+// reported retry with `model: opus` after a Fable availability or usage-limit failure.
 //
-// norm(): trims whitespace, lowercases, and strips a clover-alias `claude-` prefix (so
-// `claude-haiku` normalizes to `haiku` and is still caught). This is a capability-floor check,
-// not a relay ON/OFF check (that's relay-required-agent.js's independent job per CLAUDE.md
-// §1.8/§1.9) -- an external RELAY-MODEL dispatch carries no tool_input.model and no
-// review-floor-breaking frontmatter pin, so it is not double-judged here.
+// norm(): trims whitespace, lowercases, and strips one `claude-` compatibility prefix. The prefix
+// keeps the existing `claude-opus` compatibility sample valid. Clover aliases beginning with
+// `fable` remain forbidden by the router, so native Fable does not collide with an external id.
 //
-// subagent_type is also normalized (trim + lowercase) before the REVIEW_AUTHORITY check --
-// on a case-insensitive filesystem (e.g. win32) `subagent_type: "Reviewer"` still resolves
-// `.claude/agents/reviewer.md` and dispatches the real reviewer, so matching REVIEW_AUTHORITY
-// case-sensitively would let a below-floor model through under a differently-cased or
-// whitespace-padded subagent_type. The normalized form is also used for the frontmatter-file
-// lookup, since every agent file in this repo is named in lowercase.
+// This is independent of relay ON/OFF. Native Fable is relay-independent. An external
+// RELAY-MODEL seat has no explicit model override and therefore resolves through the role's native
+// frontmatter here; relay-required-agent.js independently enforces whether that external seat may
+// launch.
 //
-// isBelowFloor() matches BELOW_FLOOR by exact value (covers 'inherit', a special
-// "use session default" marker) OR by a `sonnet`/`haiku` word appearing anywhere in the
-// normalized model string, so decorated aliases (`sonnet[1m]`, `claude-3-5-sonnet`,
-// `haiku-3-5`) that norm()'s literal `claude-` strip alone wouldn't catch still get denied.
-// `opus` (and any future frontier alias) never contains those words, so it keeps passing.
+// subagent_type is normalized before matching and frontmatter lookup so case/whitespace variants
+// cannot bypass the authority policy on case-insensitive filesystems.
 //
-// Self-application: every legitimate reviewer/planner seat this harness's own quality-loop
-// dispatches pins `model: opus` (validate.mjs enforces this for EFFORT_MAX_AGENTS) -- opus is
-// not in BELOW_FLOOR, so this hook must never deny its own review gates (Phase 4.5/8).
-//
-// Fail-open: any error (broken JSON, unreadable agent file) -> exit 0 (allow).
+// Broken input JSON remains fail-open because no role can be resolved. Once reviewer/planner is
+// resolved, an unreadable/missing model is an unresolved authority dispatch and fails closed.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -43,17 +30,13 @@ const path = require('node:path');
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
 const REVIEW_AUTHORITY = new Set(['reviewer', 'planner']);
-const BELOW_FLOOR = new Set(['sonnet', 'haiku', 'inherit']);
-const BELOW_FLOOR_WORD_RE = /\b(sonnet|haiku)\b/;
+const ALLOWED_AUTHORITY_MODELS = new Set(['fable', 'opus']);
+const DENIED_AUTHORITY_MODELS = new Set(['sonnet', 'haiku', 'inherit']);
 
-const norm = (m) => String(m ?? '').trim().toLowerCase().replace(/^claude-/, '');
-const isBelowFloor = (m) => {
-  const n = norm(m);
-  return BELOW_FLOOR.has(n) || BELOW_FLOOR_WORD_RE.test(n);
-};
+const norm = (model) => String(model ?? '').trim().toLowerCase().replace(/^claude-/, '');
 
 let data = '';
-process.stdin.on('data', (c) => (data += c));
+process.stdin.on('data', (chunk) => (data += chunk));
 process.stdin.on('end', () => {
   let subagentType = '';
   let model = '';
@@ -75,17 +58,23 @@ process.stdin.on('end', () => {
       const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
       if (fm) effectiveModel = ((fm[1].match(/^model:\s*(.+)$/m) || [])[1] || '').trim();
     } catch {
-      /* no agent file -> stays unresolved */
+      /* missing/unreadable agent file -> unresolved authority model -> deny below */
     }
   }
 
-  if (!isBelowFloor(effectiveModel)) process.exit(0);
+  const normalizedModel = norm(effectiveModel);
+  if (ALLOWED_AUTHORITY_MODELS.has(normalizedModel)) process.exit(0);
 
+  const classification = DENIED_AUTHORITY_MODELS.has(normalizedModel)
+    ? 'lower-tier authority model'
+    : 'unknown, external, or unresolved authority model';
   console.error(
-    `BLOCKED: サブエージェント "${subagentType}" はレビュー権威ロールですが、モデルが下限 (opus) 未満です` +
-      ` (resolved: ${effectiveModel || '(unresolved)'})。\n` +
-      `CLAUDE.md §2: レビューは opus を下回ってはいけません。dispatch の model を opus にするか、\n` +
-      `.claude/agents/${normSubagentType}.md の frontmatter model: を opus に直してください。`
+    `BLOCKED: サブエージェント "${subagentType}" はレビュー権威ロールですが、` +
+      `モデルが許可集合 fable | opus にありません` +
+      ` (resolved: ${effectiveModel || '(unresolved)'}; ${classification})。\n` +
+      `CLAUDE.md §2: 権威モデルは native fable または opus だけです。通常は frontmatter の fable を使い、\n` +
+      `Fable の利用上限・提供停止・起動失敗を記録した場合だけ dispatch に model: opus を明示してください。\n` +
+      `sonnet / haiku / inherit / unknown / external clover id への降格や無言の fallback は禁止です。`
   );
   process.exit(2);
 });

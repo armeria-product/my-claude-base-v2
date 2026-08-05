@@ -467,7 +467,7 @@ footer.sot code{ font-size:.92em; }
 
   <main class="content" id="content">
 
-    <a class="backlink" href="index.html">ガイド入口へ</a>
+    <span class="backlink">ガイド入口: index.html</span>
 
     <div class="doc-eyebrow">運用リファレンス</div>
     <h1>変更するとき、どこを見るか</h1>
@@ -475,7 +475,7 @@ footer.sot code{ font-size:.92em; }
     <div class="doc-meta">
       <span class="meta-chip"><b>対象</b> .claude 配下の変更全般</span>
       <span class="meta-chip"><b>正本</b> CLAUDE.md ほか各ファイル</span>
-      <span class="meta-chip"><b>最終確認</b> 2026-07-30</span>
+      <span class="meta-chip"><b>最終確認</b> 2026-08-03</span>
       <span class="badge badge--done">現状の repo で裏取り済み</span>
     </div>
 
@@ -484,7 +484,7 @@ footer.sot code{ font-size:.92em; }
       <li>まず既存の <code>.claude/skills/*/SKILL.md</code> を1つ読み、frontmatter（<code>name</code> / <code>description</code> / <code>user-invocable</code>）と本文構成を踏襲する。</li>
       <li><code>description</code> は「どんな時に自動発動するか」の判断材料になる。「〜して」の形で具体的なトリガー語（呼び出し文言）を日本語で書く。</li>
       <li>既存 skill と役割が重複していないか確認する。軽い処理は skill のまま、独立した文脈が要る処理は agent へ、というのが CLAUDE.md §5.3 の解決順（skill → agent → command）。</li>
-      <li>本文中で agent を呼ぶ記述をするときは、モデル名を直接書かない。「Skills, commands, and docs は具体的な <strong>Claude</strong> のモデル ID を書いてはいけない」（CLAUDE.md §2）。この禁止は Claude 側のモデル名だけが対象で、外部モデルの alias 辞書である <code>.claude/clover/models.json</code> はこの禁止の対象外。</li>
+      <li>本文中で agent を呼ぶ記述をするときは、モデル名を直接書かない。「Skills, commands, and docs は具体的な <strong>Claude</strong> のモデル ID を書いてはいけない」（CLAUDE.md §2）。この禁止は Claude 側のモデル名だけが対象で、外部モデルの alias 辞書である <code>clover/models.json</code> はこの禁止の対象外。</li>
       <li>作成後は <code>node .claude/scripts/validate.mjs</code> を実行し PASS を確認する。skill については「<code>SKILL.md</code> の frontmatter <code>name:</code> がディレクトリ名と一致しているか」「本文中の <code>subagent_type:</code> が実在する agent 名を指しているか」も機械的に検査される。</li>
     </ul>
 
@@ -492,7 +492,8 @@ footer.sot code{ font-size:.92em; }
     <p>正本は <code>.claude/rules/agents.md</code>。変更時は次を必ず守る。</p>
     <ul>
       <li>frontmatter の形式（<code>model</code> / <code>description</code> / <code>tools</code> / 必要なら <code>effort</code>）を既存 agent と揃える。</li>
-      <li><code>model:</code> は tier alias（<code>opus</code> / <code>sonnet</code> / <code>haiku</code> / <code>inherit</code>）、または clover の外部モデル id（<code>claude-&lt;alias&gt;</code>。<code>&lt;alias&gt;</code> は <code>.claude/clover/models.json</code> に実在するもの）のみを書く。実在の Claude モデル ID を直接固定するのは禁止 ―― バージョンが上がるたびに書き換えが要る壊れ方をするため。</li>
+      <li><code>model:</code> はnative alias（<code>fable</code> / <code>opus</code> / <code>sonnet</code> / <code>haiku</code> / <code>inherit</code>）、または clover の外部モデル id（<code>claude-&lt;alias&gt;</code>。<code>&lt;alias&gt;</code> は <code>clover/models.json</code> に実在するもの）のみを書く。実在の Claude モデル ID を直接固定するのは禁止 ―― バージョンが上がるたびに書き換えが要る壊れ方をするため。</li>
+      <li>planner / reviewer は <code>model: fable</code> と <code>effort: max</code> を保つ。権威席の許可集合はnative <code>fable | opus</code>のみ。Fable障害を報告・記録した場合だけ呼び出しに<code>model: opus</code>を明示し（明示入力がfrontmatterより優先）、混在・無言fallback・sonnet/haiku/inherit/unknown/外部idへの降格は禁止。</li>
       <li>clover のモデル id を書いた agent は、clover 経由で起動したセッションでしか動かない。特定の呼び出しだけ一時的に外部モデルへ振りたい場合は、frontmatter 固定よりも relay skill の <code>RELAY-MODEL:</code> マーカー（呼び出しごとに指定）の方が、素の起動でも壊れず可搬性が高い。</li>
       <li>読み取り専用の agent（reviewer / verifier / explorer）には、Write / Edit / NotebookEdit のような書き込み系ツールを一切持たせない。</li>
       <li>読み取り専用 agent の Bash は「読み取り・テスト実行専用」に限定する。唯一の例外は reviewer の敵対的変異検証（adversarial mutation probe）で、明示的に許可された使い捨ての worktree の中でだけ書き込みが許される（本体のツリーには触れない）。</li>
@@ -512,7 +513,7 @@ footer.sot code{ font-size:.92em; }
           <tr><td>hooks</td><td><code>.claude/settings.json</code> / <code>.claude/hooks/*.js</code></td><td>SessionStart / UserPromptSubmit / PreToolUse / PostToolUse のどのタイミングで動くかを確認する。安全装置系（<code>block-*.js</code>）は無登録のまま残すと <code>validate.mjs</code> が FAIL にするほど重要なので、無効化・迂回（<code>--no-verify</code> 等）は禁止。</td></tr>
           <tr><td>rules</td><td><code>.claude/rules/*.md</code></td><td>frontmatter の <code>paths:</code> が空だと、そのルールはどのファイルにも自動適用されず死んだ設定になる。CLAUDE.md §8 の一覧との対応も揃える。</td></tr>
           <tr><td>scripts</td><td><code>.claude/scripts/*.mjs</code></td><td><code>validate.mjs</code>（整合性検査）／ <code>html2pdf.mjs</code>・<code>html2pptx.mjs</code>（HTML → PDF/PPTX 変換）／ <code>deckpack.mjs</code>（スライドの展開・梱包）／ <code>fusion-detect.mjs</code>（複数審査結果の機械的な分岐判定）。変換系は失敗時の扱いが違う（下の「ユーザー向け資料」参照）。</td></tr>
-          <tr><td>clover</td><td><code>.claude/clover/</code>（router / shim / launcher）／ <code>models.json</code></td><td>外部モデルの alias 辞書は <code>models.json</code> が正本。<code>.claude/.relay-status</code> が <code>ON</code> でも、このセッション自体が clover 経由で起動されているとは限らない（CLAUDE.md §1.8、relay skill 参照）。</td></tr>
+          <tr><td>clover</td><td><code>clover/</code>（router / shim / launcher）／ <code>clover/models.json</code></td><td>外部モデルの alias 辞書は <code>models.json</code> が正本。native Fableはrelay非依存で、<code>fable*</code> aliasは衝突防止のため禁止。<code>.claude/.relay-status</code> が <code>ON</code> でも、このセッション自体が clover 経由で起動されているとは限らない（CLAUDE.md §1.8、relay skill 参照）。</td></tr>
           <tr><td>settings.json</td><td><code>.claude/settings.json</code></td><td>hook の登録漏れ（<code>settings.json</code> に書かれた hook ファイルが実在しない／安全装置 <code>block-*.js</code> が未登録）は <code>validate.mjs</code> が FAIL で止める。<code>permissions.deny</code>（機密ファイルへの読み取り拒否）と <code>block-secret-read.js</code> の食い違いは同じ <code>validate.mjs</code> が WARN で検知する ―― 両者は判定の重さが違う別チェック。</td></tr>
         </tbody>
       </table>
@@ -547,14 +548,14 @@ footer.sot code{ font-size:.92em; }
           <tr><th>チェック内容</th><th>検出時</th></tr>
         </thead>
         <tbody>
-          <tr><td>agent の frontmatter（tier alias / clover id の妥当性、読み取り専用 agent への書き込みツール混入、planner・reviewer の <code>effort: max</code> 欠落）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
+          <tr><td>agent の frontmatter（native alias / clover id の妥当性、読み取り専用 agent への書き込みツール混入、planner・reviewer の <code>model: fable</code> / <code>effort: max</code> 欠落）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>skill の frontmatter（<code>name:</code> とディレクトリ名の一致、<code>description</code> 必須、<code>subagent_type:</code> が実在 agent を参照しているか）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>hooks 登録 ―― <code>settings.json</code> に書かれた hook ファイルの実在確認。<code>block-*.js</code> のような安全装置が未登録のとき</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>hooks 登録 ―― <code>block-*.js</code> 以外の hook ファイルが <code>settings.json</code> に未登録のとき</td><td><span class="badge badge--warn">WARN</span></td></tr>
           <tr><td>全 agent 名が CLAUDE.md §2 の tier 表に載っているか</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>廃止済み名称の死んだ参照（<code>code-reviewer</code> / <code>plan-lite・full</code> / <code>.codex/</code> / <code>CLAUDE_JP</code> / <code>addons</code> / 「frontier dispatch override」旧称 等が CLAUDE.md・README.md・<code>.claude</code> 配下に残っていないか）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>rules の frontmatter（<code>paths:</code> が空でなく存在するか。空だと発火しないルールになる）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
-          <tr><td>不変文言（invariant canary）の照合 ―― 「never fall below opus」「Critical Partnership」等、規約の根拠になる特定の文言が該当ファイルから消えていないかを直接照合</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
+          <tr><td>不変文言（invariant canary）の照合 ―― authority allowlist = native <code>fable | opus</code>、Fable×2 / Opus×2、混在・無言fallback・下位tier禁止、「Critical Partnership」等が該当ファイルから消えていないかを直接照合</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>機密ファイルの deny-list 整合 ―― <code>settings.json</code> の <code>permissions.deny</code> と <code>block-secret-read.js</code> のパターンが対応しているか</td><td><span class="badge badge--warn">WARN</span></td></tr>
           <tr><td>relay の alias 辞書ポインタ ―― <code>relay/SKILL.md</code> が <code>models.json</code> を正本として指し続けているか</td><td><span class="badge badge--warn">WARN</span></td></tr>
           <tr><td>Windows パス / エンコーディング（POSIX固定パスの残存、PowerShell 呼び出しでの OutputEncoding 欠如）／ <code>tasks/lessons.md</code> のサイズ（18KB 超）</td><td><span class="badge badge--warn">WARN</span></td></tr>
@@ -570,7 +571,7 @@ footer.sot code{ font-size:.92em; }
     <ul>
       <li>新しい製品なら <code>dev/{product-name}/</code> を作り、その製品専用の <code>tasks/todo.md</code> / <code>tasks/lessons.md</code> を持たせる（正本: <code>.claude/rules/dev-projects.md</code>）。</li>
       <li>要件が曖昧な新規ビルドは、実装前に4項目（目的・利用者と困りごと／必須機能と範囲／見た目・UX／技術的な制約と完了条件）を確認してから着手する。</li>
-      <li>非自明な変更は writer と reviewer を分け、quality-loop の Loop Contract（worker が作り、frontier tier が審査、max 3 サイクル、最後に verifier が証拠ベースで検証）を通す。</li>
+      <li>非自明な変更は writer と reviewer を別インスタンス・独立コンテキストに分け、quality-loop の Loop Contract（worker が作り、native Fable既定／記録後のみ明示Opusのauthorityが審査、max 3 サイクル、最後に verifier が証拠ベースで検証）を通す。</li>
       <li>UI を含む変更は <code>check</code> skill が <code>/preview</code>（起動 → スクリーンショット → コンソール確認）まで自動で回す。</li>
       <li>製品らしい規模の新規依頼（新製品や、ユーザーが既存製品と比較するような大きな新機能）には、着手前に類似製品の調査と先回りのギャップ提案が期待される（CLAUDE.md §1.10 Critical Partnership）。反対するときは根拠と代替案をセットで示し、最終判断はユーザーに委ね、押し切られた場合は成果物の「Objections &amp; Rulings」に記録する。</li>
     </ul>
@@ -616,7 +617,7 @@ footer.sot code{ font-size:.92em; }
     </ul>
 
     <footer class="sot">
-      正本一覧: CLAUDE.md（§1.5 / §1.10 / §2 / §3 / §6.1 / §8 / §10）・.claude/rules/agents.md・.claude/rules/dev-projects.md・.claude/settings.json・.claude/scripts/validate.mjs・.claude/skills/relay/SKILL.md・.claude/skills/doc/SKILL.md。2026-07-30 時点の repo 現物と突き合わせて記述。
+      正本一覧: CLAUDE.md（§1.5 / §1.10 / §2 / §3 / §6.1 / §8 / §10）・.claude/rules/agents.md・.claude/rules/dev-projects.md・.claude/settings.json・.claude/scripts/validate.mjs・.claude/skills/relay/SKILL.md・.claude/skills/doc/SKILL.md。2026-08-03 時点の repo 現物と突き合わせて記述。
     </footer>
 
   </main>

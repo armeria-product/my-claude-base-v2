@@ -1,8 +1,8 @@
 ---
 name: quality-loop
 description: >
-  Worker が成果物を生産し、権威モデル（frontier tier: CLAUDE.md §2 ¹ の frontier authority
-  規約に従う、下限 opus）が審査し、差し戻し → 修正 → 再審査を APPROVE まで反復する自己改善ループ。
+  Worker が成果物を生産し、権威モデル（frontier tier: native Fable default / explicitly
+  reported Opus fallback; CLAUDE.md §2 ¹）が審査し、差し戻し → 修正 → 再審査を APPROVE まで反復する自己改善ループ。
   非自明なコード・計画・ドキュメントの品質ゲートとして、harness / plan から
   共通プリミティブとして呼ばれる。「品質チェックして」「レビューループして」
   「自己改善ループで」と頼まれた時にも単体で発動する。
@@ -16,15 +16,16 @@ user-invocable: true
 # Quality Loop — Self-Improvement Loop with an Authority Model
 
 Separates deliverable production (worker) and quality judgment (authority) into
-**different models and different contexts**, iterating until APPROVE. The operational form of
-CLAUDE.md §1.3 Writer/Reviewer Separation.
+**different instances and independent contexts**, iterating until APPROVE. This does not promise
+different models: the standing pair is same-model Fable×2 or Opus×2 by policy. The operational form
+of CLAUDE.md §1.3 Writer/Reviewer Separation.
 
 ## Roles
 
 | Role | Owner | Model resolution |
 |---|---|---|
 | **Worker** | Choose by deliverable type: code/tests = executor / planning = planner | Each agent's frontmatter (standard/heavy) |
-| **Authority** | Code = reviewer (match target to the deliverable) / planning = planner self-review mode | **frontier**: resolves to `opus` today, with no dispatch override (CLAUDE.md §2 ¹). **Below opus is forbidden.** Does not depend on the conductor's model. For plan/design/architecture deliverables and normal code review (`reviewer target:code`): add an external co-reviewer per the Authority Co-Review section below, when its trigger condition is met; trigger unmet → the standing two-seat panel continues (see Authority Co-Review) |
+| **Authority** | Code = reviewer (match target to the deliverable) / planning = planner self-review mode | **frontier authority allowlist = native `fable`\|`opus`** (CLAUDE.md §2 ¹). Frontmatter defaults to Fable; Opus is permitted only as an explicit retry after a recorded Fable availability/usage-limit/startup failure. `sonnet` / `haiku` / `inherit` are forbidden, as are unknown/external ids. Does not depend on the conductor's model or relay state. For plan/design/architecture deliverables and normal code review (`reviewer target:code`): add an external co-reviewer per the Authority Co-Review section below when its trigger condition is met; trigger unmet → the standing two-seat panel continues (see Authority Co-Review) |
 | **Verifier** | verifier | standard |
 | **Security (on request or auto-seated)** | `reviewer target: security` — a **parallel review track** added when the user asks（「セキュリティ観点でも厳しく検査」）**or when the conductor's risk-signal check fires** (API/DB/auth/payments/secrets — see Security Track below; autonomous runs seat it without asking); findings fold into the same single fusion | heavy (reviewer frontmatter); takes no co-seats itself |
 
@@ -107,12 +108,12 @@ Beyond the two standing lenses (spec-conformance / red-team), the conductor may 
 
 Optional-seat outputs fold into the same Fusion Composition as the other seats (still one fusion call). Scope conformance is **not** a lens — it is a mandatory dimension inside `reviewer target: code` (see reviewer.md) and always runs.
 
-The red-team seat is a same-tier instance in an independent context, never a separately named model. **Same-tier binds it to whatever model the frontier authority resolves to for this dispatch — the two seats always move together, never a mixed pair, never below opus.** Today the frontier authority resolves to `opus`, so the pair is **Opus×2 (spec-conformance authority + red-team seat)**.
+The red-team seat is a same-authority-model instance in an independent context, never a separately named model. **The standing pair is Fable×2 normally or Opus×2 only after an explicitly recorded Fable failure. The two seats always move together: never a mixed pair, never a silent fallback, and never a lower-tier or external authority model.** Writer/reviewer separation still requires separate instances and independent contexts even when a Fable planner writes and a Fable authority reviews; no instance may approve its own work.
 
 **Behavior**: the conductor dispatches 2 agents in parallel for the same review prompt (3 when the Authority Co-Review trigger condition above is also met; at most 4 when an optional Lens Catalog seat is also justified):
-1. The frontier authority, spec-conformance lens (`opus` today, no override — CLAUDE.md §2 ¹)
-2. A same-tier instance, red-team lens — same model as seat 1 for this dispatch (see above), independent context, same review prompt + the added line above
-3. *(when the trigger condition is met)* a same-role worker with `RELAY-MODEL: <default external alias>` as the first line of the identical review prompt
+1. The frontier authority, spec-conformance lens — default Fable, or explicit `model: opus` after the recorded Fable failure
+2. A same-model instance, red-team lens — explicitly use the same dispatch model as seat 1, independent context, same review prompt + the added line above
+3. *(when the trigger condition is met)* a same-role external worker with `RELAY-MODEL: <default external alias>` as the first line of the identical review prompt; this third seat is distinct from native Fable and does not change the standing pair's model
 
 All attendees' outputs are integrated via the existing Fusion Composition below (`reviewer target:fusion` → `fusion-detect.mjs` → revisit ≤ 1) — 2 inputs when the external seat is absent, 3 when present (`partial_coverage` activates at N≥3). A calling flow may fold all attendees into one larger fusion instead — e.g. the On-Request Security Track below folds the security review in — but must not run nested fusions.
 
@@ -134,13 +135,15 @@ A **parallel `reviewer target: security` review** (OWASP Top 10 + agentic threat
 
 Mechanics: fold ALL tracks into the **single** fusion call — code spec-conformance + code red-team (+ code external when attending) + security = 3-5 inputs; never run a nested code-only fusion first. The security track is a separate review, **not** a lens seat: the 4-seat cap governs the code panel only, and the security review itself takes no co-seats (Round 0 policy below). The conductor acts on the fused JSON: fix all CRITICAL/HIGH, investigate every `blind_spot`, resolve each `contradiction` explicitly; the verifier then attaches concrete evidence (test logs, diffs) per finding addressed.
 
-**Binding verdict stays with the frontier authority.** The red-team seat and the external co-reviewer are additional viewpoints fused into the findings — neither issues or overrides the APPROVE/REQUEST_CHANGES verdict, and the opus floor guarantee is unaffected. If the fused result carries a red-team- or co-reviewer-originated CRITICAL/HIGH finding, the conductor presents it to the frontier authority for a ruling before the final APPROVE — **regardless of the split verdict** (this trigger is severity-driven, not a function of `fusion-detect.mjs`'s split/collapse output) — the verdict right always stays with the frontier authority (spec-conformance lens).
+**Binding verdict stays with the frontier authority.** The red-team seat and the external co-reviewer are additional viewpoints fused into the findings — neither issues or overrides the APPROVE/REQUEST_CHANGES verdict, and the native `fable | opus` authority allowlist is unaffected. If the fused result carries a red-team- or co-reviewer-originated CRITICAL/HIGH finding, the conductor presents it to the frontier authority for a ruling before the final APPROVE — **regardless of the split verdict** (this trigger is severity-driven, not a function of `fusion-detect.mjs`'s split/collapse output) — the verdict right always stays with the frontier authority (spec-conformance lens).
 
 **Attendance is cycle-1 only**: both the red-team second seat and the external co-reviewer attend only the **first** authority review (cycle 1) of a Loop Contract; cycle 2–3 re-reviews are the frontier authority alone. This bounds the added cost ceiling to at most 2 extra reviews (red-team second seat + external co-reviewer) + 1 fusion call, plus at most 1 revisit round, per deliverable, regardless of how many cycles the loop takes.
 
-**Failure handling (not the same bucket as council 429-stop)**: an external co-reviewer failure (429/504/unreachable) is an **attendance failure** at dispatch time, before fusion — it does **not** fold into Fusion Composition's `rateLimited` and is **not** subject to the `rateLimitStop(429)` rule used by user-named external councils. On the trigger condition unmet, or co-reviewer 429/504, silently continue with the standing 2-seat panel (frontier authority + red-team second seat) — no user interruption, no drop to a single reviewer. Record co-review attendance (and reason if the external seat is absent) as one line in the Quality Loop Report (see Output Format below).
+**Native authority failure handling (separate from external attendance)**: if either cycle-1 Fable seat fails to spawn because of a usage limit, availability, or startup failure, do not continue with one Fable seat and do not substitute Opus for only one seat. Record the exact Fable failure in the Quality Loop Report, report the switch, then rerun both standing seats with explicit `model: opus` — Opus×2. Never switch silently. If either Opus seat also fails, stop and report; do not lower to sonnet/haiku/inherit or an external id. The same Fable-default/recorded-Opus-fallback rule applies to planner self-review, security reviewer, fusion reviewer, and later-cycle solo authority dispatches.
 
-**Honest caveat**: two instances of the same model share correlated blind spots — a lens difference decorrelates *attention*, not the underlying *prior*. The external co-reviewer remains the source of genuine model-independence for that reason, and stays in the panel on that basis rather than being treated as redundant with the red-team seat. Every fusion run records what the external seat found that the red-team seat did not (and vice versa) — see the Output Format below — so the external seat's distinct value stays a measured question, not an assumption; a persistent null result is the trigger to revisit whether the external seat should stay standing. For planning deliverables specifically, writer and authority now sit at the same model (planner writes at `opus`; planner self-review also judges at `opus`) — §1.3's writer/reviewer separation still holds (separate instance, independent context, no self-approval), but the separation is now a context difference only, not a capability difference, which raises the relative weight of the external co-reviewer seat as the panel's sole source of genuine model-independence.
+**External attendance failure handling (not the same bucket as council 429-stop)**: an external co-reviewer failure (429/504/unreachable) is an **attendance failure** at dispatch time, before fusion — it does **not** fold into Fusion Composition's `rateLimited` and is **not** subject to the `rateLimitStop(429)` rule used by user-named external councils. On the trigger condition unmet, or co-reviewer 429/504, silently continue with the standing 2-seat native panel (frontier authority + red-team second seat) — no user interruption, no drop to a single reviewer. Record co-review attendance (and reason if the external seat is absent) as one line in the Quality Loop Report (see Output Format below).
+
+**Honest caveat**: two instances of the same model share correlated blind spots — a lens difference decorrelates *attention*, not the underlying *prior*. The external co-reviewer remains the source of genuine model-independence for that reason, and stays in the panel on that basis rather than being treated as redundant with the red-team seat. Every fusion run records what the external seat found that the red-team seat did not (and vice versa) — see the Output Format below — so the external seat's distinct value stays a measured question, not an assumption; a persistent null result is the trigger to revisit whether the external seat should stay standing. For planning deliverables, writer and authority normally both use Fable (or both use explicitly selected Opus after a recorded Fable failure), but §1.3's writer/reviewer separation still holds through separate instances, independent contexts, and no self-approval; the external co-reviewer remains a separate third seat rather than a substitute for that separation.
 
 **Rationale**: the plan/design/architecture default-attendance was a **2026-07-03 user ruling** (v1) made with awareness that the supporting measurement is n=1 (v1 dev/fusion-gen-ab/RESULTS.md, 2026-07-02, generation/design tasks) — a deliberate default-first-pending-replication call, not a claim of a settled multi-n result. Review-only tasks showed no distinct multi-model value in the 2026-07-01 A/B (v1 lessons "レビュー用途では多モデルFUSIONに固有価値が出なかった"). Despite that limited measured value for review, the **2026-07-05 user ruling** extends default attendance to normal code review (`reviewer target:code`) as well — a deliberate policy call made with the 2026-07-01 result in view, not a claim that new evidence reversed it. Security review and verifier remain excluded (see Fusion Composition Round 0 below). If further replication contradicts the value of co-review, this reverts to opt-in. **2026-07-22 user ruling**: the red-team second seat is made standing (relay-state independent) — see the fusion-review incidents analyzed in v1 lessons "レビューは「深読み」でなく「反証」で欠陥を見つける". Goal: keep falsification standing practice, and keep measuring the external seat's distinct value against the red-team seat every cycle.
 
@@ -173,7 +176,9 @@ All thresholds and caps live in one place (the module above) and are re-tuned ag
 ```markdown
 ## Quality Loop Report: [deliverable]
 
-- Worker: [agent] / Authority: [agent] on frontier (opus)
+- Worker: [agent] / Authority: [agent] on frontier
+- Authority model: Fable | Opus (fallback: [exact recorded Fable failure reason])
+- Standing pair: Fable×2 | Opus×2 (fallback); never mixed
 - Co-review: external + red-team (fused, N=3) | red-team only (fused, N=2) | none (reason)
 - Security track: seated (auto: <signal> | user | lock flag) | not seated (no risk signals)
 - Cycles: N / 3
