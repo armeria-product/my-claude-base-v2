@@ -95,6 +95,7 @@ Native model names (`fable`/`opus`/`sonnet`/`haiku`/`inherit`) pass through unch
 
 - Session start: the SessionStart hook injects session-state.md (a 2-line pointer) + the journal's **latest session report section** (the single home of 次にやること/保留) + todo.md + lessons.md (dev mode: `dev/{name}/tasks/`).
 - **On user correction (immediately)**: append to `tasks/lessons.md` — `### [date] Pattern name` + Trigger / Mistake / Fix / Rule. Quality gate: codebase-specific or hard-won only, actionable rules, nothing Googleable.
+- **On recurring review category (2nd occurrence across cycles/PRs)**: treat it as a role-definition gap, not an implementation failure — record the lesson and propose the definition fix (agent file / skill / validator pin) to the user; never just fix the instance.
 
 ---
 
