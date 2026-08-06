@@ -499,13 +499,13 @@ footer.sot code{ font-size:.92em; }
     <ul>
       <li><code>name</code> — agent名</li>
       <li><code>description</code> — どんな時に使うかの自然言語説明（他agent/skillからの呼び出し判断に使われる）</li>
-      <li><code>model</code> — 通常はnative alias（<code>fable</code> / <code>opus</code> / <code>sonnet</code> / <code>haiku</code> / <code>inherit</code>）。planner / reviewer は <code>fable</code> を既定にし、Fableの利用上限・提供停止・起動失敗を記録した場合だけ呼び出し側が <code>model: opus</code> を明示する（明示値がfrontmatterより優先）。<code>.claude/rules/agents.md</code>は例外としてclover relayのモデルid（<code>claude-&lt;alias&gt;</code>形式）も許すが、権威席では外部idを許可せず、通常agentでもrelay経由のセッションでしか成立しない。特定の1回だけ外部モデルへ振りたい場合は、per-spawn の <code>RELAY-MODEL:</code> マーカー（relay skill）の方が壊れにくい</li>
+      <li><code>model</code> — 通常はnative alias（<code>fable</code> / <code>opus</code> / <code>sonnet</code> / <code>haiku</code> / <code>inherit</code>）。planner / reviewer は <code>opus</code> を既定にし、<code>.claude/.fable-status</code> が <code>ON</code>のとき（CLAUDE.md §1.11のゲート）だけ呼び出し側が <code>model: fable</code> を明示する（明示値がfrontmatterより優先）。<code>.claude/rules/agents.md</code>は例外としてclover relayのモデルid（<code>claude-&lt;alias&gt;</code>形式）も許すが、権威席では外部idを許可せず、通常agentでもrelay経由のセッションでしか成立しない。特定の1回だけ外部モデルへ振りたい場合は、per-spawn の <code>RELAY-MODEL:</code> マーカー（relay skill）の方が壊れにくい</li>
       <li><code>tools</code>（任意）— 使えるツールの制限。reviewer / verifier / explorer は Bash を読み取り・テスト実行のみに制限し、Write / Edit / NotebookEdit を禁止（唯一の例外は reviewer の敵対的変異検証で、明示的に用意された使い捨て worktree の中でのみ許される）</li>
       <li><code>effort</code>（任意）— 推論の深さ。planner と reviewer は <code>max</code> に固定（frontmatterのpinがモデルtierとは独立に効き、<code>validate.mjs</code>がこの固定を欠くとFAILにする）</li>
     </ul>
     <div class="callout callout--note">
       <div class="callout__label">tierとaliasの関係</div>
-      <p>CLAUDE.md §2の表がtier方針の唯一の正本。native aliasはモデルのバージョン番号を直接固定しない。とくに権威席では順位比較ではなく許可集合<code>fable | opus</code>を使い、Fableを通常値、Opusを記録済み障害後の明示fallbackとして扱う。</p>
+      <p>CLAUDE.md §2の表がtier方針の唯一の正本。native aliasはモデルのバージョン番号を直接固定しない。とくに権威席では順位比較ではなく許可集合<code>fable | opus</code>を使い、Opusを通常値、Fableを§1.11ゲートがONの間だけの値として扱う。</p>
     </div>
 
     <h2>モデル階層（tier）ポリシー</h2>
@@ -516,8 +516,8 @@ footer.sot code{ font-size:.92em; }
           <tr><th scope="col">Tier</th><th scope="col">解決先</th><th scope="col">用途</th><th scope="col">代表agent</th></tr>
         </thead>
         <tbody>
-          <tr><td><span class="badge badge--frontier">frontier</span></td><td>native <code>fable</code>既定／障害記録後のみ明示<code>opus</code></td><td>quality-loopの審査・最終品質判断・重い設計判断。許可集合は<code>fable | opus</code>だけ</td><td><code>planner</code> / <code>reviewer</code>（権威規約）</td></tr>
-          <tr><td><span class="badge badge--heavy">heavy</span></td><td>native <code>fable</code>既定／明示<code>opus</code> fallback</td><td>計画・設計判断・レビュー・複雑デバッグ</td><td><code>planner</code> / <code>reviewer</code></td></tr>
+          <tr><td><span class="badge badge--frontier">frontier</span></td><td>native <code>opus</code>既定／§1.11ゲートON時のみ<code>fable</code></td><td>quality-loopの審査・最終品質判断・重い設計判断。許可集合は<code>fable | opus</code>だけ</td><td><code>planner</code> / <code>reviewer</code>（権威規約）</td></tr>
+          <tr><td><span class="badge badge--heavy">heavy</span></td><td>native <code>opus</code>既定／§1.11ゲートON時のみ<code>fable</code></td><td>計画・設計判断・レビュー・複雑デバッグ</td><td><code>planner</code> / <code>reviewer</code></td></tr>
           <tr><td><span class="badge badge--standard">standard</span></td><td><code>sonnet</code></td><td>実装・通常デバッグ・検証・資料作成</td><td><code>executor</code> / <code>debugger</code> / <code>verifier</code> / <code>document-author</code></td></tr>
           <tr><td><span class="badge badge--light">light</span></td><td><code>haiku</code></td><td>探索・ファイル検索・簡易調査</td><td><code>explorer</code></td></tr>
         </tbody>
@@ -575,14 +575,14 @@ footer.sot code{ font-size:.92em; }
 
     <h2>skill → agent 呼び出し関係図</h2>
     <div class="legend">
-      <span class="lg-frontier">frontier（Fable既定 / Opus fallback）</span>
-      <span class="lg-heavy">heavy（Fable既定 / Opus fallback）</span>
+      <span class="lg-frontier">frontier（Opus既定 / §1.11ゲートON時のみFable）</span>
+      <span class="lg-heavy">heavy（Opus既定 / §1.11ゲートON時のみFable）</span>
       <span class="lg-standard">standard（sonnet）</span>
       <span class="lg-light">light（haiku）</span>
     </div>
     <figure class="figure">
       <svg viewBox="0 0 820 380" role="img"
-           aria-label="harness skillがplanner・executor・reviewer・verifierを呼び出し、そのレビュー段階はquality-loopのLoop Contractに従う。権威席はnative Fableを既定とし、記録済み障害時だけOpusへ明示切替する呼び出し関係図">
+           aria-label="harness skillがplanner・executor・reviewer・verifierを呼び出し、そのレビュー段階はquality-loopのLoop Contractに従う。権威席はnative Opusを既定とし、§1.11ゲートがONの間だけFableへ明示切替する呼び出し関係図">
         <defs>
           <marker id="sa-arrow" viewBox="0 0 10 10" refX="9" refY="5"
                   markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -620,7 +620,7 @@ footer.sot code{ font-size:.92em; }
         <rect x="290" y="240" width="420" height="70" rx="9" fill="#ffffff" stroke="#d7d3c4"/>
         <text x="500" y="266" text-anchor="middle" font-size="13.5" fill="#171613" font-weight="700">quality-loop skill（Loop Contract）</text>
         <text x="500" y="284" text-anchor="middle" font-size="10.5" fill="#6e6c62">worker → authority審査 → APPROVEまで最大3サイクル</text>
-        <text x="500" y="300" text-anchor="middle" font-size="10" fill="#9a978a">authorityはFable×2、記録済みfallback時はOpus×2（混在禁止）</text>
+        <text x="500" y="300" text-anchor="middle" font-size="10" fill="#9a978a">authorityはOpus×2、§1.11ゲートON時のみFable×2（混在禁止）</text>
 
         <line x1="380" y1="186" x2="470" y2="236" stroke="#8f8c7f" stroke-width="1.3" stroke-dasharray="3 3" marker-end="url(#sa-arrow)"/>
 
@@ -635,7 +635,7 @@ footer.sot code{ font-size:.92em; }
     <p>未知のalias名を指定された場合は、標準tierへ黙って切り替えず、必ずユーザーに確認する。alias名は「opus」「sonnet」「haiku」「fable」で始めてはならない（<code>claude-&lt;alias&gt;</code>という実IDが本物のClaudeモデル名と衝突するのを防ぐための命名規則）。</p>
     <div class="callout callout--note">
       <div class="callout__label">native Fable と外部モデルを混同しない</div>
-      <p>現在のFableはClaude Codeが直接受け取るnativeモデル名で、cloverの外部aliasではない。権威席の通常構成はFable×2。Fableの利用上限・提供停止・起動失敗を記録した場合だけ両席を明示<code>model: opus</code>でOpus×2として再実行し、混在・無言切替・下位モデルへの降格はしない。外部co-reviewerは別の第3席であり、この規約を置き換えない。<code>fable</code>で始まるclover aliasは禁止のままにして、native名との衝突を防ぐ。</p>
+      <p>現在のFableはClaude Codeが直接受け取るnativeモデル名で、cloverの外部aliasではない。権威席の通常構成はOpus×2。<code>.claude/.fable-status</code>が<code>ON</code>のとき（CLAUDE.md §1.11）だけ両席を明示<code>model: fable</code>でFable×2として動かし、混在・無言切替・下位モデルへの降格はしない。Opusの起動に失敗した場合は報告して止め、Fableへの無言切替はしない。外部co-reviewerは別の第3席であり、この規約を置き換えない。<code>fable</code>で始まるclover aliasは禁止のままにして、native名との衝突を防ぐ。</p>
     </div>
 
     <footer class="sot">

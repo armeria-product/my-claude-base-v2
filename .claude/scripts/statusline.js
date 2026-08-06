@@ -67,6 +67,19 @@ process.stdin.on("end", () => {
     /* no lock file -> no segment */
   }
 
+  // Fable ON/OFF switch indicator (CLAUDE.md §1.11): the switch is the user's file to edit, not
+  // Claude's (2026-08-06 ruling) — surface it so a leftover ON from a previous session is visible.
+  try {
+    const proj = data?.workspace?.project_dir || data?.cwd || process.cwd();
+    const fableStatus = fs
+      .readFileSync(path.join(proj, ".claude", ".fable-status"), "utf8")
+      .trim()
+      .toUpperCase();
+    if (fableStatus === "ON") parts.push(`\x1b[35mFable:ON${R}`);
+  } catch {
+    /* no switch file -> OFF -> no segment */
+  }
+
   const ctx = num(data?.context_window?.used_percentage);
   if (ctx != null) parts.push(fmt("ctx", ctx));
 

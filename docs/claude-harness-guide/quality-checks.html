@@ -497,7 +497,7 @@ footer.sot code{ font-size:.92em; }
         </thead>
         <tbody>
           <tr><td>1. Worker</td><td>成果物を作る（既存の成果物を入力にすることもある）</td></tr>
-          <tr><td>2. Authority</td><td>native Fable（既定）または記録済み障害後の明示Opusが独立コンテキストで審査。verdict は APPROVE / REQUEST_CHANGES。worker の弁明は見えない。コード成果物は使い捨ての worktree を使い、敵対的変異検証（あえて壊してみるテスト）も行う</td></tr>
+          <tr><td>2. Authority</td><td>native Opus（既定）またはCLAUDE.md §1.11のゲートがONの間の明示Fableが独立コンテキストで審査。verdict は APPROVE / REQUEST_CHANGES。worker の弁明は見えない。コード成果物は使い捨ての worktree を使い、敵対的変異検証（あえて壊してみるテスト）も行う</td></tr>
           <tr><td>3. 差し戻し</td><td>REQUEST_CHANGES なら、指摘全文＋「指摘箇所のみ修正・範囲拡大禁止」の制約とともに worker へ</td></tr>
           <tr><td>4. 再審査</td><td>CRITICAL/HIGH は必ず修正。MEDIUM/LOW は worker の裁量（却下理由を記録）。テストや判定ロジックに触れた修正は、壊す→RED確認→戻す→PASS確認という変異検証の証拠が要る。3サイクル目でも未APPROVEならユーザーへエスカレーション</td></tr>
           <tr><td>5. Verifier</td><td>APPROVE 後、証拠ベースの最終検証（テスト・diff・ログ）を実行</td></tr>
@@ -505,11 +505,11 @@ footer.sot code{ font-size:.92em; }
       </table>
     </div>
 
-    <p>計画・設計・アーキテクチャの審査（planner self-review・<code>reviewer target:architecture</code>）と、通常のコードレビュー（<code>reviewer target:code</code>）は、<strong>サイクル1に限り</strong>2席の常設審査体制で動く ―― 仕様適合レビューと「赤チーム視点」（あら探し役、verdict は出さない）は通常Fable×2。どちらかのFable起動が利用上限・提供停止・起動失敗になった事実を報告・記録した場合だけ、両席を明示Opusへ切り替えてOpus×2として再実行する。混在、無言の切替、sonnet/haiku/inherit/unknown/外部idへの降格は禁止。さらに (1) relay ゲートが ON、(2) このセッション自体が relay 経由で動いている、(3) <code>models.json</code> の先頭エイリアスが辞書に存在する、の3条件が揃うと、native Fableとは別の外部モデルが3人目の co-reviewer として加わる。サイクル2以降の再審査は同じauthority規約の単独席に戻る。どの構成でも最終的な APPROVE / REQUEST_CHANGES の判定権は常に frontier authority 側に残り、赤チーム席・外部 co-reviewer 席は判定を出さない。セキュリティレビュー（<code>reviewer target:security</code>）と verifier は対象外のまま。複数の審査結果は Fusion Composition の手順（<code>reviewer target:fusion</code> による統合 → <code>fusion-detect.mjs</code> による機械的な分岐判定 → 再照会は最大1回）で1つにまとめる。<code>/improve</code> の無人ループだけは、実行コストを一定に保つため co-review を行わず authority 単独で審査する。</p>
+    <p>計画・設計・アーキテクチャの審査（planner self-review・<code>reviewer target:architecture</code>）と、通常のコードレビュー（<code>reviewer target:code</code>）は、<strong>サイクル1に限り</strong>2席の常設審査体制で動く ―― 仕様適合レビューと「赤チーム視点」（あら探し役、verdict は出さない）は通常Opus×2。<code>.claude/.fable-status</code>が<code>ON</code>のとき（CLAUDE.md §1.11）だけ、両席を明示Fableへ切り替えてFable×2として動かす。混在、無言の切替、sonnet/haiku/inherit/unknown/外部idへの降格は禁止。さらに (1) relay ゲートが ON、(2) このセッション自体が relay 経由で動いている、(3) <code>models.json</code> の先頭エイリアスが辞書に存在する、の3条件が揃うと、native Fableとは別の外部モデルが3人目の co-reviewer として加わる。サイクル2以降の再審査は同じauthority規約の単独席に戻る。どの構成でも最終的な APPROVE / REQUEST_CHANGES の判定権は常に frontier authority 側に残り、赤チーム席・外部 co-reviewer 席は判定を出さない。セキュリティレビュー（<code>reviewer target:security</code>）と verifier は対象外のまま。複数の審査結果は Fusion Composition の手順（<code>reviewer target:fusion</code> による統合 → <code>fusion-detect.mjs</code> による機械的な分岐判定 → 再照会は最大1回）で1つにまとめる。<code>/improve</code> の無人ループだけは、実行コストを一定に保つため co-review を行わず authority 単独で審査する。</p>
 
     <div class="callout callout--important">
       <div class="callout__label">なぜ自分でレビューできないのか</div>
-      <p>Writer/Reviewer Separation の根拠はシンプル。自分が書いたものを自分で審査すると、見落としを見落としたまま承認してしまう構造的なリスクがある。だから常に<strong>別インスタンス・独立コンテキスト</strong>の authority を立てる、というのがこのハーネスの一貫した設計判断（例外は1〜2行の自明な修正のみ）。writerとauthorityがともにFable（fallback時はともにOpus）でも自己承認は不可。「別モデル」まで保証されるのは、条件を満たして外部モデルが別のco-reviewer席として同席した場合だけ。</p>
+      <p>Writer/Reviewer Separation の根拠はシンプル。自分が書いたものを自分で審査すると、見落としを見落としたまま承認してしまう構造的なリスクがある。だから常に<strong>別インスタンス・独立コンテキスト</strong>の authority を立てる、というのがこのハーネスの一貫した設計判断（例外は1〜2行の自明な修正のみ）。writerとauthorityがともにOpus（§1.11ゲートON時はともにFable）でも自己承認は不可。「別モデル」まで保証されるのは、条件を満たして外部モデルが別のco-reviewer席として同席した場合だけ。</p>
     </div>
 
     <h2>check skill — 完了報告前の単一入口</h2>
@@ -615,7 +615,7 @@ footer.sot code{ font-size:.92em; }
 
         <rect x="290" y="20" width="220" height="60" rx="9" fill="#f6e6de" stroke="#eac9ba"/>
         <text x="400" y="46" text-anchor="middle" font-size="13.5" fill="#ab4c2d" font-weight="700">Authority（frontier）</text>
-        <text x="400" y="64" text-anchor="middle" font-size="10.5" fill="#3d3b34">Fable既定 / 記録後のみOpus</text>
+        <text x="400" y="64" text-anchor="middle" font-size="10.5" fill="#3d3b34">Opus既定 / §1.11ゲートON時のみFable</text>
 
         <line x1="220" y1="50" x2="286" y2="50" stroke="#8f8c7f" stroke-width="1.5" marker-end="url(#qc-arrow)"/>
         <path d="M400,80 C400,110 250,110 130,116" fill="none" stroke="#ab4635" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#qc-arrow)"/>

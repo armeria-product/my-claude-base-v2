@@ -3,7 +3,9 @@
 //
 // Two duties:
 //   1. UNCONDITIONAL (lock state irrelevant): deny any command that writes into .claude/state —
-//      the lock file must not be writable via the shell. Two arms:
+//      the lock file must not be writable via the shell — or into .claude/.fable-status, the
+//      CLAUDE.md §1.11 switch file (user ruling 2026-08-06: the user edits it by hand; Claude
+//      never writes it, not even via the shell). Same two arms, applied to both paths:
 //        Arm A: lexical (STATE_RE against the raw command text) — cheap, can't throw, runs
 //          before extraction and still catches forms extraction can't resolve (e.g. an mv/rm
 //          whose target text mentions .claude/state). Over-detects by design: it fires on ANY
@@ -23,6 +25,9 @@
 //          false DENY is cheap (split the command) while a false ALLOW is a tamper — the opposite
 //          of Duty 2's precision requirement, so this tracking is intentionally NOT shared with
 //          extractTargets()/Duty 2.
+//      Both arms are mirrored verbatim for .claude/.fable-status (FABLE_STATUS_RE / isFableStatusFile)
+//      — same over-detection tradeoffs, same reuse of extractStateCandidates()'s liberal cd list,
+//      just a single-file target instead of a directory prefix.
 //      A command whose only redirect targets /dev/null or NUL (e.g. `cat f 2>/dev/null`) is not
 //      treated as a write for either arm — NULL_REDIR_RE neutralizes it before the write-
 //      indicator test, so a null-redirected read never extraction-costs or Arm-A-false-trips.
@@ -56,6 +61,7 @@ const { readLock, decide, denyReason } = require('./lib/scope-decision');
 const { normalizeRel } = require('./lib/scope-match');
 
 const STATE_RE = /\.claude[\\/]+state/i;
+const FABLE_STATUS_RE = /\.claude[\\/]+\.fable-status/i;
 const WRITE_INDICATOR_RE =
   /(?:^|[\s;|&(])(?:\d?>>?|&>>?)|\btee\b|\bsed\s+-i|\b(?:mv|cp|rm|dd|truncate|ln|shred)\b|Out-File|Set-Content|Add-Content|New-Item|Copy-Item|Move-Item|Remove-Item|Rename-Item|Export-Csv|Export-Clixml|Tee-Object|Start-Transcript|writeFileSync|writeFile\b|appendFile|createWriteStream|\bopen\s*\([^)]*['"](?:w|a)|git\s+(?:checkout|restore)\b/i;
 const NULL_REDIR_RE = /(?:\d?>>?|&>>?)\s*(?:\/dev\/null|NUL)\b/gi;
@@ -100,6 +106,25 @@ function isStateDir(root, t) {
   return r === '.claude/state' || r.startsWith('.claude/state/');
 }
 
+// CLAUDE.md §1.11 switch file: the user edits it by hand (2026-08-06 ruling) — Claude must never
+// write it, including via the shell. A single file, not a directory, so no startsWith prefix check.
+const FABLE_STATUS_PROTECT_REASON =
+  '[fable-status] .claude/.fable-status は CLAUDE.md §1.11 のスイッチファイルです。書き込み・移動・削除はユーザー本人が行うもので、' +
+  'Claude はシェル経由でも書き換えられません。読み取り（cat 等）は自由です。' +
+  'Fable を使いたい場合は、ユーザーに .claude/.fable-status へ ON と書き込むよう依頼してください。';
+
+function denyFableStatusProtect(root, payload, command) {
+  appendLine(root, `- ${stamp()} [${id8(payload)}] DENY ${payload.tool_name.toLowerCase()} (fable-status-protect) "${command.replace(/\s+/g, ' ').slice(0, 100)}"`);
+  deny(FABLE_STATUS_PROTECT_REASON);
+}
+
+// isFableStatusFile: is the resolved absolute path t exactly <root>/.claude/.fable-status ?
+function isFableStatusFile(root, t) {
+  const { rel, outside } = normalizeRel(root, t);
+  if (outside) return false;
+  return rel.toLowerCase() === '.claude/.fable-status';
+}
+
 function main() {
   const payload = JSON.parse(data || '{}');
   if (!['Bash', 'PowerShell'].includes(payload.tool_name)) return;
@@ -115,6 +140,10 @@ function main() {
   // --- Arm A: lexical, unconditional -----------------------------------------------------
   if (hasWrite && STATE_RE.test(command)) {
     denyStateProtect(root, payload, command);
+    return;
+  }
+  if (hasWrite && FABLE_STATUS_RE.test(command)) {
+    denyFableStatusProtect(root, payload, command);
     return;
   }
 
@@ -136,6 +165,10 @@ function main() {
   for (const t of [...targets, ...stateCandidates]) {
     if (isStateDir(root, t)) {
       denyStateProtect(root, payload, command);
+      return;
+    }
+    if (isFableStatusFile(root, t)) {
+      denyFableStatusProtect(root, payload, command);
       return;
     }
   }
