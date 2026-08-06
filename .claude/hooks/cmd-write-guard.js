@@ -6,11 +6,29 @@
 //      the lock file must not be writable via the shell — or into .claude/.fable-status, the
 //      CLAUDE.md §1.11 switch file (user ruling 2026-08-06: the user edits it by hand; Claude
 //      never writes it, not even via the shell). Same two arms, applied to both paths:
-//        Arm A: lexical (STATE_RE against the raw command text) — cheap, can't throw, runs
-//          before extraction and still catches forms extraction can't resolve (e.g. an mv/rm
-//          whose target text mentions .claude/state). Over-detects by design: it fires on ANY
-//          command whose text contains contiguous ".claude/state" plus a write-indicator
-//          character, even a `git commit -m "..."` whose message merely mentions the path, or a
+//        Arm A: lexical (STATE_RE against the raw command text, heredoc bodies stripped first via
+//          lib/parse-cmd's stripHeredocs()) — cheap, can't throw, runs before extraction and
+//          still catches forms extraction can't resolve (e.g. an mv/rm whose target text
+//          mentions .claude/state). Heredoc bodies are stripped before this match (2026-08-06)
+//          because a heredoc body is stdin data, never the command's own argument list — e.g. a
+//          `git commit -F - <<'EOF' ... EOF` whose commit-message body happens to contain both
+//          ".claude/state" and the word "mkdir"/"touch" no longer false-positives, and this loses
+//          no real detection: a write that targets .claude/state OUTSIDE the heredoc (even in a
+//          command that also contains an unrelated heredoc) still matches, because stripping only
+//          removes the body text between the delimiters, not the rest of the command.
+//          Quoted content (single/double-quoted strings) is deliberately NOT stripped, unlike
+//          heredoc bodies — a quoted string can be a real write-target argument
+//          (`touch ".claude/state/x"` must keep denying), so stripping it would open a bypass.
+//          The cost of that choice is a known, accepted false-positive class: a quoted PROGRAM
+//          body that merely mentions the protected path alongside a write word — e.g.
+//          `node -e "console.log('touch .claude/state/x')"`, where the quoted text is a payload
+//          string being printed, not a real touch — still denies. This is the same tradeoff as
+//          the general over-detection below, with the same workaround: split the state-mentioning
+//          text from the write operation into separate commands (or pipe/redirect) so this single
+//          command doesn't trip WRITE_INDICATOR_RE + STATE_RE together.
+//          Over-detects by design, beyond the two cases above: it fires on ANY command whose text
+//          contains contiguous ".claude/state" plus a write-indicator character, even a
+//          `git commit -m "..."` whose message merely mentions the path, or a
 //          `ls .claude/state/ 2>&1` diagnostic. This is an intentional throw-safe tradeoff (Arm A
 //          runs on raw text before any parsing that could fail) — split the state-mentioning text
 //          into its own command, or pipe/redirect to avoid tripping WRITE_INDICATOR_RE, to route
@@ -59,6 +77,7 @@ const { extractTargets, extractStateCandidates } = require('./lib/cmd-targets');
 const { stamp, id8, projectRoot, appendLine } = require('./lib/journal-util');
 const { readLock, decide, denyReason } = require('./lib/scope-decision');
 const { normalizeRel } = require('./lib/scope-match');
+const { stripHeredocs } = require('./lib/parse-cmd');
 
 const STATE_RE = /\.claude[\\/]+state/i;
 const FABLE_STATUS_RE = /\.claude[\\/]+\.fable-status/i;
@@ -134,15 +153,20 @@ function main() {
   const root = projectRoot(payload);
   const cwd = payload.cwd || root;
 
-  const cmdForIndicator = command.replace(NULL_REDIR_RE, ' ');
+  // Heredoc bodies can never be the command's own argument list (they're stdin/data), so
+  // stripping them before Arm A's raw-text match loses no detection power — see the header
+  // comment for the false-positive class this closes and the one it deliberately does not
+  // (quoted content stays unstripped).
+  const noHeredoc = stripHeredocs(command);
+  const cmdForIndicator = noHeredoc.replace(NULL_REDIR_RE, ' ');
   const hasWrite = WRITE_INDICATOR_RE.test(cmdForIndicator);
 
   // --- Arm A: lexical, unconditional -----------------------------------------------------
-  if (hasWrite && STATE_RE.test(command)) {
+  if (hasWrite && STATE_RE.test(noHeredoc)) {
     denyStateProtect(root, payload, command);
     return;
   }
-  if (hasWrite && FABLE_STATUS_RE.test(command)) {
+  if (hasWrite && FABLE_STATUS_RE.test(noHeredoc)) {
     denyFableStatusProtect(root, payload, command);
     return;
   }

@@ -11,22 +11,25 @@
 //   for (const { cmd, args } of segments(command)) { ... }
 //
 // Each returned object:
-//   cmd   – normalized command name (basename, lower-case, wrapper stripped; trailing .exe/.cmd
-//           is stripped EXCEPT when the name (optionally preceded by subshell-entry `(`s) is a
-//           CWD_BUILTIN — cd/pushd/popd stay suffixed, e.g. `cd.exe` normalizes to `cd.exe`, not
-//           `cd`. A consumer that detects a cd via `cmd === 'cd'` will therefore under-detect a
-//           suffixed form by design — see the CWD_BUILTINS comment below.)
+//   cmd   – normalized command name (basename, lower-case, wrapper stripped; trailing
+//           .exe/.cmd/.com/.ps1 is stripped EXCEPT when the name (optionally preceded by
+//           subshell-entry `(`s) is a CWD_BUILTIN — cd/pushd/popd stay suffixed, e.g. `cd.exe`
+//           normalizes to `cd.exe`, not `cd`. A consumer that detects a cd via `cmd === 'cd'`
+//           will therefore under-detect a suffixed form by design — see the CWD_BUILTINS
+//           comment below.)
 //   args  – token array after cmd (flags + targets, no env-vars; outer quotes stripped, content kept)
 //   raw   – trimmed segment string after heredoc-strip (quotes kept as-is)
 
 'use strict';
 
-// Strip a trailing Windows executable suffix (.exe/.cmd only — .bat is deliberately left alone,
-// ruling G1) from an already-lower-cased basename. Shared so every basename resolver in this
-// module (and, via the export, in other guards) treats `git.exe`/`rm.exe`/etc. the same as the
-// bare name. Same regex, same behavior as the inline call this replaced — see normalizeSegment().
+// Strip a trailing Windows executable suffix (.exe/.cmd/.com/.ps1 — .bat is deliberately left
+// alone, ruling G1) from an already-lower-cased basename. Shared so every basename resolver in
+// this module (and, via the export, in other guards) treats `git.exe`/`rm.exe`/`git.com`/
+// `git.ps1`/etc. the same as the bare name. `.com`/`.ps1` added in plan Batch D (rank 4) — same
+// single-strip behavior as the pre-existing `.exe`/`.cmd` pair, no repeated-stripping loop (see
+// the known-residual-gaps note below for why a loop is deliberately not added).
 function stripExeSuffix(basename) {
-  return basename.replace(/\.(exe|cmd)$/, '');
+  return basename.replace(/\.(exe|cmd|com|ps1)$/, '');
 }
 
 // Strip a leading heredoc body so its contents don't trigger false positives.
@@ -117,8 +120,9 @@ function unquoteToken(t) {
 // a later review round, in the parenthesized/subshell-entry form.
 //
 // Scope of this exception — exactly: a CWD_BUILTINS name, optionally preceded by one or more
-// literal `(` (subshell entry, e.g. `(cd.exe`, `((pushd.exe`), with a trailing `.exe`/`.cmd`
-// suffix. It is NOT a general fix for the cwd-desync class and must not be read as closing it:
+// literal `(` (subshell entry, e.g. `(cd.exe`, `((pushd.exe`), with a trailing
+// `.exe`/`.cmd`/`.com`/`.ps1` suffix. It is NOT a general fix for the cwd-desync class and must
+// not be read as closing it:
 // bare `env cd ..`/`sudo cd ..`/`command cd ..` were always tracked correctly (the wrapper-prefix
 // peel in step 2 below has always recognized the bare wrapper spellings, leaving `cd` as the
 // next token, unaffected by anything in this comment). The gap this exception does NOT close is
@@ -163,9 +167,10 @@ function normalizeSegment(seg) {
   if (idx >= tokens.length) return [];
 
   // 3. Resolve command to basename (handles /bin/rm, /usr/bin/env, etc.), then strip a
-  //    trailing Windows executable suffix so `git.exe`/`gh.cmd`/etc. match the same guards as
-  //    the bare command name. Only `.exe` and `.cmd` are stripped — `.bat` is deliberately left
-  //    alone (ruling G1) as a boundary marker for the unhandled case.
+  //    trailing Windows executable suffix so `git.exe`/`gh.cmd`/`git.com`/`git.ps1`/etc. match
+  //    the same guards as the bare command name. Only `.exe`, `.cmd`, `.com`, and `.ps1` are
+  //    stripped — `.bat` is deliberately left alone (ruling G1) as a boundary marker for the
+  //    unhandled case.
   //
   //    Exception: a name in CWD_BUILTINS (`cd`/`pushd`/`popd`) is NOT suffix-stripped, even if
   //    it resolves to e.g. `cd.exe` — see the CWD_BUILTINS comment above. The membership check
@@ -193,18 +198,26 @@ function normalizeSegment(seg) {
   //    this exception is what actually carries the parenthesized form too — see tasks/todo.md.
   //
   //    This strip is NOT an exhaustive fix for suffixed commands — only the plain
-  //    `<basename>.exe`/`<basename>.cmd` case (optionally subshell-`(`-prefixed). Known residual
-  //    gaps (see plan Table C), plus further out-of-scope gap classes surfaced in review, that
-  //    this does NOT fix:
+  //    `<basename>.exe`/`<basename>.cmd`/`<basename>.com`/`<basename>.ps1` case (optionally
+  //    subshell-`(`-prefixed; `.com`/`.ps1` added in plan Batch D, rank 4 — same L22 bypass class
+  //    as the `.exe`/`.cmd` pair, e.g. `git.com push --force origin main` previously reached
+  //    every guard unstripped). Known residual gaps (see plan Table C), plus further out-of-scope
+  //    gap classes surfaced in review, that this does NOT fix:
   //      - an unquoted path containing spaces (e.g. `C:/Program Files/Git/bin/git.exe push`
   //        resolves to `cmd === 'program'`, not `git`)
   //      - a backslash-separated path (this function only splits on `/`, not `\`)
   //      - `eval.exe "<inner>"` (the basename strips to `eval`, but extractEvalArg() below
   //        matches the raw text `/\beval\s/`, which does not match `eval.exe `, so the inner
   //        command is never parsed and the whole call is treated as an opaque command)
-  //      - other PATHEXT suffixes beyond `.exe`/`.cmd` are untouched (`.com`, `.ps1`), as is
-  //        `.bat` (deliberately, ruling G1)
-  //      - a double suffix (e.g. `git.exe.cmd`) strips only the outer `.cmd`, leaving `git.exe`
+  //      - `.bat` is deliberately left untouched (ruling G1) — not stripped, not treated as an
+  //        error, simply out of scope
+  //      - a double suffix (e.g. `git.exe.cmd`, `git.exe.ps1`) strips only the outermost suffix,
+  //        leaving `git.exe` — deliberately NOT a repeated-stripping loop: the CWD_BUILTINS
+  //        membership check above (`cwdBuiltinCandidate`) only ever single-strips before testing
+  //        membership, so a loop would let a doubly-suffixed cwd builtin (e.g. `cd.exe.cmd`)
+  //        strip all the way down to the bare `cd` and be treated as a real cwd move — reopening
+  //        the fake-cwd-move class that `lock-cd-exe-fake-cwd-move-escape` /
+  //        `state-cd-exe-fake-cwd-move-defeat` exist to pin. Deferred per CLAUDE.md §1.7.
   //    None of these are fixed here; they are pre-existing and out of this change's scope —
   //    named only so this comment does not read as an exhaustive account of what is closed.
   const rawCmd = tokens[idx];

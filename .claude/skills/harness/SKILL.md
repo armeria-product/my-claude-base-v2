@@ -36,7 +36,8 @@ Autonomous, convergent bug fixing that touches the user **at most once**. Reprod
    - *Cause unclear* → **fan out hypotheses in parallel** (one debugger per hypothesis, cap 3 — a single multi-dispatch): each runs its single most *discriminating* probe and reports eliminate/survive with an evidence chain (debugger Active-Disconfirmation format). Collect → eliminate the falsified: **exactly one survives** → it proceeds to the fix; **≥2 survive** → one more discriminating round on the survivors; **0 survive** (the cause was outside the set) → regenerate hypotheses or hand to the debugger's heavy pass. (Tie/empty resolution is the debugger's Active-Disconfirmation loop — and this parallel entry means you don't burn 3 serial cycles first.)
 3. **Fix → verify loop (internal, max 3 cycles)** → debugger/executor writes the minimal fix → **verifier** (standard) runs evidence-based PASS/FAIL. On FAIL, findings go **back to the debugger**, not the user; repeat. Follows the quality-loop Loop Contract + §1.5; the user is not consulted between cycles.
 4. **Regression test** → **executor** (standard) adds a test that reproduces the **confirmed root cause** — written as soon as the cause is pinned, and moved with it if the cycle-3 angle change relocates the cause, so "green" is provable against the real cause (not a stale hypothesis).
-5. **Converge or escalate once** → never repeat a failing approach: **by the 3rd cycle switch angle** (re-fan hypotheses with what's ruled out, or the debugger's heavy pass — §1.5), so the 3-cycle budget is never spent hammering one stuck approach. If the 3rd cycle still fails, surface to the user **exactly once** via a single batched `AskUserQuestion` with a structured status: `Bug / Reproduction / Tried / Ruled-out / Blocker / Decision-needed` (plain language, Language §). (3-cycle cap = quality-loop Loop Contract + §1.5; the angle change is the §1.5 replan *at* the boundary, not a 4th attempt.)
+5. **reviewer** target: code (heavy) → code review of the fix + regression test before closing the flow (Writer/Reviewer separation — the fix→verify loop's verifier gate is empirical, not an independent authority judgment)
+6. **Converge or escalate once** → never repeat a failing approach: **by the 3rd cycle switch angle** (re-fan hypotheses with what's ruled out, or the debugger's heavy pass — §1.5), so the 3-cycle budget is never spent hammering one stuck approach. If the 3rd cycle still fails, surface to the user **exactly once** via a single batched `AskUserQuestion` with a structured status: `Bug / Reproduction / Tried / Ruled-out / Blocker / Decision-needed` (plain language, Language §). (3-cycle cap = quality-loop Loop Contract + §1.5; the angle change is the §1.5 replan *at* the boundary, not a 4th attempt.)
 
 ### refactor
 Safe code restructuring:
@@ -70,8 +71,11 @@ See `.claude/skills/relay/SKILL.md` for the marker syntax and alias dictionary; 
 
 ## Conductor Role
 - The conductor (main session) performs **only delegation, coordination, and judgment**
-- Reading/writing code, implementation, and debugging are **always done via subagents**
-- The conductor is **forbidden** from operating on code directly with Read / Edit / Write
+- Writing code, implementation, and debugging are **always done via subagents**
+- The conductor is **forbidden** from operating on code directly with Edit / Write; Read is
+  permitted only for the conductor's own CLAUDE.md §1.6 critical-reception duty (verifying a
+  critique's cited claim against the actual file) — investigation/exploration still routes to
+  subagents (CLAUDE.md §2)
 - Conductor responsibilities: task breakdown, launching subagents, aggregating results, reporting to the user
 
 ## Handoff Protocol
