@@ -119,11 +119,15 @@ function unquoteToken(t) {
 // Scope of this exception — exactly: a CWD_BUILTINS name, optionally preceded by one or more
 // literal `(` (subshell entry, e.g. `(cd.exe`, `((pushd.exe`), with a trailing `.exe`/`.cmd`
 // suffix. It is NOT a general fix for the cwd-desync class and must not be read as closing it:
-// `env cd ..`, `sudo cd ..`, and `command cd ..` hit the same no-op-treated-as-a-move bug today
-// through a different, still-open path (the wrapper-prefix peel in step 2 below compares raw
-// tokens and does not recognize `.exe`-suffixed wrappers, so it never reaches this exception at
-// all) — see tasks/todo.md. `popd` is included even though no consumer currently tracks it, as
-// the same child-process reasoning applies.
+// bare `env cd ..`/`sudo cd ..`/`command cd ..` were always tracked correctly (the wrapper-prefix
+// peel in step 2 below has always recognized the bare wrapper spellings, leaving `cd` as the
+// next token, unaffected by anything in this comment). The gap this exception does NOT close is
+// the wrapper-suffixed form — `sudo.exe cd ..`/`env.exe cd ..`/`command.exe cd ..` — which
+// previously fell through the peel in step 2 as an unrecognized-wrapper opaque command entirely
+// (the L20 sudo.exe/env.exe bug — see plan Batch C), not as a no-op-treated-as-a-move case; step
+// 2's suffix-aware compare (added in Batch C) now peels these too, so once peeled the `cd` token
+// reaches this exception exactly like the bare form. `popd` is included even though no consumer
+// currently tracks it, as the same child-process reasoning applies.
 const CWD_BUILTINS = new Set(['cd', 'pushd', 'popd']);
 
 /**
@@ -139,10 +143,19 @@ function normalizeSegment(seg) {
   // 1. Skip leading env-var assignments  (KEY=value KEY2=value2 ...)
   while (idx < tokens.length && /^\w+=/.test(tokens[idx])) idx++;
 
-  // 2. Strip wrapper prefixes: sudo, command, env, backslash
+  // 2. Strip wrapper prefixes: sudo, command, env, backslash. Compared after suffix-stripping
+  //    (reusing the same stripExeSuffix() used for the final cmd basename below) so
+  //    `sudo.exe`/`env.exe`/`command.exe` peel exactly like their bare forms — previously only
+  //    the bare spellings were recognized here, so a suffixed wrapper token fell through to step
+  //    3 unstripped-as-a-wrapper and became the opaque `cmd` itself (e.g. `sudo.exe git push
+  //    --force origin main` parsed as cmd:'sudo', args:['git','push',...] — invisible to every
+  //    guard that dispatches on `cmd === 'git'`/`cmd === 'gh'`/etc., and to cmd-targets.js's
+  //    Duty 2 write-target extraction). See plan Batch C.
   while (idx < tokens.length) {
     const t = tokens[idx];
-    if (t === 'sudo' || t === 'command' || t === 'env') { idx++; continue; }
+    const stripped = stripExeSuffix(t);
+    if (t === 'sudo' || t === 'command' || t === 'env' ||
+        stripped === 'sudo' || stripped === 'command' || stripped === 'env') { idx++; continue; }
     if (t === '\\') { idx++; continue; }
     break;
   }
@@ -189,11 +202,6 @@ function normalizeSegment(seg) {
   //      - `eval.exe "<inner>"` (the basename strips to `eval`, but extractEvalArg() below
   //        matches the raw text `/\beval\s/`, which does not match `eval.exe `, so the inner
   //        command is never parsed and the whole call is treated as an opaque command)
-  //      - wrapper-prefix peeling (step 2 above) compares raw tokens (`sudo`, `command`, `env`),
-  //        so `sudo.exe`/`env.exe` are not recognized as wrappers and stay opaque — and, for the
-  //        CWD_BUILTINS exception specifically, `env cd ..`/`sudo cd ..`/`command cd ..` (no
-  //        `.exe` at all) hit the same no-op-treated-as-a-move bug via this same peel step,
-  //        before this exception is ever reached — see the CWD_BUILTINS comment above
   //      - other PATHEXT suffixes beyond `.exe`/`.cmd` are untouched (`.com`, `.ps1`), as is
   //        `.bat` (deliberately, ruling G1)
   //      - a double suffix (e.g. `git.exe.cmd`) strips only the outer `.cmd`, leaving `git.exe`
