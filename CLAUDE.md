@@ -108,7 +108,7 @@ Fable usage spiked cost in a single day (2026-08-06), so the authority frontmatt
 - **5.1 Token Efficiency**: Tool Search for on-demand MCP schemas; give subagents only the tools they need.
 - **5.2 Context Management**: manual /compact at ~50% (after /save-session, §1.4); keep subagent tasks under 50% of context.
 - **5.3 Resolution Order** (same intent matches several): Skill (inline, lightest) → Agent (independent context) → Command (workflow, not auto-triggered).
-- **5.4 Workflow Budget Gate**: never launch a Workflow (multi-agent orchestration) without a `budget:+Nk` declaration — `workflow-budget-guard.js` blocks otherwise. Copy the user's "+Nk" directive, or ask once. When the budget is not prompt-derived, bake hard bounds (agent count, loop caps) into the script and give mechanical fan-out stages explicit low model/effort.
+- **5.4 Workflow Cost Discipline**: a Workflow (multi-agent orchestration) script should bake hard bounds (agent count, loop caps) into itself, and give mechanical fan-out stages explicit low model/effort.
 
 ---
 

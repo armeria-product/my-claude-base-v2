@@ -29,7 +29,7 @@
 // Input: Claude Code hook event JSON on stdin
 // Output: matching command -> message on stderr + exit 2 (block); otherwise exit 0
 
-const { segments } = require('./lib/parse-cmd');
+const { segments, stripExeSuffix } = require('./lib/parse-cmd');
 
 // Directories that can be safely regenerated after deletion (matched by the trailing path element)
 const SAFE_LEAF =
@@ -61,7 +61,7 @@ const ENV_VALUE_FLAGS = new Set(['-u', '--unset', '-C', '--chdir', '-S', '--spli
 // if index is out of range.
 function resolveWrapped(args, i) {
   if (i >= args.length) return null;
-  const invoked = (args[i] || '').split('/').pop().toLowerCase();
+  const invoked = stripExeSuffix((args[i] || '').split('/').pop().toLowerCase());
   return { invoked, rest: args.slice(i + 1) };
 }
 
@@ -133,7 +133,7 @@ function checkCommand(command) {
       // --- find ... -exec/-execdir/-ok rm|shred ... {} ; / + ---------------
       for (let i = 0; i < args.length; i++) {
         if (args[i] === '-exec' || args[i] === '-execdir' || args[i] === '-ok') {
-          const invoked = (args[i + 1] || '').split('/').pop().toLowerCase();
+          const invoked = stripExeSuffix((args[i + 1] || '').split('/').pop().toLowerCase());
           if (DESTRUCTIVE_CMDS.has(invoked)) {
             return `BLOCKED: "find ... ${args[i]} ${invoked} ..." is forbidden. File deletion requires user confirmation (CLAUDE.md §1.5).`;
           }
@@ -159,7 +159,7 @@ function checkCommand(command) {
       while (i < args.length && args[i].startsWith('-')) {
         i += XARGS_VALUE_FLAGS.has(args[i]) ? 2 : 1;
       }
-      const invoked = (args[i] || '').split('/').pop().toLowerCase();
+      const invoked = stripExeSuffix((args[i] || '').split('/').pop().toLowerCase());
       if (DESTRUCTIVE_CMDS.has(invoked)) {
         const invokedArgs = args.slice(i + 1);
         const invokedFlags = invokedArgs.filter((t) => t.startsWith('-'));

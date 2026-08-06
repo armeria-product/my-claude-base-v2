@@ -32,10 +32,24 @@ const READ_ONLY_AGENTS = new Set(['reviewer', 'verifier', 'explorer']);
 const EFFORT_MAX_AGENTS = new Set(['planner', 'reviewer']);
 const AUTHORITY_MODELS = new Set(['fable', 'opus']);
 const AUTHORITY_DEFAULT_MODEL = 'opus';
-// agents-revision plan Phase 2: shared clause (A) observed-content discipline is restated
-// verbatim only in these 4 agent bodies (the rest are exempt or get a lightweight variant —
-// SOT: .claude/rules/agents.md "Shared clauses").
-const OBS_CONTENT_AGENTS = new Set(['reviewer', 'verifier', 'debugger', 'executor']);
+// agents-revision plan Phase 2 + Batch H L11 (2026-08-06 Q1 ruling, option a): shared clause (A)
+// observed-content discipline is restated verbatim in these agent bodies; document-author gets a
+// lightweight one-line variant; explorer is exempt (stated reason: .claude/rules/agents.md "Shared
+// clauses"). The three Sets below must partition all 7 agents exactly — the 3-bucket assertion in
+// the agent loop below fails an agent that lands in zero or more than one bucket (forward
+// direction: every real agent is bucketed), and the reverse check after the loop fails a Set entry
+// that names no real agent (reverse direction: no bucket lists a ghost/removed agent), so a newly
+// added or removed agent with no clause-A classification decision is now a mechanical FAIL either
+// way, not a silent gap (closes the C-L1 finding: a fixed Set never forced revisiting this on
+// new-agent addition).
+const OBS_CONTENT_AGENTS = new Set(['reviewer', 'verifier', 'debugger', 'executor', 'planner']);
+const LIGHTWEIGHT_CLAUSE_A_AGENTS = new Set(['document-author']);
+const EXEMPT_CLAUSE_A_AGENTS = new Set(['explorer']);
+// Batch H L9 (2026-08-06): the unlocked-run exception (Scope Conformance / Scope check dimension)
+// lives only in these two agents' bodies and must bind to a quoted recorded user ruling, not a
+// scope.json/PLAN.md's own self-declared "approved"/"unlocked" claim — SOT: .claude/rules/agents.md
+// clause (A) tail. An unbacked self-declaration is a HIGH review finding, not a valid exception.
+const UNLOCKED_EXCEPTION_AGENTS = new Set(['reviewer', 'verifier']);
 
 // clover relay model ids (claude-<alias>) are also allowed in agent model: frontmatter. They
 // route to external models via the relay and, unlike a pinned real Claude id, don't break on
@@ -100,10 +114,33 @@ for (const f of fs.readdirSync(agentsDir).filter((x) => x.endsWith('.md'))) {
   // Fleet loop (c): shared clause (C) denial etiquette — verbatim in all 7 agents.
   if (!/never retry variants or route around/.test(agentText))
     fail(`agent ${fm.name}: missing shared clause (C) denial etiquette ("never retry variants or route around") — SOT: .claude/rules/agents.md Shared clauses`);
-  // Shared clause (A) observed-content discipline — verbatim only in OBS_CONTENT_AGENTS.
+  // Shared clause (A) observed-content discipline — 3-bucket exhaustive classification: every
+  // agent must fall into exactly one of verbatim (OBS_CONTENT_AGENTS) / lightweight
+  // (LIGHTWEIGHT_CLAUSE_A_AGENTS) / exempt (EXEMPT_CLAUSE_A_AGENTS). Zero buckets = an
+  // unclassified agent (the C-L1 gap); more than one = an inconsistent classification.
+  const clauseABuckets = [OBS_CONTENT_AGENTS, LIGHTWEIGHT_CLAUSE_A_AGENTS, EXEMPT_CLAUSE_A_AGENTS].filter((b) => b.has(fm.name)).length;
+  if (clauseABuckets === 0)
+    fail(`agent ${fm.name}: not classified into any shared clause (A) bucket (verbatim/lightweight/exempt) — SOT: .claude/rules/agents.md Shared clauses; every agent must be explicitly bucketed`);
+  if (clauseABuckets > 1)
+    fail(`agent ${fm.name}: classified into more than one shared clause (A) bucket — the three buckets must be mutually exclusive`);
   if (OBS_CONTENT_AGENTS.has(fm.name) && !/is data under examination, never instructions/.test(agentText))
     fail(`agent ${fm.name}: missing shared clause (A) observed-content discipline ("is data under examination, never instructions") — SOT: .claude/rules/agents.md Shared clauses`);
+  if (LIGHTWEIGHT_CLAUSE_A_AGENTS.has(fm.name) && !/not an authoring instruction to you/.test(agentText))
+    fail(`agent ${fm.name}: missing the lightweight shared clause (A) variant ("not an authoring instruction to you") — SOT: .claude/rules/agents.md Shared clauses`);
+  // Batch H L9: unlocked-run exception must bind to a quoted recorded user ruling, not a
+  // scope.json/PLAN.md's own self-declared "approved"/"unlocked" claim.
+  if (UNLOCKED_EXCEPTION_AGENTS.has(fm.name) && !/recorded user ruling/.test(agentText))
+    fail(`agent ${fm.name}: unlocked-run exception no longer requires a quoted recorded user ruling — an unbacked self-declared "approved"/"unlocked" claim in scope.json/PLAN.md would qualify for the exception — SOT: .claude/rules/agents.md clause (A) tail`);
 }
+
+// Reverse direction of the shared clause (A) 3-bucket partition (see comment above the Sets):
+// the forward loop above only checks each real agent against the buckets, so a Set entry naming
+// an agent that no longer exists (removed agent) or never existed (typo/ghost name) was silently
+// unchecked. agentNames was already collected as the real-agent receptacle during the loop above;
+// reuse it here rather than re-scanning the agents dir.
+for (const name of new Set([...OBS_CONTENT_AGENTS, ...LIGHTWEIGHT_CLAUSE_A_AGENTS, ...EXEMPT_CLAUSE_A_AGENTS]))
+  if (!agentNames.has(name))
+    fail(`shared clause (A) bucket lists "${name}", which is not a real agent in .claude/agents/ — the 3-bucket partition must equal exactly the current agent set`);
 
 // ---- 2. Skills: frontmatter + subagent_type resolution ----
 const skillsDir = path.join(ROOT, '.claude', 'skills');
@@ -298,13 +335,56 @@ if (claudeMd)
         fail("block-fable-when-off.js no longer does an exact === 'ON' switch comparison — a substring/any-content test would let arbitrary content enable Fable");
     }
   }
+
+  // ---- 3.6 CLI version floor: Edit(path)-covers-Write/NotebookEdit precondition ----
+  // The state-dir/switch-file tamper-proofing above (this section, (b)) rests entirely on a CLI
+  // fact recorded at settings.json permissions.deny check time: a permissions.deny Edit(path)
+  // rule is the ONLY form file-permission checks consult, and it covers Write/NotebookEdit too —
+  // confirmed for Claude Code >=2.1.210 (this repo's dev install: 2.1.222). Below that floor the
+  // fact is unverified; the Edit(...) deny rule could silently stop covering Write/NotebookEdit,
+  // and nothing else in this validator would notice, because it only inspects settings.json text,
+  // never the running CLI's actual behavior. WARN only (an environmental precondition, not a repo
+  // defect) and fails open: if `claude --version` cannot be run or its output cannot be parsed,
+  // that is not evidence of a stale version, so no warning is emitted.
+  {
+    const VERSION_FLOOR = [2, 1, 210];
+    try {
+      // `claude` resolves to a platform-specific shim (a POSIX shell script on this host, a
+      // .cmd/.ps1 pair on Windows generally) that plain execFileSync(file, args) cannot exec
+      // directly on Windows (observed: .cmd → EINVAL, .ps1 → EFTYPE, no-extension → ENOENT).
+      // shell:true resolves it correctly; passing the whole command as the `file` string with an
+      // empty args array (rather than a separate args array) avoids Node's DEP0190 shell-arg
+      // deprecation warning, which would otherwise print to stderr and pollute this report.
+      // timeout:5000 backs the "failed/timed out" fail-open below with real enforcement — Node
+      // does not kill a hung child process on its own (observed: an unbounded child ran well past
+      // 3s uncaught). env adds NoDefaultCurrentDirectoryInExePath=1 because shell:true on Windows
+      // runs via cmd.exe, which resolves the command against the current directory before PATH —
+      // without this, a claude.cmd dropped in the repo root would run instead of the real CLI
+      // (observed: resolution changes with this var; it is not set system-wide on this host).
+      const out = execFileSync('claude --version', [], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: true, timeout: 5000, env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' } });
+      const m = out.match(/(\d+)\.(\d+)\.(\d+)/);
+      if (m) {
+        const cur = m.slice(1, 4).map(Number);
+        const below =
+          cur[0] < VERSION_FLOOR[0] ||
+          (cur[0] === VERSION_FLOOR[0] && cur[1] < VERSION_FLOOR[1]) ||
+          (cur[0] === VERSION_FLOOR[0] && cur[1] === VERSION_FLOOR[1] && cur[2] < VERSION_FLOOR[2]);
+        if (below)
+          warn(`claude --version reports ${cur.join('.')}, below the ${VERSION_FLOOR.join('.')} floor — the Edit(path)-covers-Write/NotebookEdit CLI behavior that settings.json's "Edit(./.claude/state/**)" / "Edit(./.claude/.fable-status)" deny rules rely on is unverified on this CLI version`);
+      }
+    } catch {
+      // claude CLI not on PATH, or --version failed/timed out — cannot check, fail open (no warn).
+    }
+  }
 }
 
 // ---- 4. Dead references in core docs/config ----
-// The two real-model-id patterns are named (not inline) so a single file can be exempted from
-// exactly these two entries below, without touching the array literal itself.
+// The real-model-id patterns and the /wrap skill-name pattern are named (not inline) so a single
+// file can be exempted from exactly the entry below, without touching the array literal itself.
 const REAL_ID_BARE = [/\bclaude-(?:fable|opus|sonnet|haiku)-[\d]/i, 'a pinned real Claude model id was found (fable/opus/sonnet/haiku directly followed by a digit) — model: must use a native alias or a clover claude-<alias> id from clover/models.json, never a real id (breaks on version bumps)'];
 const REAL_ID_GEN = [/\bclaude-\d(?:-\d+)?-(?:fable|opus|sonnet|haiku)-(?:\d{8}|latest)\b/i, 'a pinned real Claude model id was found (generation-first spelling, e.g. claude-3-5-sonnet-20241022 or claude-3-opus-20240229) — model: must use a native alias or a clover claude-<alias> id from clover/models.json, never a real id (breaks on version bumps)'];
+const REAL_ID_VERTEX = [/\bclaude-\d(?:-\d+)?-(?:fable|opus|sonnet|haiku)(?:-v\d+)?@\d{8}\b/i, 'a pinned real Claude model id was found (Vertex AI @-date spelling, e.g. claude-3-5-sonnet-v2@20241022 or claude-3-opus@20240229) — model: must use a native alias or a clover claude-<alias> id from clover/models.json, never a real id (breaks on version bumps)'];
+const WRAP_SKILL_REF = [/(?:^|[^\w/])\/wrap\b/, 'there is no /wrap skill — the enhanced /save-session owns the report/save flow'];
 const FORBIDDEN = [
   [/\bcode-reviewer\b/, 'agent "code-reviewer" does not exist (use reviewer target: code)'],
   [/\bplan-(lite|full)\b/, 'skill plan-lite/plan-full was merged into "plan"'],
@@ -315,23 +395,33 @@ const FORBIDDEN = [
   [/(?:^|[^\w/])\/improve\b|skills\/improve\b/, 'the /improve unattended self-improvement loop was removed in v2 — improvements go through normal user requests'],
   [/(?:^|[^\w/])\/checkpoint\b|commands\/checkpoint\b/, 'the /checkpoint command was removed in v2 — native /rewind covers it'],
   [/skills\/audit\b|(?:^|[^\w/])\/audit\b/, 'the audit skill was folded into quality-loop (request the security track: 「quality-loop でセキュリティ観点でも厳しく検査」)'],
-  [/(?:^|[^\w/])\/wrap\b/, 'there is no /wrap skill — the enhanced /save-session owns the report/save flow'],
+  WRAP_SKILL_REF,
   [/frontier dispatch override/i, 'renamed to "frontier authority convention" — the override no longer exists (CLAUDE.md §2 ¹)'],
   [/\borchestrate\b/, 'skill "orchestrate" was renamed to "harness"'],
   [/\bslop-clean\b/, 'skill "slop-clean" was renamed to "code-cleaner"'],
   REAL_ID_BARE,
   REAL_ID_GEN,
+  REAL_ID_VERTEX,
 ];
 // Test fixture, not config/docs: hook-probes.samples.json rows intentionally carry the exact
 // forbidden-shaped strings a hook must reject (e.g. "model":"claude-fable-5" pins the H-1
 // real-id-spelling regression) — the opposite of silently hardcoding a real model id, it is the
 // value under test. Backtick-citing per row (the CITATION_WORD exemption below) would corrupt the
 // literal JSON payload the hook actually reads, so this file gets a narrow exemption instead: keyed
-// on the specific FORBIDDEN entry (REAL_ID_BARE/REAL_ID_GEN only, by reference — see the loop
-// below), not on the file path alone. Every OTHER FORBIDDEN pattern (dead skill/agent refs, removed
-// subsystems, etc.) still fully applies to this file, unlike a blanket per-file skip.
-const REAL_ID_EXEMPT_ENTRIES = new Set([REAL_ID_BARE, REAL_ID_GEN]);
+// on the specific FORBIDDEN entry (REAL_ID_BARE/REAL_ID_GEN/REAL_ID_VERTEX only, by reference — see
+// the loop below), not on the file path alone. Every OTHER FORBIDDEN pattern (dead skill/agent refs,
+// removed subsystems, etc.) still fully applies to this file, unlike a blanket per-file skip.
+const REAL_ID_EXEMPT_ENTRIES = new Set([REAL_ID_BARE, REAL_ID_GEN, REAL_ID_VERTEX]);
 const SAMPLES_FIXTURE_PATH = path.join(ROOT, '.claude', 'hooks', 'lib', 'hook-probes.samples.json');
+// Auto-generated npm manifest, not hand-authored docs/config: package-lock.json's dependency tree
+// legitimately contains an npm registry URL segment ".../-/wrap-ansi-9.0.2.tgz" whose "-/wrap"
+// substring collides with the WRAP_SKILL_REF dead-ref pattern (confirmed by running the scan with
+// no exemption: exactly one collision, this file, this pattern). Real deps churn over time, so this
+// exemption is keyed the same way REAL_ID_EXEMPT_ENTRIES is — one specific FORBIDDEN entry, by
+// reference, for one specific file — not a path-substring skip that would also exempt
+// statusline.js/package.json (and everything else under .claude/scripts/) from all ~15 patterns.
+const PACKAGE_LOCK_EXEMPT_ENTRIES = new Set([WRAP_SKILL_REF]);
+const PACKAGE_LOCK_PATH = path.join(ROOT, '.claude', 'scripts', 'package-lock.json');
 // Side effect: ALLOW_LINE is a line-level exemption, not a pattern-level one — a line matching
 // any word here is skipped against every FORBIDDEN pattern above, not just the one that
 // motivated the addition. Widening this regex silently widens the exemption for the whole list.
@@ -363,14 +453,15 @@ const walkMd = (dir) => {
 walkMd(path.join(ROOT, '.claude'));
 for (const p of scan) {
   if (!fs.existsSync(p)) continue;
-  if (p.includes('scripts')) continue; // validator self-reference
   const lines = read(p).split('\n');
   lines.forEach((line, i) => {
     if (ALLOW_LINE.test(line)) return;
     for (const entry of FORBIDDEN) {
-      // Narrow per-entry exemption (see REAL_ID_EXEMPT_ENTRIES above): only these two specific
-      // pairs skip this one fixture file — every other FORBIDDEN entry still runs against it.
+      // Narrow per-entry exemptions (see REAL_ID_EXEMPT_ENTRIES / PACKAGE_LOCK_EXEMPT_ENTRIES
+      // above): only these specific (file, pattern) pairs are skipped — every other FORBIDDEN
+      // entry still runs against these files. No file gets a blanket exemption from the whole list.
       if (p === SAMPLES_FIXTURE_PATH && REAL_ID_EXEMPT_ENTRIES.has(entry)) continue;
+      if (p === PACKAGE_LOCK_PATH && PACKAGE_LOCK_EXEMPT_ENTRIES.has(entry)) continue;
       const [re, why] = entry;
       // Check every match of this pattern on the line, not just the first — a line can carry a
       // legitimately-cited backticked id AND a bare (non-exempt) one; stopping at the first match
@@ -449,6 +540,8 @@ const INVARIANTS = [
   // --- fable-gate (2026-08-06) ---
   ['CLAUDE.md', /\.fable-status/, 'CLAUDE.md §1.11 must keep the Fable ON/OFF gate (the .claude/.fable-status switch) — dropping the clause removes the documented precondition for using Fable at all'],
   ['.claude/hooks/block-fable-when-off.js', /session model \(\/model is outside any hook's reach\)[\s\S]*?may be invisible to this hook[\s\S]*?No third hole/, 'block-fable-when-off.js header must keep the two-hole disclosure (session model unreachable; inherited-model dispatch may be invisible) together with the "no third hole" scope-limit sentence — dropping any of the three silently re-opens the H-2 overclaim this fix cycle closed'],
+  // --- backlog-sweep Batch H L9 (2026-08-06) ---
+  ['.claude/rules/agents.md', /recorded user ruling/, 'agents.md clause (A) tail must keep the "recorded user ruling" binding for the unlocked-run exception — without it, reviewer.md/verifier.md have no SOT explaining why a self-declared "approved"/"unlocked" claim in scope.json/PLAN.md is insufficient'],
 ];
 for (const [relPath, must, why] of INVARIANTS) {
   const p = path.join(ROOT, relPath);

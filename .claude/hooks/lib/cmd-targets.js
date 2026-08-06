@@ -50,6 +50,15 @@ function extractBash(command, startCwd, opts = {}) {
       }
     }
     const plain = args.filter((a) => !a.startsWith('-') && !REDIR_FULL.test(a) && !REDIR_ATTACHED.test(a));
+    // Both the liberal-mode block below and the `case 'cd':` in the switch further down compare
+    // `cmd`/`bare` against the literal strings 'cd' and 'pushd'. That literal comparison only
+    // matches the unsuffixed spelling by construction of lib/parse-cmd.js's CWD_BUILTINS
+    // exception: cd/pushd/popd are deliberately NOT suffix-stripped there (`cd.exe` normalizes to
+    // `cd.exe`, not `cd`), specifically so a real `cd.exe` invocation — which as a child process
+    // can never move the parent shell's cwd anyway — is never mistaken here for a real cwd move.
+    // So `cd.exe`/`pushd.exe` correctly fall through both cd-tracking blocks in this file as a
+    // no-op, but that correctness is inherited from parse-cmd.js and invisible from this file
+    // alone — see the CWD_BUILTINS comment in lib/parse-cmd.js for the full rationale.
     // Liberal-only: `pushd <dest>` and a subshell-entry `cd <dest>` also move `cur`, with no
     // subshell-exit scoping. Bare `cd` (no parens at all) is handled below, unconditionally, for
     // both modes — this block only covers the additional liberal forms: the tokenizer glues a
@@ -157,12 +166,12 @@ function extractPs(command, startCwd) {
       unresolved = true;
       continue;
     }
-    targets.push(path.resolve(startCwd, t));
+    targets.push(path.win32.resolve(startCwd, t));
   }
   PS_IO_RE.lastIndex = 0;
   while ((m = PS_IO_RE.exec(command))) {
     if (m[3]) unresolved = true;
-    else targets.push(path.resolve(startCwd, m[1] || m[2]));
+    else targets.push(path.win32.resolve(startCwd, m[1] || m[2]));
   }
   return { targets, unresolved };
 }

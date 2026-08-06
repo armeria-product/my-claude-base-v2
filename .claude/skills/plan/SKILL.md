@@ -119,9 +119,9 @@ A structured flow with a GO/NO-GO gate between each phase. Each phase's delivera
 Launch research agents in parallel:
 
 1. **Requirements analysis** (planner) — *skip if a Light Path requirements file exists*: break the feature down into concrete requirements, surface assumptions and ambiguities, enumerate acceptance criteria
-2. **Codebase impact analysis** (explorer): affected files / modules, existing patterns, related tests
+2. **Codebase impact survey** (explorer): affected files / modules, existing patterns, related tests
 3. **External research** (when needed): the conductor uses the built-in WebSearch/WebFetch (or general-purpose) to investigate API/library specs, known issues, and best practices
-4. **Domain research** (conductor, product-shaped only): when the work is product-shaped (a new product, or a large user-facing feature end users would compare against existing products — internal refactor / infra / harness work does not qualify), research 3-5 comparable products' table-stakes features, common failure modes, and review complaints via WebSearch/WebFetch. If the product has a UI, view 2-3 representative screens via `curl` → `tmp/` → Read (fail-open). Keep it to a handful of searches — a baseline scan, not a market report. A full market-research report is only for explicit user request, via the deep-research flow (if available in the session), with a §5.4 budget declaration. If the product-shaped call is borderline, confirm with one question. Record the product-shaped determination itself in research.md as yes/no plus a one-line reason (same declaration form as Step 0's complexity-gate declaration), even when the answer is no and no domain research follows.
+4. **Domain research** (conductor, product-shaped only): when the work is product-shaped (a new product, or a large user-facing feature end users would compare against existing products — internal refactor / infra / harness work does not qualify), research 3-5 comparable products' table-stakes features, common failure modes, and review complaints via WebSearch/WebFetch. If the product has a UI, view 2-3 representative screens via `curl` → `tmp/` → Read (fail-open). Keep it to a handful of searches — a baseline scan, not a market report. A full market-research report is only for explicit user request, via the deep-research flow (if available in the session). If the product-shaped call is borderline, confirm with one question. Record the product-shaped determination itself in research.md as yes/no plus a one-line reason (same declaration form as Step 0's complexity-gate declaration), even when the answer is no and no domain research follows.
 
 Output `{base}/research.md`:
 ```markdown
@@ -169,6 +169,8 @@ Output `{base}/PLAN.md`:
 ## Plan: {feature}
 ### Approach
 [adopted approach]
+### Assumptions (premises that couldn't be confirmed)
+- [assumption 1]
 ### Rejected Alternatives
 - [alternative]: [reason for rejection]
 ### Phases

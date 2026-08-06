@@ -468,7 +468,7 @@ body{
     <div class="doc-meta">
       <span class="meta-chip"><b>対象</b> .claude/ 一式・CLAUDE.md</span>
       <span class="meta-chip"><b>ページ構成</b> 本ページ＋5ページ</span>
-      <span class="meta-chip"><b>更新</b> 2026-07-30</span>
+      <span class="meta-chip"><b>更新</b> 2026-08-06</span>
       <span class="badge badge--done">最新化済み</span>
     </div>
 
@@ -498,7 +498,7 @@ body{
       </div>
       <div class="board__card">
         <div class="board__id">スキルとエージェント</div>
-        <div class="board__title">17個のスキルと7個のエージェントを一つずつ解説（何をする・いつ発動する・誰が呼ぶ）</div>
+        <div class="board__title">15個のスキルと7個のエージェントを一つずつ解説（何をする・いつ発動する・誰が呼ぶ）</div>
         <div class="board__meta"><span class="badge badge--todo">3番目</span></div>
         <div class="board__files"><a href="skills-agents.html">skills-agents.html →</a></div>
       </div>
@@ -526,7 +526,7 @@ body{
     </ol>
 
     <h2>.claude/ ディレクトリ構成</h2>
-    <p>ガイド作成時点（2026-07-30）で実在するファイルに基づく構成。件数は目安ではなく実カウント（<code>scripts/</code>・<code>clover/</code>のみ、テストファイルや設定ファイルを省いた抜粋・主要ファイルのみのため件数は付けていない）。</p>
+    <p>本ページ最終確認時点（2026-08-06）で実在するファイルに基づく構成。件数は目安ではなく実カウント（<code>scripts/</code>・<code>clover/</code>のみ、テストファイルや設定ファイルを省いた抜粋・主要ファイルのみのため件数は付けていない）。</p>
     <pre class="tree">.claude/
 ├── agents/            実行役エージェント定義（7）
 │   ├── planner.md          heavy  — 計画立案・自己レビュー
@@ -536,53 +536,60 @@ body{
 │   ├── verifier.md         standard — 証拠に基づく検証
 │   ├── document-author.md  standard — 資料(HTML)作成
 │   └── explorer.md         light  — 探索・下調べ
-├── skills/            ワークフロー定義（17）
+├── skills/            ワークフロー定義（15）
 │   ├── plan/ harness/ quality-loop/ check/ doc/ relay/     ← 中核パイプライン
-│   ├── audit/ commit/ pr/ preview/ improve/ code-cleaner/  ← 個別作業
+│   ├── commit/ pr/ preview/ code-cleaner/                  ← 個別作業
 │   └── brandkit/ frontend-design/ image-to-code/
 │       imagegen-frontend-web/ imagegen-frontend-mobile/    ← 見た目・画像系
 ├── rules/             パス限定・自動適用（3）
 │   ├── agents.md                agent定義を編集する時の整合性チェック
 │   ├── dev-projects.md          製品ごとのコンテキスト分離
 │   └── session-persistence.md   session-state/todo/lessons/roadmapの置き場所
-├── commands/          セッションコマンド（3）
+├── commands/          セッションコマンド（2）
 │   ├── save-session.md
-│   ├── resume-session.md
-│   └── checkpoint.md
-├── hooks/             settings.json 経由・強制実行（13）
-│   ├── session-start.js / clover-auto-install.js   ← SessionStart
-│   ├── check-prompt.js                              ← UserPromptSubmit
-│   ├── format-on-write.js                            ← PostToolUse (Edit|Write)
-│   ├── workflow-budget-guard.js                       ← PreToolUse (Workflowツール)
-│   ├── relay-required-agent.js                         ← PreToolUse (Task|Agent)
+│   └── resume-session.md
+├── hooks/             settings.json 経由・強制実行（19）
+│   ├── session-start.js / session-journal.js /
+│   │   clover-auto-install.js                          ← SessionStart
+│   ├── session-journal.js                               ← SessionEnd（同一ファイルを再登録）
+│   ├── approve-lock.js / check-prompt.js                 ← UserPromptSubmit
+│   ├── format-on-write.js                                ← PostToolUse (Edit|Write)
+│   ├── journal.js                                        ← PostToolUse (Edit|Write|NotebookEdit|
+│   │                                                         Bash|PowerShell|Task|Agent|ExitPlanMode)
+│   ├── relay-required-agent.js / block-review-floor.js /
+│   │   block-fable-when-off.js                           ← PreToolUse (Task|Agent)
+│   ├── scope-guard.js                                    ← PreToolUse (Edit|Write|NotebookEdit)
 │   ├── archive-session-state.js                          ← PreToolUse (Write)
-│   └── block-destructive-git.js / block-direct-to-main.js /
-│       block-destructive-fs.js / block-no-verify.js /
-│       check-commit-safety.js / block-secret-read.js      ← PreToolUse (Bash)
-├── scripts/           共有ツール（Node・抜粋。ほかにtest/設定ファイル等）
-│   ├── validate.mjs        ハーネス自身の整合性チェック（checkスキルが実行）
-│   ├── html2pdf.mjs        HTML→PDF変換（WeasyPrint・未導入でも失敗させない）
-│   ├── html2pptx.mjs       デックHTML→PPTX変換（未導入なら明示的に失敗させる）
-│   ├── deckpack.mjs        スライドの抽出/パックツール
-│   ├── fusion-detect.mjs   複数モデル合議の対立検知
-│   └── statusline.js / statusline-command.sh   ステータスライン表示
-└── clover/            外部モデル中継・抜粋（router / shim / launcher）
-    ├── bin/                起動スクリプト（clover本体・relay-serve）
-    ├── src/                中継の実装
-    ├── run/ / test/        実行時データ・テスト
-    ├── README.md           cloverサブプロジェクト自身の説明
-    └── models.json         外部モデルのエイリアス辞書</pre>
+│   └── cmd-write-guard.js / block-destructive-git.js /
+│       block-direct-to-main.js / block-destructive-fs.js /
+│       block-no-verify.js / check-commit-safety.js /
+│       block-secret-read.js                              ← PreToolUse (Bash|PowerShell)
+└── scripts/           共有ツール（Node・抜粋。ほかにtest/設定ファイル等）
+    ├── validate.mjs        ハーネス自身の整合性チェック（checkスキルが実行）
+    ├── html2pdf.mjs        HTML→PDF変換（WeasyPrint・未導入でも失敗させない）
+    ├── html2pptx.mjs       デックHTML→PPTX変換（未導入なら明示的に失敗させる）
+    ├── deckpack.mjs        スライドの抽出/パックツール
+    ├── fusion-detect.mjs   複数モデル合議の対立検知
+    └── statusline.js / statusline-command.sh   ステータスライン表示
+
+clover/                外部モデル中継・抜粋（router / shim / launcher）。.claude/ の外、
+                        リポジトリ直下にある独立サブプロジェクト（CLAUDE.md §0）。
+├── bin/                起動スクリプト（clover本体・relay-serve）
+├── src/                中継の実装
+├── run/ / test/        実行時データ・テスト
+├── README.md           cloverサブプロジェクト自身の説明
+└── models.json         外部モデルのエイリアス辞書</pre>
 
     <h2>参照した一次情報</h2>
     <p>本ページを含む6ページは、以下のファイルを実際に読んで内容を突き合わせている。記述と実物が食い違う場合は、これらのファイル側が正しい。</p>
     <ul class="srclist">
       <li><code>CLAUDE.md</code></li>
       <li><code>.claude/agents/*.md</code>（7ファイル）</li>
-      <li><code>.claude/skills/*/SKILL.md</code>（17ディレクトリ）</li>
+      <li><code>.claude/skills/*/SKILL.md</code>（15ディレクトリ）</li>
       <li><code>.claude/rules/*.md</code></li>
       <li><code>.claude/settings.json</code></li>
       <li><code>.claude/scripts/validate.mjs</code></li>
-      <li><code>.claude/clover/models.json</code></li>
+      <li><code>clover/models.json</code></li>
     </ul>
 
   </main>

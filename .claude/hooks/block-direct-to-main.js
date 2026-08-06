@@ -23,14 +23,32 @@
 //   `git push origin main:<work-branch>` (destination = non-main); fetch / switch / checkout / branch / status / log / diff;
 //   `git merge/rebase --abort|--quit|--help` even while sitting on main/master (undo/inspect only,
 //   never advances history); gh pr view/list/create/checkout/status/diff/comment/edit/ready/review,
-//   gh repo *, gh issue * (inspection / non-merge PR workflow — never advances main).
+//   gh repo *, gh issue * (inspection / non-merge PR workflow — never advances main);
+//   `git merge --ff-only <tracked-upstream>` while sitting on main/master — the post-PR-merge local
+//   catch-up (ruling 2026-08-06 Q2). This is the ONLY exception to "merge/pull/rebase always blocked
+//   on a protected branch" and it is narrowly scoped on purpose (see isFastForwardCatchUp() below):
+//   the subcommand must be exactly `merge` (not `pull`/`rebase` — those stay fully blocked even with
+//   `--ff-only`), `--ff-only` must be the ONLY flag present, there must be exactly one positional
+//   argument, and that argument must be textually identical to the branch's own configured upstream
+//   (`git rev-parse --abbrev-ref --symbolic-full-name @{u}`) — not merely something that looks like
+//   it. Any deviation (a different ref, an extra flag, an extra positional, a different subcommand)
+//   falls through to the normal block.
 //
 // Known limitation: undo/inspect detection is flag-based (--abort/--quit/--help); a `-h` alias
 // combined with other advancing flags in the same invocation is not specially disambiguated.
 //
 // Known limitation (gh, deliberately left open, filed as tasks/todo.md Backlog items):
-//   (i) `gh api --method PUT repos/.../pulls/N/merge` (direct REST call) is not detected — API-level
-//       calls are out of scope for this guard by design.
+//   (i) `gh api` is a generic REST/GraphQL escape hatch, and it can move main in more than one shape.
+//       This guard does NOT special-case any of them, on purpose (ruling 2026-08-06 Q4): blocking
+//       only the single most obvious shape would invite the false belief that "gh api merges" as a
+//       class is guarded, when at least three more shapes reach the same effect. None of the
+//       following is detected, and none is partially covered — this is a deliberate, disclosed
+//       non-coverage, not a partial fix:
+//         - `gh api --method PUT repos/{o}/{r}/pulls/{n}/merge`               (direct REST PR-merge call)
+//         - `gh api --method PATCH repos/{o}/{r}/git/refs/heads/main`        (force-move the ref directly)
+//         - `gh api repos/{o}/{r}/merges --method POST`                      (the Merging API: merge one branch into another)
+//         - `gh api graphql -f query='mutation { mergePullRequest(...) }'`   (the GraphQL mutation)
+//       Do not add detection for only one of these without re-deciding the tradeoff above.
 //   (ii) `gh.exe pr merge` / `gh.cmd pr merge` ARE now detected: lib/parse-cmd.js strips a trailing
 //       `.exe`/`.cmd` suffix from the resolved basename (ruling GP2), so both resolve to `cmd === "gh"`
 //       here, same as the git-side checks in this file. This is NOT an exhaustive fix for every
@@ -120,6 +138,47 @@ function currentBranch(cwd) {
   }
   branchCache.set(key, result);
   return result;
+}
+
+const upstreamCache = new Map();
+// The current branch's configured tracked upstream (e.g. "origin/main"), or null if none is
+// configured / git errors. Used ONLY to gate the fast-forward catch-up exception below — an
+// unresolvable upstream falls through to the normal (blocked) path, never to allowed.
+function trackedUpstream(cwd) {
+  const key = cwd || '';
+  if (upstreamCache.has(key)) return upstreamCache.get(key);
+  let result;
+  try {
+    result = execSync('git rev-parse --abbrev-ref --symbolic-full-name @{u}', {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      ...(cwd ? { cwd } : {}),
+    }).trim();
+  } catch {
+    result = null; // no upstream configured / not a repo -> exception does not apply
+  }
+  upstreamCache.set(key, result);
+  return result;
+}
+
+// Narrow exception (ruling 2026-08-06 Q2): a fast-forward-only merge of EXACTLY the branch's own
+// tracked upstream is the legitimate post-PR-merge local catch-up, and is allowed even while sitting
+// on a protected branch. Every other merge/pull/rebase form stays blocked. Requires ALL of:
+//   - subcommand is `merge` (not `pull`/`rebase`)
+//   - `--ff-only` is present, and it is the ONLY flag in the invocation (rules out `--no-ff`,
+//     `--squash`, `-s <strategy>`, `-q`, or anything else that could change semantics or interact
+//     with `--ff-only` in ways not analyzed here)
+//   - exactly one positional argument (the merge target)
+//   - that positional is textually identical to the branch's configured `@{u}` — not just a ref
+//     that happens to look similar (e.g. a same-named local branch, or a different remote branch)
+function isFastForwardCatchUp(sub, rest, repoPath) {
+  if (sub !== 'merge') return false;
+  const flags = rest.filter((a) => a.startsWith('-'));
+  const positionals = rest.filter((a) => !a.startsWith('-') && a !== '');
+  if (flags.length !== 1 || flags[0] !== '--ff-only') return false;
+  if (positionals.length !== 1) return false;
+  const upstream = trackedUpstream(repoPath);
+  return upstream !== null && positionals[0] === upstream;
 }
 
 // Extract -C <path> / --git-dir=<path> / --work-tree=<path> (or the space-separated forms) from
@@ -213,7 +272,9 @@ function checkCommand(command) {
     //    operations that never advance history, so they're harmless even on main/master.
     if (MAIN_ADVANCING_SUBCMDS.has(sub) && !rest.some((a) => NON_ADVANCING_FLAGS.has(a))) {
       const b = currentBranch(repoPath);
-      if (b && PROTECTED.has(b)) return `git ${sub} on protected branch "${b}"`;
+      if (b && PROTECTED.has(b) && !isFastForwardCatchUp(sub, rest, repoPath)) {
+        return `git ${sub} on protected branch "${b}"`;
+      }
     }
 
     // 4. `git reset --hard origin/main` (or any ref) while sitting on a protected branch moves
