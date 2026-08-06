@@ -10,6 +10,12 @@ const ROOT = path.resolve(__dirname, '..', '..', '..');
 const SANDBOX = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox');
 const SANDBOX_FREE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-free');
 const SANDBOX_GIT = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-git');
+// ff5d0d7 (2026-08-06 ruling Q2) fast-forward catch-up exception probes for block-direct-to-main.js:
+// a REAL git repo, checked out on `main` with `origin/main` set as its tracked upstream, targeted
+// via `git -C <path>` in the sample commands. This sidesteps any dependency on the actual current
+// branch of <REPO> (which varies by session/branch and would otherwise need a skipIf tag symmetric
+// to -- but inverted from -- the existing 'protected-branch' one; not built, see hook-probes.samples.json).
+const SANDBOX_GIT_MAIN = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-git-main');
 // fable-gate (2026-08-06): four switch-file roots for block-fable-when-off.js probes. Each is
 // rooted under tmp/ (gitignored), never <REPO> — the real .claude/.fable-status is machine-local
 // and its content is arbitrary, so a <REPO>-rooted fable row would be flaky.
@@ -88,6 +94,31 @@ function buildSandboxGit() {
   execFileSync('git', ['add', 'leaky.js'], { cwd: SANDBOX_GIT });
 }
 
+// A second real (throwaway) git repo, checked out on `main` with `origin/main` configured as its
+// tracked upstream (@{u}) — the fixture the isFastForwardCatchUp() exception in
+// block-direct-to-main.js needs to be probed at all: it requires an actual resolvable @{u}, which
+// `git rev-parse --abbrev-ref --symbolic-full-name @{u}` can only answer from real git state, not
+// a payload field. Guarded by a check for its OWN .git dir (fs.existsSync, not `git rev-parse
+// --verify HEAD` — that command walks up to the ENCLOSING repo's .git when SANDBOX_GIT_MAIN has
+// none of its own yet, so it would falsely report "already has a commit" on a bare directory and
+// skip init entirely) so re-running the test suite never re-inits/re-commits (git init/add are
+// already idempotent elsewhere in this file, but `git commit` is not — a bare re-commit with no
+// changes would fail with "nothing to commit" on the 2nd run).
+function buildSandboxGitMain() {
+  fs.mkdirSync(SANDBOX_GIT_MAIN, { recursive: true });
+  if (fs.existsSync(path.join(SANDBOX_GIT_MAIN, '.git'))) return;
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: SANDBOX_GIT_MAIN });
+  execFileSync('git', ['config', 'user.email', 'probe@example.com'], { cwd: SANDBOX_GIT_MAIN });
+  execFileSync('git', ['config', 'user.name', 'probe'], { cwd: SANDBOX_GIT_MAIN });
+  fs.writeFileSync(path.join(SANDBOX_GIT_MAIN, 'f.txt'), 'x\n');
+  execFileSync('git', ['add', 'f.txt'], { cwd: SANDBOX_GIT_MAIN });
+  execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: SANDBOX_GIT_MAIN });
+  const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: SANDBOX_GIT_MAIN, encoding: 'utf8' }).trim();
+  execFileSync('git', ['update-ref', 'refs/remotes/origin/main', sha], { cwd: SANDBOX_GIT_MAIN });
+  execFileSync('git', ['remote', 'add', 'origin', 'https://example.invalid/probe.git'], { cwd: SANDBOX_GIT_MAIN });
+  execFileSync('git', ['branch', '--set-upstream-to=origin/main', 'main'], { cwd: SANDBOX_GIT_MAIN });
+}
+
 // fable-gate (2026-08-06): each root gets the frontmatter-route fixture (reviewer.md with
 // model: fable) plus a .claude/.fable-status with the given content. ensureJournal() is not
 // needed here — block-fable-when-off.js writes nothing.
@@ -122,6 +153,7 @@ function substitute(raw) {
     .split('<SANDBOX_FABLE_ONX>').join(slash(SANDBOX_FABLE_ONX))
     .split('<SANDBOX>').join(slash(SANDBOX))
     .split('<REPO>').join(slash(ROOT))
+    .split('<SANDBOX_GIT_MAIN>').join(slash(SANDBOX_GIT_MAIN))
     .split('<SANDBOX_GIT>').join(slash(SANDBOX_GIT));
 }
 
@@ -226,6 +258,7 @@ function runDump() {
   buildSandbox();
   buildSandboxFree();
   buildSandboxGit();
+  buildSandboxGitMain();
   buildFableSandboxes();
 
   const allRows = loadRows();
@@ -255,12 +288,13 @@ function registerTests() {
   buildSandbox();
   buildSandboxFree();
   buildSandboxGit();
+  buildSandboxGitMain();
   buildFableSandboxes();
 
   const raw = fs.readFileSync(SAMPLES_FILE, 'utf8');
   const allRows = JSON.parse(substitute(raw));
 
-  const EXPECTED_SAMPLE_COUNT = 189;
+  const EXPECTED_SAMPLE_COUNT = 213;
   // Independently-hardcoded expectation (not re-derived from allRows) so this assertion can't
   // silently pass no matter what skipIf tags actually exist in the samples file — mirrors the
   // EXPECTED_SAMPLE_COUNT literal above. Keyed by exact set/name (not just a per-tag count) so a
@@ -316,12 +350,12 @@ function registerTests() {
   // is added to/removed from/moved between sets. Verified this equals EXPECTED_SAMPLE_COUNT and
   // covers exactly the sets present in the samples file below.
   const EXPECTED_SET_COUNTS = {
-    'S-git-pure': 26,
-    'S-git-env': 14,
+    'S-git-pure': 31,
+    'S-git-env': 18,
     'S-gh': 15,
-    'S-state': 28,
-    'S-lock': 20,
-    'S-fs': 18,
+    'S-state': 29,
+    'S-lock': 32,
+    'S-fs': 20,
     'S-prompt': 8,
     'S-session': 5,
     'S-agent': 50,
