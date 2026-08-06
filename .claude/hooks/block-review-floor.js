@@ -6,8 +6,9 @@
 //
 // Model resolution order: tool_input.model is authoritative when present. Otherwise the hook
 // falls back to .claude/agents/<subagent_type>.md frontmatter `model:`. This preserves the Agent
-// contract that an explicit dispatch model overrides the agent default, including an explicitly
-// reported retry with `model: opus` after a Fable availability or usage-limit failure.
+// contract that an explicit dispatch model overrides the agent default. The frontmatter default is
+// Opus (CLAUDE.md §2); Fable is permitted only while the CLAUDE.md §1.11 gate is ON, enforced
+// separately by block-fable-when-off.js for every dispatch, not only authority roles.
 //
 // norm(): trims whitespace, lowercases, and strips one `claude-` compatibility prefix. The prefix
 // keeps the existing `claude-opus` compatibility sample valid. Clover aliases beginning with
@@ -72,8 +73,8 @@ process.stdin.on('end', () => {
     `BLOCKED: サブエージェント "${subagentType}" はレビュー権威ロールですが、` +
       `モデルが許可集合 fable | opus にありません` +
       ` (resolved: ${effectiveModel || '(unresolved)'}; ${classification})。\n` +
-      `CLAUDE.md §2: 権威モデルは native fable または opus だけです。通常は frontmatter の fable を使い、\n` +
-      `Fable の利用上限・提供停止・起動失敗を記録した場合だけ dispatch に model: opus を明示してください。\n` +
+      `CLAUDE.md §2: 権威モデルは native fable または opus だけです。通常は frontmatter の opus を使い、\n` +
+      `Fable は CLAUDE.md §1.11 のスイッチ（.claude/.fable-status）が ON のときだけ dispatch に model: fable を明示して使ってください。\n` +
       `sonnet / haiku / inherit / unknown / external clover id への降格や無言の fallback は禁止です。`
   );
   process.exit(2);

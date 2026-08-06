@@ -493,7 +493,7 @@ footer.sot code{ font-size:.92em; }
     <ul>
       <li>frontmatter の形式（<code>model</code> / <code>description</code> / <code>tools</code> / 必要なら <code>effort</code>）を既存 agent と揃える。</li>
       <li><code>model:</code> はnative alias（<code>fable</code> / <code>opus</code> / <code>sonnet</code> / <code>haiku</code> / <code>inherit</code>）、または clover の外部モデル id（<code>claude-&lt;alias&gt;</code>。<code>&lt;alias&gt;</code> は <code>clover/models.json</code> に実在するもの）のみを書く。実在の Claude モデル ID を直接固定するのは禁止 ―― バージョンが上がるたびに書き換えが要る壊れ方をするため。</li>
-      <li>planner / reviewer は <code>model: fable</code> と <code>effort: max</code> を保つ。権威席の許可集合はnative <code>fable | opus</code>のみ。Fable障害を報告・記録した場合だけ呼び出しに<code>model: opus</code>を明示し（明示入力がfrontmatterより優先）、混在・無言fallback・sonnet/haiku/inherit/unknown/外部idへの降格は禁止。</li>
+      <li>planner / reviewer は <code>model: opus</code> と <code>effort: max</code> を保つ。権威席の許可集合はnative <code>fable | opus</code>のみ。<code>.claude/.fable-status</code>が<code>ON</code>のとき（CLAUDE.md §1.11）だけ呼び出しに<code>model: fable</code>を明示でき（明示入力がfrontmatterより優先）、混在・無言fallback・sonnet/haiku/inherit/unknown/外部idへの降格は禁止。この判定は起動時に <code>block-fable-when-off.js</code> フックが強制するが、見えるのは起動先モデルが分かるサブエージェント起動だけ ―― あなた自身のセッションのモデル選択（<code>/model</code>）は対象外で、モデル名を指定しない起動がセッションのモデルをそのまま引き継いだ場合も見えないことがある。</li>
       <li>clover のモデル id を書いた agent は、clover 経由で起動したセッションでしか動かない。特定の呼び出しだけ一時的に外部モデルへ振りたい場合は、frontmatter 固定よりも relay skill の <code>RELAY-MODEL:</code> マーカー（呼び出しごとに指定）の方が、素の起動でも壊れず可搬性が高い。</li>
       <li>読み取り専用の agent（reviewer / verifier / explorer）には、Write / Edit / NotebookEdit のような書き込み系ツールを一切持たせない。</li>
       <li>読み取り専用 agent の Bash は「読み取り・テスト実行専用」に限定する。唯一の例外は reviewer の敵対的変異検証（adversarial mutation probe）で、明示的に許可された使い捨ての worktree の中でだけ書き込みが許される（本体のツリーには触れない）。</li>
@@ -531,7 +531,7 @@ footer.sot code{ font-size:.92em; }
           <tr><td>UserPromptSubmit</td><td>(全体)</td><td><code>check-prompt.js</code></td></tr>
           <tr><td>PostToolUse</td><td><code>Edit|Write</code></td><td><code>format-on-write.js</code></td></tr>
           <tr><td>PreToolUse</td><td><code>Workflow</code></td><td><code>workflow-budget-guard.js</code></td></tr>
-          <tr><td>PreToolUse</td><td><code>Task|Agent</code></td><td><code>relay-required-agent.js</code></td></tr>
+          <tr><td>PreToolUse</td><td><code>Task|Agent</code></td><td><code>relay-required-agent.js</code> / <code>block-review-floor.js</code> / <code>block-fable-when-off.js</code></td></tr>
           <tr><td>PreToolUse</td><td><code>Write</code></td><td><code>archive-session-state.js</code></td></tr>
           <tr><td>PreToolUse</td><td><code>Bash</code></td><td><code>block-destructive-git.js</code> / <code>block-direct-to-main.js</code> / <code>block-destructive-fs.js</code> / <code>block-no-verify.js</code> / <code>check-commit-safety.js</code> / <code>block-secret-read.js</code></td></tr>
         </tbody>
@@ -548,7 +548,7 @@ footer.sot code{ font-size:.92em; }
           <tr><th>チェック内容</th><th>検出時</th></tr>
         </thead>
         <tbody>
-          <tr><td>agent の frontmatter（native alias / clover id の妥当性、読み取り専用 agent への書き込みツール混入、planner・reviewer の <code>model: fable</code> / <code>effort: max</code> 欠落）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
+          <tr><td>agent の frontmatter（native alias / clover id の妥当性、読み取り専用 agent への書き込みツール混入、planner・reviewer の <code>model: opus</code> / <code>effort: max</code> 欠落）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>skill の frontmatter（<code>name:</code> とディレクトリ名の一致、<code>description</code> 必須、<code>subagent_type:</code> が実在 agent を参照しているか）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>hooks 登録 ―― <code>settings.json</code> に書かれた hook ファイルの実在確認。<code>block-*.js</code> のような安全装置が未登録のとき</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>hooks 登録 ―― <code>block-*.js</code> 以外の hook ファイルが <code>settings.json</code> に未登録のとき</td><td><span class="badge badge--warn">WARN</span></td></tr>
@@ -571,7 +571,7 @@ footer.sot code{ font-size:.92em; }
     <ul>
       <li>新しい製品なら <code>dev/{product-name}/</code> を作り、その製品専用の <code>tasks/todo.md</code> / <code>tasks/lessons.md</code> を持たせる（正本: <code>.claude/rules/dev-projects.md</code>）。</li>
       <li>要件が曖昧な新規ビルドは、実装前に4項目（目的・利用者と困りごと／必須機能と範囲／見た目・UX／技術的な制約と完了条件）を確認してから着手する。</li>
-      <li>非自明な変更は writer と reviewer を別インスタンス・独立コンテキストに分け、quality-loop の Loop Contract（worker が作り、native Fable既定／記録後のみ明示Opusのauthorityが審査、max 3 サイクル、最後に verifier が証拠ベースで検証）を通す。</li>
+      <li>非自明な変更は writer と reviewer を別インスタンス・独立コンテキストに分け、quality-loop の Loop Contract（worker が作り、native Opus既定／§1.11ゲートON時のみ明示Fableのauthorityが審査、max 3 サイクル、最後に verifier が証拠ベースで検証）を通す。</li>
       <li>UI を含む変更は <code>check</code> skill が <code>/preview</code>（起動 → スクリーンショット → コンソール確認）まで自動で回す。</li>
       <li>製品らしい規模の新規依頼（新製品や、ユーザーが既存製品と比較するような大きな新機能）には、着手前に類似製品の調査と先回りのギャップ提案が期待される（CLAUDE.md §1.10 Critical Partnership）。反対するときは根拠と代替案をセットで示し、最終判断はユーザーに委ね、押し切られた場合は成果物の「Objections &amp; Rulings」に記録する。</li>
     </ul>

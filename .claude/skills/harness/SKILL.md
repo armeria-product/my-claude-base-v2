@@ -94,7 +94,7 @@ Steps with no dependencies run in parallel:
 - Verify evidence at the completion of each step
 - Review steps (reviewer / planner self-review) follow the **quality-loop skill's Loop Contract**:
   the authority allowlist is native `fable | opus` (CLAUDE.md §2 ¹; quality-loop is the operational SOT):
-  Fable by default, or explicit Opus only after the Fable failure is reported and recorded; lower tiers,
+  Opus by default, or Fable only while the CLAUDE.md §1.11 gate is ON; lower tiers,
   unknown/external authority ids, mixed standing pairs, and silent fallback are forbidden; send-back →
   fix → re-review runs for up to 3 cycles
 - plan/design/architecture authority reviews (planner self-review, and `reviewer target:architecture` —

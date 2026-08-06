@@ -14,7 +14,8 @@
       "Read(./**/secrets/**)",
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
-      "Edit(./.claude/state/**)"
+      "Edit(./.claude/state/**)",
+      "Edit(./.claude/.fable-status)"
     ],
     "defaultMode": "bypassPermissions",
     "additionalDirectories": []
@@ -96,6 +97,10 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-review-floor.js\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-fable-when-off.js\""
           }
         ]
       },

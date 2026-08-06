@@ -475,7 +475,7 @@ body{
     </div>
 
     <h2>CLAUDE.md と領域別 SOT の階層</h2>
-    <p><code>CLAUDE.md</code> はこのハーネスの<strong>最上位方針であり入口</strong>。言語／プロジェクト構造／運用原則／委任ルール／品質プロトコル／メモリ統合／ツール利用／ワークフロー習慣／タスク管理／パス限定ルール／画像生成／ユーザー向け資料という章立てで、Claudeの振る舞いの大枠を規定している。現在の権威規約はnative Fable既定、記録済み障害時のみ明示Opus fallbackである。</p>
+    <p><code>CLAUDE.md</code> はこのハーネスの<strong>最上位方針であり入口</strong>。言語／プロジェクト構造／運用原則／委任ルール／品質プロトコル／メモリ統合／ツール利用／ワークフロー習慣／タスク管理／パス限定ルール／画像生成／ユーザー向け資料という章立てで、Claudeの振る舞いの大枠を規定している。現在の権威規約はnative Opus既定、CLAUDE.md §1.11のゲート（<code>.claude/.fable-status</code>が<code>ON</code>）が開いている間だけFableを使う。</p>
     <p>ただし領域ごとの詳細仕様は個別のSOT（正本）へ委譲されている。外部モデルへのルーティングは <code>.claude/skills/relay/SKILL.md</code>、セッションの永続化ルーティングは <code>.claude/rules/session-persistence.md</code>、agentのモデル階層(tier)はそのagent自身のfrontmatter、Authority Co-Reviewの発動条件は <code>quality-loop/SKILL.md</code>、外部モデルのエイリアス表は <code>clover/models.json</code>が、それぞれ正本。本資料と実際の正本群が食い違う場合は、CLAUDE.mdだけでなく該当する領域別SOTを優先して確認・修正すること。</p>
 
     <h2>ディレクトリ責務マトリクス</h2>
@@ -499,7 +499,7 @@ body{
     </div>
 
     <h2 id="tier-policy">モデル階層（tier）ポリシー</h2>
-    <p>作業は<strong>tier（frontier / heavy / standard / light）</strong>で振り分ける。権威を担うfrontier/heavyのplanner・reviewerはnative <code>fable</code>を既定とし、記録済み障害時だけ明示<code>opus</code>へ切り替える。他のtierは<code>sonnet</code>/<code>haiku</code>に解決される。これがCLAUDE.md §2 Model Tier Policyの一元管理の要点。</p>
+    <p>作業は<strong>tier（frontier / heavy / standard / light）</strong>で振り分ける。権威を担うfrontier/heavyのplanner・reviewerはnative <code>opus</code>を既定とし、CLAUDE.md §1.11のゲートがONの間だけ<code>fable</code>へ切り替わる。他のtierは<code>sonnet</code>/<code>haiku</code>に解決される。これがCLAUDE.md §2 Model Tier Policyの一元管理の要点。</p>
     <div class="table-wrap">
       <table>
         <caption>CLAUDE.md §2 Model Tier Policy（現行）</caption>
@@ -507,8 +507,8 @@ body{
           <tr><th scope="col">tier</th><th scope="col">解決先</th><th scope="col">重み</th><th scope="col">用途</th><th scope="col">担当エージェント</th></tr>
         </thead>
         <tbody>
-          <tr><td>frontier (authority)</td><td>native <code>fable</code>既定／障害記録後のみ明示<code>opus</code></td><td>権威</td><td>quality-loopの審査・最終品質判断・重要なアーキテクチャ判断</td><td>planner, reviewer（権威規約）</td></tr>
-          <tr><td>heavy</td><td>native <code>fable</code>既定／明示<code>opus</code> fallback</td><td>高</td><td>計画立案・設計/アーキテクチャ判断・コード/セキュリティ/アーキテクチャレビュー・複雑なデバッグ</td><td>planner, reviewer</td></tr>
+          <tr><td>frontier (authority)</td><td>native <code>opus</code>既定／§1.11ゲートON時のみ<code>fable</code></td><td>権威</td><td>quality-loopの審査・最終品質判断・重要なアーキテクチャ判断</td><td>planner, reviewer（権威規約）</td></tr>
+          <tr><td>heavy</td><td>native <code>opus</code>既定／§1.11ゲートON時のみ<code>fable</code></td><td>高</td><td>計画立案・設計/アーキテクチャ判断・コード/セキュリティ/アーキテクチャレビュー・複雑なデバッグ</td><td>planner, reviewer</td></tr>
           <tr><td>standard</td><td><code>sonnet</code></td><td>中</td><td>実装・通常のデバッグ・検証・資料/HTML作成</td><td>executor, debugger, verifier, document-author</td></tr>
           <tr><td>light</td><td><code>haiku</code></td><td>低</td><td>探索・ファイル検索・簡単な確認</td><td>explorer</td></tr>
         </tbody>
@@ -518,8 +518,9 @@ body{
 
     <div class="callout callout--important">
       <div class="callout__label">frontier authority と native Fable</div>
-      <p>権威モデルの許可集合はnative <code>fable | opus</code>だけ。planner / reviewerのfrontmatter既定はFableで、明示model入力はfrontmatterより優先する。Fableの利用上限・提供停止・起動失敗を報告・記録した場合だけ、同じ役割へ<code>model: opus</code>を明示して再実行する。無言の切替やsonnet/haiku/inherit/unknown/外部idへの降格は禁止。</p>
-      <p>審査パネルは「仕様適合席＋red-teamセカンドシート」を通常Fable×2で動かし、fallback時は両席ともOpus×2へ移す。混在ペアは作らない。relay条件を満たした時だけ別系統の外部モデルが3人目として加わるが、native Fableはrelayに依存せず、この外部席とは別物。<code>fable</code>で始まるclover aliasはnative名との衝突防止のため禁止のまま。詳細は<code>quality-loop/SKILL.md</code>のAuthority Co-Review節が正本。</p>
+      <p>権威モデルの許可集合はnative <code>fable | opus</code>だけ。planner / reviewerのfrontmatter既定はOpusで、Fableを使うのは<code>.claude/.fable-status</code>が<code>ON</code>のとき（CLAUDE.md §1.11）だけ。Opusの起動に失敗した場合は報告して止め、Fableへ無言で切り替えることはしない。sonnet/haiku/inherit/unknown/外部idへの降格も禁止。</p>
+      <p>審査パネルは「仕様適合席＋red-teamセカンドシート」を通常Opus×2で動かし、§1.11ゲートがONの間だけ両席ともFable×2へ移す。混在ペアは作らない。relay条件を満たした時だけ別系統の外部モデルが3人目として加わるが、native Fableはrelayに依存せず、この外部席とは別物。<code>fable</code>で始まるclover aliasはnative名との衝突防止のため禁止のまま。詳細は<code>quality-loop/SKILL.md</code>のAuthority Co-Review節が正本。</p>
+      <p>このゲートが止められるのは、起動先のモデルが分かるサブエージェントの起動だけ。あなた自身のセッションが Fable で動いている場合（<code>/model</code> で選んだモデル）はそもそも対象外で、モデル名を指定せずに起動してセッションのモデルがそのまま引き継がれた場合も、この仕組みからは見えないことがある。</p>
     </div>
 
     <p>reasoning深さ（effort）はtierとは独立の軸: <code>planner</code> / <code>reviewer</code> は <code>effort: max</code> をfrontmatterで固定しており（<code>validate.mjs</code>が未設定をFAILにする）、設計判断と最終品質ゲートは常に最大深さで考える。他のagentはセッションの<code>/effort</code>設定を継承する。</p>
@@ -531,7 +532,7 @@ body{
     <p>方針を決めるのは <strong>planner</strong>（heavy tier）、実際にコードを書くのは <strong>executor</strong>（standard tier）。<code>harness</code> skillの指揮者（conductor）自身はコードを直接触らず、委任と統合に徹する（harness SKILL.md Conductor Role）。</p>
 
     <h3>実装 と 品質判定 の分離</h3>
-    <p>成果物を作る人（worker）と、それを審査する人（authority）は必ず別インスタンス・独立コンテキスト。CLAUDE.md §1.3「Writer/Reviewer Separation」の実装形が <code>quality-loop</code> skill。両者が同じFable（fallback時は同じOpus）でも自己承認はできない。</p>
+    <p>成果物を作る人（worker）と、それを審査する人（authority）は必ず別インスタンス・独立コンテキスト。CLAUDE.md §1.3「Writer/Reviewer Separation」の実装形が <code>quality-loop</code> skill。両者が同じOpus（§1.11ゲートON時は同じFable）でも自己承認はできない。</p>
 
     <h3>製品コード と ハーネス本体 の分離</h3>
     <p><code>dev/{name}/</code> 配下が実際の製品コード、<code>.claude/</code> 配下がその製品を作るための運用システム自身。<code>check</code> skillはこの2つを自動判別し、製品コードには build/type/lint/test の検証を、ハーネス本体には <code>validate.mjs</code>による整合性スキャンを充てる。</p>

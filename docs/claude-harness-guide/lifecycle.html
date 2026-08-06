@@ -499,7 +499,7 @@ body{
     <ol class="steps">
       <li><strong>Phase 1: Research</strong> — 4系統の調査を並列で行い <code>research.md</code> を出力する: (1)要件整理（planner、light path成果物があればスキップ）(2)コードベース影響調査（explorer）(3)必要なら外部調査（指揮者がWebSearch/WebFetch）(4)<strong>ドメインリサーチ</strong>（指揮者、product-shaped＝新規プロダクトやユーザーが既存製品と比べる大きな機能の場合のみ）— 競合3〜5個の必須機能・よくある不満点を調べ、テーブルステークス（当然備えるべき機能）のギャップ提案を先回りで用意する。</li>
       <li><strong>GO/NO-GO ゲート</strong> — 「要件は明確か」「前提は検証済みか」「コードベース影響は把握できているか」「進行を止めるリスクはないか」「複雑度は許容範囲か」に加え、<strong>「ギャップ提案・反対意見はユーザーに提示し裁定を得たか」</strong>を含む6項目を判定し、GO / NO-GO / NEEDS-CLARIFICATIONを判断する。ギャップ提案と反対意見は1回にまとめたAskUserQuestionで裁定し、裁定内容はresearch.mdへその場で追記、GO後にPLAN.mdの台帳へも転記する。</li>
-      <li><strong>Phase 2: Plan</strong> — planner が計画を作り（必要なら任意のPropose層で複数executorの叩き台をplannerが統合）、別インスタンスのplannerがSelf-Review Modeで審査する。通常は仕様適合席と赤チーム席をFable×2で起動し、Fableの利用上限・提供停止・起動失敗を報告・記録した場合だけ両席を明示Opusへ切り替えてOpus×2として再実行する。混在や下位モデルへの降格は禁止。条件を満たせば、native Fableとは別の外部モデルが3人目としてさらに加わる（詳細は architecture.html のモデル階層ポリシー節を参照）。APPROVEまで最大2回修正し、<code>PLAN.md</code> を出力する。</li>
+      <li><strong>Phase 2: Plan</strong> — planner が計画を作り（必要なら任意のPropose層で複数executorの叩き台をplannerが統合）、別インスタンスのplannerがSelf-Review Modeで審査する。通常は仕様適合席と赤チーム席をOpus×2で起動し、<code>.claude/.fable-status</code>が<code>ON</code>のとき（CLAUDE.md §1.11）だけ両席を明示Fableへ切り替えてFable×2として動かす。混在や下位モデルへの降格は禁止。条件を満たせば、native Fableとは別の外部モデルが3人目としてさらに加わる（詳細は architecture.html のモデル階層ポリシー節を参照）。APPROVEまで最大2回修正し、<code>PLAN.md</code> を出力する。</li>
       <li><strong>Phase 3: Implement</strong> — ここから先は<strong>harness skillのパイプラインを実行エンジンとして使う</strong>。feature / bugfix / refactorのいずれかのワークフロータイプを選び、各フェーズにテストゲートを設ける。全フェーズ完了後、reviewer（code、全差分レビュー）→ 対応 → verifier（最終E2E検証）で締める。</li>
     </ol>
 
@@ -523,10 +523,10 @@ body{
     <p>指揮者（conductor）はここでも「委任・調整・集約・報告」のみを担当し、コードのRead/Edit/Writeは行わない。依存のないステップは並列実行される（例: bugfixの仮説fan-out）。</p>
 
     <h2>quality-loop skill — 品質ゲートの共通部品</h2>
-    <p>harness / plan から呼ばれる共通プリミティブ。成果物を作る側（worker）と審査する側（authority）を必ず別インスタンス・独立コンテキストに分離し、APPROVEになるまで送り返す（最大3サイクル）。通常の権威モデルはnative Fableで、記録済み障害時だけ明示Opusへ切り替える。同じモデル同士でも自己承認は不可。モデルそのものが変わる独立性は、条件を満たして別の外部モデルが審査に加わったときに限られる。tier・審査パネルの詳細構成は architecture.html のモデル階層ポリシー節を参照。</p>
+    <p>harness / plan から呼ばれる共通プリミティブ。成果物を作る側（worker）と審査する側（authority）を必ず別インスタンス・独立コンテキストに分離し、APPROVEになるまで送り返す（最大3サイクル）。通常の権威モデルはnative Opusで、CLAUDE.md §1.11のゲートがONの間だけ明示Fableへ切り替える。同じモデル同士でも自己承認は不可。モデルそのものが変わる独立性は、条件を満たして別の外部モデルが審査に加わったときに限られる。tier・審査パネルの詳細構成は architecture.html のモデル階層ポリシー節を参照。</p>
     <ol class="steps">
       <li><strong>Worker が成果物を作る</strong></li>
-      <li><strong>Authority が審査</strong> — APPROVE / REQUEST_CHANGES。許可集合はnative <code>fable | opus</code>だけ（Fable既定、障害記録後のみ明示Opus）で、workerの弁明は見えない独立コンテキスト。</li>
+      <li><strong>Authority が審査</strong> — APPROVE / REQUEST_CHANGES。許可集合はnative <code>fable | opus</code>だけ（Opus既定、§1.11ゲートON時のみ明示Fable）で、workerの弁明は見えない独立コンテキスト。</li>
       <li><strong>REQUEST_CHANGES なら差し戻し</strong> — CRITICAL/HIGHは必修正、MEDIUM/LOWはworkerの裁量（却下理由を記録）。</li>
       <li><strong>再審査</strong> — 3サイクル目でもAPPROVEでなければ、ユーザーにエスカレーション。</li>
       <li><strong>APPROVEなら verifier が最終の実証的検証</strong></li>

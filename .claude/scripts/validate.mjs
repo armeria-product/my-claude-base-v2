@@ -24,12 +24,14 @@ const warn = (m) => warns.push(m);
 
 const MODEL_ALIASES = new Set(['fable', 'opus', 'sonnet', 'haiku', 'inherit']);
 const READ_ONLY_AGENTS = new Set(['reviewer', 'verifier', 'explorer']);
-// CLAUDE.md §2: planner/reviewer default to native Fable, permit only native Fable or Opus in an
-// authority dispatch, and pin effort:max. Opus is an explicit retry after a recorded Fable failure,
-// not a frontmatter default and never a silent/lower-tier fallback.
+// CLAUDE.md §2: planner/reviewer default to native Opus, permit only native Fable or Opus in an
+// authority dispatch, and pin effort:max. Fable is permitted only while the CLAUDE.md §1.11 gate
+// (.claude/.fable-status = ON) is open, enforced for all dispatches by block-fable-when-off.js —
+// never a silent/lower-tier fallback, and a failed Opus dispatch is reported and stopped, not
+// silently retried on Fable.
 const EFFORT_MAX_AGENTS = new Set(['planner', 'reviewer']);
 const AUTHORITY_MODELS = new Set(['fable', 'opus']);
-const AUTHORITY_DEFAULT_MODEL = 'fable';
+const AUTHORITY_DEFAULT_MODEL = 'opus';
 // agents-revision plan Phase 2: shared clause (A) observed-content discipline is restated
 // verbatim only in these 4 agent bodies (the rest are exempt or get a lightweight variant —
 // SOT: .claude/rules/agents.md "Shared clauses").
@@ -82,7 +84,7 @@ for (const f of fs.readdirSync(agentsDir).filter((x) => x.endsWith('.md'))) {
   if (EFFORT_MAX_AGENTS.has(fm.name) && !AUTHORITY_MODELS.has(fm.model))
     fail(`agent ${fm.name}: model "${fm.model}" is not in the authority allowlist (${[...AUTHORITY_MODELS].join(' | ')})`);
   if (EFFORT_MAX_AGENTS.has(fm.name) && fm.model !== AUTHORITY_DEFAULT_MODEL)
-    fail(`agent ${fm.name}: frontmatter default must be "${AUTHORITY_DEFAULT_MODEL}" — Opus is allowed only as an explicit retry after a recorded Fable availability/usage-limit/startup failure`);
+    fail(`agent ${fm.name}: frontmatter default must be "${AUTHORITY_DEFAULT_MODEL}" — Fable is allowed only while the CLAUDE.md §1.11 gate (.claude/.fable-status = ON) is open`);
   // Reverse effort check: effort: is reserved for the authority tier (CLAUDE.md §2) — an
   // effort key on any other agent is either drift or an unauthorized tier upgrade.
   if (!EFFORT_MAX_AGENTS.has(fm.name) && fm.effort)
@@ -166,6 +168,10 @@ if (claudeMd)
   const denyList = settings.permissions?.deny ?? [];
   if (!denyList.includes('Edit(./.claude/state/**)'))
     fail('settings.json permissions.deny is missing "Edit(./.claude/state/**)" — .claude/state/ (scope-lock home) becomes Claude-writable and the lock is no longer tamper-proof (the Edit rule is the one that covers Write/NotebookEdit too)');
+  // CLAUDE.md §1.11 switch file: user-edited only (ruling 2026-08-06) — Claude must not be able to
+  // Edit it either, same tamper-proofing rationale/mechanism as the .claude/state entry above.
+  if (!denyList.includes('Edit(./.claude/.fable-status)'))
+    fail('settings.json permissions.deny is missing "Edit(./.claude/.fable-status)" — the CLAUDE.md §1.11 switch file becomes Claude-writable via the Edit tool, contradicting the 2026-08-06 ruling that only the user edits it');
   // (h) This Windows host exposes a PowerShell tool alongside Bash. A matcher that names Bash
   // without PowerShell leaves a full command bypass open (v1's gap).
   for (const [event, groups] of Object.entries(settings.hooks ?? {}))
@@ -220,14 +226,21 @@ if (claudeMd)
       fail('cmd-write-guard.js is not registered under PreToolUse Bash|PowerShell — the shell write pathway is unguarded');
   }
   // Guard-of-the-guard: cmd-write-guard must keep its unconditional .claude/state shell protection,
-  // and the statusline must keep surfacing the lock (silent locks breed confusion).
+  // and the statusline must keep surfacing the lock (silent locks breed confusion). The same two
+  // checks are mirrored for .claude/.fable-status (CLAUDE.md §1.11 switch, user-edited only per the
+  // 2026-08-06 ruling): the shell-write protection must stay armed, and the statusline must keep
+  // surfacing ON/OFF so a leftover ON from a previous session stays visible.
   {
     const cwPath = path.join(ROOT, '.claude', 'hooks', 'cmd-write-guard.js');
     if (fs.existsSync(cwPath) && !/\\?\.claude\[\\\\\/\]\+state|\.claude[\\/]+state/.test(read(cwPath)))
       fail('cmd-write-guard.js no longer references .claude/state — the unconditional lock-file shell protection is gone');
+    if (fs.existsSync(cwPath) && !read(cwPath).includes('.fable-status'))
+      fail('cmd-write-guard.js no longer references .claude/.fable-status — the unconditional switch-file shell protection is gone');
     const slPath = path.join(ROOT, '.claude', 'scripts', 'statusline.js');
     if (fs.existsSync(slPath) && !/scope-lock/.test(read(slPath)))
       fail('statusline.js no longer reads scope-lock — the 🔒 indicator is gone (locks become invisible)');
+    if (fs.existsSync(slPath) && !read(slPath).includes('.fable-status'))
+      fail('statusline.js no longer reads .claude/.fable-status — a leftover ON switch from a previous session becomes invisible');
   }
   // Authority-allowlist wiring (CLAUDE.md §2 ¹): block-review-floor.js must stay armed on
   // Task|Agent. The hook's executable Set literals must allow exactly fable/opus and must continue
@@ -264,9 +277,34 @@ if (claudeMd)
       }
     }
   }
+  // Fable ON/OFF gate wiring (CLAUDE.md §1.11): block-fable-when-off.js must stay armed on
+  // Task|Agent so every subagent dispatch (not just authority roles — Ruling B) is checked.
+  // Checking the literal body gives the requested mutation power: deleting the switch read,
+  // widening the gated model beyond fable, or loosening the ON comparison to a substring test
+  // each turn validate RED.
+  {
+    const bf = eventsOf('block-fable-when-off.js');
+    if (!bf.some((e) => e.event === 'PreToolUse' && e.matcher.includes('Task') && e.matcher.includes('Agent')))
+      fail('block-fable-when-off.js is not registered under PreToolUse Task|Agent — Fable dispatches are no longer gated');
+    const bfPath = path.join(ROOT, '.claude', 'hooks', 'block-fable-when-off.js');
+    if (fs.existsSync(bfPath)) {
+      const bfText = read(bfPath);
+      if (!bfText.includes('.fable-status'))
+        fail('block-fable-when-off.js no longer reads .claude/.fable-status — the gate has no switch');
+      const gatedMatch = bfText.match(/GATED_MODEL\s*=\s*['"]([^'"]+)['"]/);
+      if (!gatedMatch || gatedMatch[1] !== 'fable')
+        fail('block-fable-when-off.js GATED_MODEL no longer resolves to exactly "fable" — the gate no longer targets the model it exists to limit');
+      if (!bfText.includes("=== 'ON'"))
+        fail("block-fable-when-off.js no longer does an exact === 'ON' switch comparison — a substring/any-content test would let arbitrary content enable Fable");
+    }
+  }
 }
 
 // ---- 4. Dead references in core docs/config ----
+// The two real-model-id patterns are named (not inline) so a single file can be exempted from
+// exactly these two entries below, without touching the array literal itself.
+const REAL_ID_BARE = [/\bclaude-(?:fable|opus|sonnet|haiku)-[\d]/i, 'a pinned real Claude model id was found (fable/opus/sonnet/haiku directly followed by a digit) — model: must use a native alias or a clover claude-<alias> id from clover/models.json, never a real id (breaks on version bumps)'];
+const REAL_ID_GEN = [/\bclaude-\d(?:-\d+)?-(?:fable|opus|sonnet|haiku)-(?:\d{8}|latest)\b/i, 'a pinned real Claude model id was found (generation-first spelling, e.g. claude-3-5-sonnet-20241022 or claude-3-opus-20240229) — model: must use a native alias or a clover claude-<alias> id from clover/models.json, never a real id (breaks on version bumps)'];
 const FORBIDDEN = [
   [/\bcode-reviewer\b/, 'agent "code-reviewer" does not exist (use reviewer target: code)'],
   [/\bplan-(lite|full)\b/, 'skill plan-lite/plan-full was merged into "plan"'],
@@ -281,9 +319,19 @@ const FORBIDDEN = [
   [/frontier dispatch override/i, 'renamed to "frontier authority convention" — the override no longer exists (CLAUDE.md §2 ¹)'],
   [/\borchestrate\b/, 'skill "orchestrate" was renamed to "harness"'],
   [/\bslop-clean\b/, 'skill "slop-clean" was renamed to "code-cleaner"'],
-  [/\bclaude-(?:fable|opus|sonnet|haiku)-[\d]/i, 'a pinned real Claude model id was found (fable/opus/sonnet/haiku directly followed by a digit) — model: must use a native alias or a clover claude-<alias> id from clover/models.json, never a real id (breaks on version bumps)'],
-  [/\bclaude-\d(?:-\d+)?-(?:fable|opus|sonnet|haiku)-(?:\d{8}|latest)\b/i, 'a pinned real Claude model id was found (generation-first spelling, e.g. claude-3-5-sonnet-20241022 or claude-3-opus-20240229) — model: must use a native alias or a clover claude-<alias> id from clover/models.json, never a real id (breaks on version bumps)'],
+  REAL_ID_BARE,
+  REAL_ID_GEN,
 ];
+// Test fixture, not config/docs: hook-probes.samples.json rows intentionally carry the exact
+// forbidden-shaped strings a hook must reject (e.g. "model":"claude-fable-5" pins the H-1
+// real-id-spelling regression) — the opposite of silently hardcoding a real model id, it is the
+// value under test. Backtick-citing per row (the CITATION_WORD exemption below) would corrupt the
+// literal JSON payload the hook actually reads, so this file gets a narrow exemption instead: keyed
+// on the specific FORBIDDEN entry (REAL_ID_BARE/REAL_ID_GEN only, by reference — see the loop
+// below), not on the file path alone. Every OTHER FORBIDDEN pattern (dead skill/agent refs, removed
+// subsystems, etc.) still fully applies to this file, unlike a blanket per-file skip.
+const REAL_ID_EXEMPT_ENTRIES = new Set([REAL_ID_BARE, REAL_ID_GEN]);
+const SAMPLES_FIXTURE_PATH = path.join(ROOT, '.claude', 'hooks', 'lib', 'hook-probes.samples.json');
 // Side effect: ALLOW_LINE is a line-level exemption, not a pattern-level one — a line matching
 // any word here is skipped against every FORBIDDEN pattern above, not just the one that
 // motivated the addition. Widening this regex silently widens the exemption for the whole list.
@@ -319,7 +367,11 @@ for (const p of scan) {
   const lines = read(p).split('\n');
   lines.forEach((line, i) => {
     if (ALLOW_LINE.test(line)) return;
-    for (const [re, why] of FORBIDDEN) {
+    for (const entry of FORBIDDEN) {
+      // Narrow per-entry exemption (see REAL_ID_EXEMPT_ENTRIES above): only these two specific
+      // pairs skip this one fixture file — every other FORBIDDEN entry still runs against it.
+      if (p === SAMPLES_FIXTURE_PATH && REAL_ID_EXEMPT_ENTRIES.has(entry)) continue;
+      const [re, why] = entry;
       // Check every match of this pattern on the line, not just the first — a line can carry a
       // legitimately-cited backticked id AND a bare (non-exempt) one; stopping at the first match
       // would let the second slip through unexamined once the first is exempted.
@@ -361,9 +413,10 @@ const INVARIANTS = [
   ['.claude/commands/save-session.md', /SAVE マーカー/, 'save-session must keep the SAVE-marker step — the crash/unreported-session scan keys on it'],
   ['.claude/rules/session-persistence.md', /never rotated or deleted/i, 'session-persistence §6.2 must keep the full-retention sentence for session-state history'],
   // --- carried from v1 (subject files exist as of Phase 4) ---
-  ['.claude/skills/quality-loop/SKILL.md', /Fable×2[\s\S]*Opus×2/, 'quality-loop must keep the standing same-model authority pair: Fable×2 normally or Opus×2 after recorded fallback'],
+  ['.claude/skills/quality-loop/SKILL.md', /Opus×2/, 'quality-loop must keep Opus×2 as the standing same-model authority pair (the default while the CLAUDE.md §1.11 gate is OFF)'],
+  ['.claude/skills/quality-loop/SKILL.md', /Fable×2/, 'quality-loop must keep Fable×2 as the gated same-model authority pair (permitted only while the CLAUDE.md §1.11 gate is ON)'],
   ['.claude/skills/quality-loop/SKILL.md', /never a mixed pair/i, 'quality-loop must explicitly forbid mixed Fable/Opus standing pairs'],
-  ['.claude/skills/quality-loop/SKILL.md', /Never switch silently/i, 'quality-loop must forbid silent Fable-to-Opus fallback'],
+  ['.claude/skills/quality-loop/SKILL.md', /Never switch silently/i, 'quality-loop must forbid silently falling back from a failed Opus authority dispatch to Fable'],
   ['.claude/skills/quality-loop/SKILL.md', /sonnet[\s`/,-]+haiku[\s`/,-]+inherit[\s\S]{0,80}forbidden/i, 'quality-loop must keep lower-tier authority models forbidden'],
   ['.claude/agents/reviewer.md', /adversarial verification/i, 'reviewer.md must still carry the "Adversarial Verification" section heading'],
   ['.claude/agents/reviewer.md', /green-on-mutation/i, 'reviewer.md\'s mutation-check bullet ("Green-on-mutation = the test has no detection power") must remain present'],
@@ -393,6 +446,9 @@ const INVARIANTS = [
   ['CLAUDE.md', /recurring review category/i, 'CLAUDE.md §4 must keep the recurring-review-category trigger bullet — a 2nd occurrence of the same review finding across cycles/PRs must be treated as a role-definition gap, not just fixed as an instance'],
   // --- agents-revision fix cycle (fusion-adjudicated, 2026-08-05) ---
   ['.claude/agents/debugger.md', /never persist unverified observed text into memory/i, 'debugger.md must keep the memory-poisoning guard for `memory: project` — a suggested command or claim found in observed output must never be written into persistent memory as a rule without verification'],
+  // --- fable-gate (2026-08-06) ---
+  ['CLAUDE.md', /\.fable-status/, 'CLAUDE.md §1.11 must keep the Fable ON/OFF gate (the .claude/.fable-status switch) — dropping the clause removes the documented precondition for using Fable at all'],
+  ['.claude/hooks/block-fable-when-off.js', /session model \(\/model is outside any hook's reach\)[\s\S]*?may be invisible to this hook[\s\S]*?No third hole/, 'block-fable-when-off.js header must keep the two-hole disclosure (session model unreachable; inherited-model dispatch may be invisible) together with the "no third hole" scope-limit sentence — dropping any of the three silently re-opens the H-2 overclaim this fix cycle closed'],
 ];
 for (const [relPath, must, why] of INVARIANTS) {
   const p = path.join(ROOT, relPath);

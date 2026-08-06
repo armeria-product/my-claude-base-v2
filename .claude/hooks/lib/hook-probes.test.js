@@ -10,6 +10,13 @@ const ROOT = path.resolve(__dirname, '..', '..', '..');
 const SANDBOX = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox');
 const SANDBOX_FREE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-free');
 const SANDBOX_GIT = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-git');
+// fable-gate (2026-08-06): four switch-file roots for block-fable-when-off.js probes. Each is
+// rooted under tmp/ (gitignored), never <REPO> — the real .claude/.fable-status is machine-local
+// and its content is arbitrary, so a <REPO>-rooted fable row would be flaky.
+const SANDBOX_FABLE_ON = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-fable-on');
+const SANDBOX_FABLE_ON_MESSY = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-fable-on-messy');
+const SANDBOX_FABLE_OFF = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-fable-off');
+const SANDBOX_FABLE_ONX = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-fable-onx');
 const SAMPLES_FILE = path.join(__dirname, 'hook-probes.samples.json');
 const PROTECTED_BRANCHES = new Set(['main', 'master']);
 
@@ -81,14 +88,46 @@ function buildSandboxGit() {
   execFileSync('git', ['add', 'leaky.js'], { cwd: SANDBOX_GIT });
 }
 
-function loadRows() {
-  const raw = fs.readFileSync(SAMPLES_FILE, 'utf8');
-  const substituted = raw
+// fable-gate (2026-08-06): each root gets the frontmatter-route fixture (reviewer.md with
+// model: fable) plus a .claude/.fable-status with the given content. ensureJournal() is not
+// needed here — block-fable-when-off.js writes nothing.
+function buildFableSandbox(root, statusContent) {
+  fs.mkdirSync(path.join(root, '.claude', 'agents'), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, '.claude', 'agents', 'reviewer.md'),
+    '---\nname: reviewer\nmodel: fable\neffort: max\n---\n'
+  );
+  fs.writeFileSync(path.join(root, '.claude', '.fable-status'), statusContent);
+}
+
+function buildFableSandboxes() {
+  buildFableSandbox(SANDBOX_FABLE_ON, 'ON\n');
+  buildFableSandbox(SANDBOX_FABLE_ON_MESSY, '  on \t\n');
+  buildFableSandbox(SANDBOX_FABLE_OFF, 'OFF\n');
+  buildFableSandbox(SANDBOX_FABLE_ONX, 'ONX\n');
+}
+
+// fable-gate (2026-08-06, plan Phase 3 O-4 ruling): single substitution point for all 4 call
+// sites (loadRows, registerTests, and its two inline integrity-test re-parses). This does not
+// weaken the deliberate independence of the hardcoded *counts* below — each site still re-parses
+// `raw` on its own; only the placeholder text substitution is shared. Placeholder collision is
+// safe because every placeholder is `>`-terminated (e.g. <SANDBOX_FABLE_ON_MESSY> has `_` where
+// <SANDBOX_FABLE_ON> has `>`), so no substitution order hazard exists.
+function substitute(raw) {
+  return raw
     .split('<SANDBOX_FREE>').join(slash(SANDBOX_FREE))
+    .split('<SANDBOX_FABLE_ON_MESSY>').join(slash(SANDBOX_FABLE_ON_MESSY))
+    .split('<SANDBOX_FABLE_ON>').join(slash(SANDBOX_FABLE_ON))
+    .split('<SANDBOX_FABLE_OFF>').join(slash(SANDBOX_FABLE_OFF))
+    .split('<SANDBOX_FABLE_ONX>').join(slash(SANDBOX_FABLE_ONX))
     .split('<SANDBOX>').join(slash(SANDBOX))
     .split('<REPO>').join(slash(ROOT))
     .split('<SANDBOX_GIT>').join(slash(SANDBOX_GIT));
-  return JSON.parse(substituted);
+}
+
+function loadRows() {
+  const raw = fs.readFileSync(SAMPLES_FILE, 'utf8');
+  return JSON.parse(substitute(raw));
 }
 
 function buildEnv(overrides) {
@@ -187,6 +226,7 @@ function runDump() {
   buildSandbox();
   buildSandboxFree();
   buildSandboxGit();
+  buildFableSandboxes();
 
   const allRows = loadRows();
   const rows = setName ? allRows.filter((r) => r.set === setName) : allRows;
@@ -215,15 +255,12 @@ function registerTests() {
   buildSandbox();
   buildSandboxFree();
   buildSandboxGit();
+  buildFableSandboxes();
 
   const raw = fs.readFileSync(SAMPLES_FILE, 'utf8');
-  const allRows = JSON.parse(raw
-    .split('<SANDBOX_FREE>').join(slash(SANDBOX_FREE))
-    .split('<SANDBOX>').join(slash(SANDBOX))
-    .split('<REPO>').join(slash(ROOT))
-    .split('<SANDBOX_GIT>').join(slash(SANDBOX_GIT)));
+  const allRows = JSON.parse(substitute(raw));
 
-  const EXPECTED_SAMPLE_COUNT = 167;
+  const EXPECTED_SAMPLE_COUNT = 189;
   // Independently-hardcoded expectation (not re-derived from allRows) so this assertion can't
   // silently pass no matter what skipIf tags actually exist in the samples file — mirrors the
   // EXPECTED_SAMPLE_COUNT literal above. Keyed by exact set/name (not just a per-tag count) so a
@@ -240,11 +277,7 @@ function registerTests() {
   };
 
   test('samples file integrity: JSON.parse succeeds, row count matches, set+name pairs unique', () => {
-    const parsed = JSON.parse(raw
-      .split('<SANDBOX_FREE>').join(slash(SANDBOX_FREE))
-      .split('<SANDBOX>').join(slash(SANDBOX))
-      .split('<REPO>').join(slash(ROOT))
-    .split('<SANDBOX_GIT>').join(slash(SANDBOX_GIT)));
+    const parsed = JSON.parse(substitute(raw));
     assert.strictEqual(parsed.length, EXPECTED_SAMPLE_COUNT);
     const seen = new Set();
     for (const r of parsed) {
@@ -255,11 +288,7 @@ function registerTests() {
   });
 
   test('samples file integrity: skipIf tags match the expected set/name table', () => {
-    const parsed = JSON.parse(raw
-      .split('<SANDBOX_FREE>').join(slash(SANDBOX_FREE))
-      .split('<SANDBOX>').join(slash(SANDBOX))
-      .split('<REPO>').join(slash(ROOT))
-    .split('<SANDBOX_GIT>').join(slash(SANDBOX_GIT)));
+    const parsed = JSON.parse(substitute(raw));
     const actual = {};
     for (const r of parsed) {
       if (r.skipIf) actual[`${r.set}/${r.name}`] = r.skipIf;
@@ -290,12 +319,12 @@ function registerTests() {
     'S-git-pure': 26,
     'S-git-env': 14,
     'S-gh': 15,
-    'S-state': 23,
+    'S-state': 28,
     'S-lock': 20,
     'S-fs': 18,
     'S-prompt': 8,
     'S-session': 5,
-    'S-agent': 33,
+    'S-agent': 50,
     'S-secret': 5,
   };
 

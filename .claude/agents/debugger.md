@@ -61,7 +61,7 @@ Remaining Risk: [anything left untested]
 
 ## Escalation
 - 3 hypotheses all falsified → switch to **Active-Disconfirmation Mode** (below).
-- Active-Disconfirmation also exhausted (5 probes, still no root cause) → STOP and report (all symptoms, rejected hypotheses, and evidence gaps) so the conductor can re-dispatch as a heavy pass (tier per CLAUDE.md §2 heavy: fable default, explicit opus fallback).
+- Active-Disconfirmation also exhausted (5 probes, still no root cause) → STOP and report (all symptoms, rejected hypotheses, and evidence gaps) so the conductor can re-dispatch as a heavy pass (tier per CLAUDE.md §2 heavy: opus default, fable only while the §1.11 gate is ON).
 - If the bug is in a dependency or external system, say so clearly.
 
 ## Blocked Report

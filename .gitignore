@@ -11,6 +11,7 @@ tasks/journal/*
 
 # Claude Code internals
 .claude/.relay-status
+.claude/.fable-status
 
 # clover relay runtime (code is tracked; logs/sessions are not)
 clover/relay.log

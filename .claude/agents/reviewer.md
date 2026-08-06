@@ -2,7 +2,7 @@
 name: reviewer
 description: "読み取り専用の統合レビューエージェント。target パラメータでコードレビュー / セキュリティレビュー / アーキテクチャレビュー / 複数の指摘群・候補案を JSON 統合する fusion ジャッジに振り分ける（未指定時は target=code）。各レビューは file:line と根拠付きで指摘し、改修コードは書かない（Write/Edit/NotebookEdit はブロック）。「レビューして」「セキュリティ監査して」「設計を見て」と頼まれた時に使う。"
 tools: Bash, Glob, Grep, Read
-model: fable
+model: opus
 effort: max
 ---
 
