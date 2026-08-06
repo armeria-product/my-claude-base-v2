@@ -23,7 +23,14 @@ function alwaysAllow(lock) {
   const list = ['tasks/**', 'dev/*/tasks/**', 'tmp/**', 'dev/*/tmp/**'];
   const plan = String(lock.plan || '').replace(/\\/g, '/');
   const planDir = plan.includes('/') ? plan.replace(/\/[^/]*$/, '') : '';
-  if (planDir) list.push(planDir + '/**');
+  // scope.json (the allowlist itself) is deliberately excluded: a lock whose own approved
+  // allowlist can be rewritten while armed is not a lock. Only the deviation log and the plan
+  // body stay writable — PLAN.md is kept because post-implementation result notes need it
+  // (user ruling Q3, plans/2026-08-06-backlog-sweep/PLAN.md §7).
+  if (planDir) {
+    list.push(planDir + '/deviations.md');
+    list.push(planDir + '/PLAN.md');
+  }
   return list;
 }
 

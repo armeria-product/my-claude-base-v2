@@ -63,7 +63,7 @@ const { normalizeRel } = require('./lib/scope-match');
 const STATE_RE = /\.claude[\\/]+state/i;
 const FABLE_STATUS_RE = /\.claude[\\/]+\.fable-status/i;
 const WRITE_INDICATOR_RE =
-  /(?:^|[\s;|&(])(?:\d?>>?|&>>?)|\btee\b|\bsed\s+-i|\b(?:mv|cp|rm|dd|truncate|ln|shred)\b|Out-File|Set-Content|Add-Content|New-Item|Copy-Item|Move-Item|Remove-Item|Rename-Item|Export-Csv|Export-Clixml|Tee-Object|Start-Transcript|writeFileSync|writeFile\b|appendFile|createWriteStream|\bopen\s*\([^)]*['"](?:w|a)|git\s+(?:checkout|restore)\b/i;
+  /(?:^|[\s;|&(])(?:\d?>>?|&>>?)|\btee\b|\bsed\s+-i|\b(?:mv|cp|rm|dd|truncate|ln|shred|mkdir|touch)\b|Out-File|Set-Content|Add-Content|New-Item|Copy-Item|Move-Item|Remove-Item|Rename-Item|Export-Csv|Export-Clixml|Tee-Object|Start-Transcript|writeFileSync|writeFile\b|appendFile|createWriteStream|\bopen\s*\([^)]*['"](?:w|a)|git\s+(?:checkout|restore)\b/i;
 const NULL_REDIR_RE = /(?:\d?>>?|&>>?)\s*(?:\/dev\/null|NUL)\b/gi;
 
 let data = '';

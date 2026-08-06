@@ -21,6 +21,14 @@
 
 'use strict';
 
+// Strip a trailing Windows executable suffix (.exe/.cmd only — .bat is deliberately left alone,
+// ruling G1) from an already-lower-cased basename. Shared so every basename resolver in this
+// module (and, via the export, in other guards) treats `git.exe`/`rm.exe`/etc. the same as the
+// bare name. Same regex, same behavior as the inline call this replaced — see normalizeSegment().
+function stripExeSuffix(basename) {
+  return basename.replace(/\.(exe|cmd)$/, '');
+}
+
 // Strip a leading heredoc body so its contents don't trigger false positives.
 // Example: cat >> file <<'EOF'\n... clean -f ...\nEOF  →  cat >> file <<HEREDOC
 function stripHeredocs(s) {
@@ -186,8 +194,6 @@ function normalizeSegment(seg) {
   //        CWD_BUILTINS exception specifically, `env cd ..`/`sudo cd ..`/`command cd ..` (no
   //        `.exe` at all) hit the same no-op-treated-as-a-move bug via this same peel step,
   //        before this exception is ever reached — see the CWD_BUILTINS comment above
-  //      - block-destructive-fs.js's own private basename resolvers (separate from this module)
-  //        are not suffix-aware either, e.g. `find ... -exec rm.exe {} \;` / `xargs rm.exe`
   //      - other PATHEXT suffixes beyond `.exe`/`.cmd` are untouched (`.com`, `.ps1`), as is
   //        `.bat` (deliberately, ruling G1)
   //      - a double suffix (e.g. `git.exe.cmd`) strips only the outer `.cmd`, leaving `git.exe`
@@ -195,7 +201,7 @@ function normalizeSegment(seg) {
   //    named only so this comment does not read as an exhaustive account of what is closed.
   const rawCmd = tokens[idx];
   const basename = rawCmd.replace(/^\\/, '').split('/').pop().toLowerCase();
-  const strippedBasename = basename.replace(/\.(exe|cmd)$/, '');
+  const strippedBasename = stripExeSuffix(basename);
   const cwdBuiltinCandidate = strippedBasename.replace(/^\(+/, '');
   const cmd = CWD_BUILTINS.has(cwdBuiltinCandidate) ? basename : strippedBasename;
   idx++;
@@ -341,4 +347,4 @@ function extractEvalArg(seg) {
   return end === -1 ? seg.slice(argStart) : seg.slice(argStart, end);
 }
 
-module.exports = { segments, stripHeredocs, stripQuotedContent };
+module.exports = { segments, stripHeredocs, stripQuotedContent, stripExeSuffix };

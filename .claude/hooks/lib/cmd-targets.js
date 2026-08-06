@@ -157,12 +157,12 @@ function extractPs(command, startCwd) {
       unresolved = true;
       continue;
     }
-    targets.push(path.resolve(startCwd, t));
+    targets.push(path.win32.resolve(startCwd, t));
   }
   PS_IO_RE.lastIndex = 0;
   while ((m = PS_IO_RE.exec(command))) {
     if (m[3]) unresolved = true;
-    else targets.push(path.resolve(startCwd, m[1] || m[2]));
+    else targets.push(path.win32.resolve(startCwd, m[1] || m[2]));
   }
   return { targets, unresolved };
 }
