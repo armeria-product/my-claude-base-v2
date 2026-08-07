@@ -30,11 +30,17 @@ user-invocable: true
 push and PR creation are outward-facing operations. Before running them, **always** confirm the following with the user:
 - push target branch name / PR title / base branch
 - Even when the user has already explicitly said "create a PR", confirm the branch name and title in a single line
+- `gh pr create` triggers a mechanical gate (`block-pr-without-todo.js`) when it is its own top-level command in the tool call: if this branch's `tasks/todo.md` hasn't been touched since the branch was created, it is denied — update `tasks/todo.md` for this work before running `gh pr create`. **Limits**: the gate only compares `tasks/todo.md`'s modification time to the branch's creation time — it never reads the file's content, so it cannot tell whether the update is correct or actually describes this branch's work (`tasks/todo.md` is one file shared, untracked, across every branch checked out in this working copy). It also only recognizes `gh pr create` when the shared command parser can see it as a standalone command — the parser splits on `&&`/`||`/`;`/`|` but not on bare newlines, so run it as a **separate** Bash/PowerShell call from `git push` (step 4), never combined on one multi-line call, or the gate may not see it at all.
 
 ### 4. push + PR creation
 
+Run these as two separate tool calls (see the parser limit noted above):
+
 ```bash
 git push -u origin <branch>
+```
+
+```bash
 gh pr create --title "<conventional title>" --body "$(cat <<'EOF'
 ## Summary
 - <key points of the change, 1-3 lines>

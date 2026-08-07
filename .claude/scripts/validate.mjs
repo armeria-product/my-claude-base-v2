@@ -402,6 +402,12 @@ const FORBIDDEN = [
   REAL_ID_BARE,
   REAL_ID_GEN,
   REAL_ID_VERTEX,
+  // todo-gate-sweep M-2 (2026-08-07): a path-form reference to the pre-"-v2" repo name (this
+  // repo is my-claude-base-v2) — scoped to the path shape specifically (immediately followed by
+  // \ or /, not already followed by -v2) so it does not false-positive on the project's own
+  // "my-claude-base v2" heading (space-separated) or the unrelated "added for my-claude-base."
+  // attribution line repeated across the imagegen/frontend-design skill files.
+  [/my-claude-base[\\/](?!v2\b)/, 'a dead reference to the pre-"-v2" repo path was found (my-claude-base\\ or my-claude-base/ not followed by -v2) — this repo is my-claude-base-v2, update the path'],
 ];
 // Test fixture, not config/docs: hook-probes.samples.json rows intentionally carry the exact
 // forbidden-shaped strings a hook must reject (e.g. "model":"claude-fable-5" pins the H-1
@@ -447,10 +453,16 @@ const walkMd = (dir) => {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) { if (!SUBPROJECTS.has(p) && e.name !== 'node_modules') walkMd(p); }
-    else if (/\.(md|js|json)$/.test(e.name)) scan.push(p);
+    else if (/\.(md|js|json|html)$/.test(e.name)) scan.push(p);
   }
 };
 walkMd(path.join(ROOT, '.claude'));
+// docs/claude-harness-guide/**: the user-facing harness guide, same dead-ref scan as .claude/.
+// docs/ itself is NOT walked (walkMd is non-recursive-root, called per subdir): docs/settings-reference.html
+// and docs/weasyprint-setup.html are reference material for external products (Claude Code's own
+// settings spec; WeasyPrint) that this repo does not own, and settings-reference.html carries a real
+// release-history section — scanning it would flag accurate historical text as a dead reference.
+walkMd(path.join(ROOT, 'docs', 'claude-harness-guide'));
 for (const p of scan) {
   if (!fs.existsSync(p)) continue;
   const lines = read(p).split('\n');
@@ -542,6 +554,11 @@ const INVARIANTS = [
   ['.claude/hooks/block-fable-when-off.js', /session model \(\/model is outside any hook's reach\)[\s\S]*?may be invisible to this hook[\s\S]*?No third hole/, 'block-fable-when-off.js header must keep the two-hole disclosure (session model unreachable; inherited-model dispatch may be invisible) together with the "no third hole" scope-limit sentence — dropping any of the three silently re-opens the H-2 overclaim this fix cycle closed'],
   // --- backlog-sweep Batch H L9 (2026-08-06) ---
   ['.claude/rules/agents.md', /recorded user ruling/, 'agents.md clause (A) tail must keep the "recorded user ruling" binding for the unlocked-run exception — without it, reviewer.md/verifier.md have no SOT explaining why a self-declared "approved"/"unlocked" claim in scope.json/PLAN.md is insufficient'],
+  // --- todo-gate-sweep Batch 4 (2026-08-07): decide() ignores lock.status, so a present-but-unlocked
+  // .claude/state/scope-lock.json (or any unarmed plans/{slug}/scope.json) read literally by the old
+  // wording gets passed into decide() as if armed — flagging nearly every file, or throwing on lock:null.
+  ['.claude/agents/reviewer.md', /status\s*===\s*["']locked["']/, 'reviewer.md Scope Conformance must state that "locked" means `status === "locked"` — without it the locator reads a merely-present-but-unlocked scope-lock.json as an armed manifest and feeds it into decide()'],
+  ['.claude/agents/verifier.md', /status\s*===\s*["']locked["']/, 'verifier.md Scope check must state that "locked" means `status === "locked"` — without it the locator reads a merely-present-but-unlocked scope-lock.json as an armed manifest and feeds it into decide()'],
 ];
 for (const [relPath, must, why] of INVARIANTS) {
   const p = path.join(ROOT, relPath);

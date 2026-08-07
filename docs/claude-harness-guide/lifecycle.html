@@ -563,7 +563,7 @@ body{
     <p>ユーザーが読むための成果物（レポート・調査結果・ガイド等）を作るときの入口。<code>document-author</code>（standard tier）に委任し、自己完結HTMLの生成・自己検証・ブラウザ表示までを行わせる。生成後は<code>check</code> skillが独立に自己完結性を再検証する、二段構えのゲート。PDFは要求時に<code>html2pdf.mjs</code>（WeasyPrint、未導入でも失敗せずHTMLのまま残す）で、編集可能なPPTXはスライド用途で要求時に<code>html2pptx.mjs</code>（未導入だと明示的に失敗する）で、それぞれHTMLから派生生成する。</p>
 
     <h2>セッション永続化との関係</h2>
-    <p>会話がコンパクトされても、あるいはセッションが切れても、進行中の状態は<code>tasks/</code>配下の4ファイル — <code>todo.md</code> / <code>lessons.md</code> / <code>session-state.md</code>、大規模実装中はオンデマンド作成の<code>roadmap.md</code>（dev modeでは<code>dev/{name}/tasks/</code>）— に残る。ここには性質の違う2つの仕組みがあり、混同しないよう分けて説明する。(1) <strong>セッション開始のたびに画面へ表示する仕組み</strong> — <code>session-start.js</code>フックが、4ファイルすべてをセッション開始時に読み込んで表示する。ただし表示には合計24KBの上限があり、超えた分は優先度の低いファイルから順に削られる（全文はファイル本体を直接読む）。(2) <strong><code>/save-session</code>が空ファイルを最初に作る仕組み（bootstrap、初回だけ雛形を用意する処理）</strong> — こちらはプロダクト文脈（dev mode）を検出したときだけ動き、<code>session-state.md</code> / <code>todo.md</code> / <code>lessons.md</code>の3ファイルだけが対象で、<code>roadmap.md</code>は対象外（大規模実装を始めるタイミングで指揮者が必要に応じて作る、§6.4）。ルーティング先の判定・書式契約の正本は<code>.claude/rules/session-persistence.md</code>。plan / audit（およびharnessが起動するplanner）は、この§6書式契約に従ってtodoやlessons、大規模実装時はroadmapにも書き込む。</p>
+    <p>会話がコンパクトされても、あるいはセッションが切れても、進行中の状態は<code>tasks/</code>配下の4ファイル — <code>todo.md</code> / <code>lessons.md</code> / <code>session-state.md</code>、大規模実装中はオンデマンド作成の<code>roadmap.md</code>（dev modeでは<code>dev/{name}/tasks/</code>）— に残る。ここには性質の違う2つの仕組みがあり、混同しないよう分けて説明する。(1) <strong>セッション開始のたびに画面へ表示する仕組み</strong> — <code>session-start.js</code>フックが、4ファイルすべてをセッション開始時に読み込んで表示する。ただし表示には合計24KBの上限があり、超えた分は優先度の低いファイルから順に削られる（全文はファイル本体を直接読む）。(2) <strong><code>/save-session</code>が空ファイルを最初に作る仕組み（bootstrap、初回だけ雛形を用意する処理）</strong> — こちらはプロダクト文脈（dev mode）を検出したときだけ動き、<code>session-state.md</code> / <code>todo.md</code> / <code>lessons.md</code>の3ファイルだけが対象で、<code>roadmap.md</code>は対象外（大規模実装を始めるタイミングで指揮者が必要に応じて作る、§6.4）。ルーティング先の判定・書式契約の正本は<code>.claude/rules/session-persistence.md</code>。plan（およびharnessが起動するplanner）は、この§6書式契約に従ってtodoやlessons、大規模実装時はroadmapにも書き込む。</p>
 
     <h2>一連の流れ図</h2>
     <figure class="figure">
@@ -631,13 +631,13 @@ body{
 
     <h2>参照した一次情報</h2>
     <ul>
-      <li><code>D:\my-claude-base\.claude\skills\plan\SKILL.md</code></li>
-      <li><code>D:\my-claude-base\.claude\skills\harness\SKILL.md</code></li>
-      <li><code>D:\my-claude-base\.claude\skills\quality-loop\SKILL.md</code></li>
-      <li><code>D:\my-claude-base\.claude\skills\check\SKILL.md</code></li>
-      <li><code>D:\my-claude-base\.claude\skills\doc\SKILL.md</code> / <code>D:\my-claude-base\.claude\agents\document-author.md</code></li>
-      <li><code>D:\my-claude-base\.claude\rules\session-persistence.md</code></li>
-      <li><code>D:\my-claude-base\CLAUDE.md</code>（§1.5, §1.10, §3 Commit Protocol・Git Workflow, §6.2, §7）</li>
+      <li><code>D:\my-claude-base-v2\.claude\skills\plan\SKILL.md</code></li>
+      <li><code>D:\my-claude-base-v2\.claude\skills\harness\SKILL.md</code></li>
+      <li><code>D:\my-claude-base-v2\.claude\skills\quality-loop\SKILL.md</code></li>
+      <li><code>D:\my-claude-base-v2\.claude\skills\check\SKILL.md</code></li>
+      <li><code>D:\my-claude-base-v2\.claude\skills\doc\SKILL.md</code> / <code>D:\my-claude-base-v2\.claude\agents\document-author.md</code></li>
+      <li><code>D:\my-claude-base-v2\.claude\rules\session-persistence.md</code></li>
+      <li><code>D:\my-claude-base-v2\CLAUDE.md</code>（§1.5, §1.10, §3 Commit Protocol・Git Workflow, §6.2, §7）</li>
     </ul>
 
   </main>
