@@ -35,14 +35,20 @@ if (sameFile(input, output)) {
   process.exit(2);
 }
 
-const run = (cmd, args) => spawnSync(cmd, args, { encoding: 'utf8' });
+// Every spawnSync call in this file gets a timeout so a hung/misbehaving child process can never
+// stall the workflow indefinitely — this file's own contract is FAIL-OPEN, not "wait forever".
+// On timeout, spawnSync sets `result.error` (ETIMEDOUT) and no/`null` status, which both call
+// sites below already treat as "unusable" -> fail-open, same as any other probe/conversion
+// failure; the fail-open DIRECTION is unchanged, only the maximum wait is now bounded.
+const run = (cmd, args, timeout) => spawnSync(cmd, args, { encoding: 'utf8', timeout });
 
 // Find a Python interpreter that can actually import weasyprint (native Pango libs included).
 // `import weasyprint` is the truest "is it usable here?" probe — a bare pip install without
 // Pango fails this exact import on Windows, which is what we want to detect.
+const PROBE_TIMEOUT_MS = 10_000;
 let py = null;
 for (const cand of ['python', 'python3', 'py']) {
-  const probe = run(cand, ['-c', 'import weasyprint']);
+  const probe = run(cand, ['-c', 'import weasyprint'], PROBE_TIMEOUT_MS);
   if (probe && !probe.error && probe.status === 0) { py = cand; break; }
 }
 
@@ -52,8 +58,11 @@ if (!py) {
   process.exit(0); // fail-open
 }
 
+// Longer bound than the probe above: an actual document render (fonts, images) legitimately takes
+// more than a quick `-c` import check, but still must not be able to hang forever.
+const CONVERT_TIMEOUT_MS = 120_000;
 const outputExisted = fs.existsSync(output);
-const res = run(py, ['-m', 'weasyprint', input, output]);
+const res = run(py, ['-m', 'weasyprint', input, output], CONVERT_TIMEOUT_MS);
 if (!res || res.error || res.status !== 0) {
   if (!outputExisted && fs.existsSync(output)) { try { fs.unlinkSync(output); } catch { /* leave it */ } }
   console.log(`html2pdf: WeasyPrint failed — skipping PDF. HTML is kept: ${input}`);

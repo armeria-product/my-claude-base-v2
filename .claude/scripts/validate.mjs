@@ -552,6 +552,15 @@ const INVARIANTS = [
   // --- fable-gate (2026-08-06) ---
   ['CLAUDE.md', /\.fable-status/, 'CLAUDE.md §1.11 must keep the Fable ON/OFF gate (the .claude/.fable-status switch) — dropping the clause removes the documented precondition for using Fable at all'],
   ['.claude/hooks/block-fable-when-off.js', /session model \(\/model is outside any hook's reach\)[\s\S]*?may be invisible to this hook[\s\S]*?No third hole/, 'block-fable-when-off.js header must keep the two-hole disclosure (session model unreachable; inherited-model dispatch may be invisible) together with the "no third hole" scope-limit sentence — dropping any of the three silently re-opens the H-2 overclaim this fix cycle closed'],
+  // --- backlog-sweep M-2 (2026-08-07): CLAUDE.md §1.11's "Known limits" disclosure of the §1.11
+  // gate's two holes ((a) session /model unreachable, (b) inherited-model dispatch may be
+  // invisible) is repeated in 4 places (CLAUDE.md itself, README.md, the hook header pinned just
+  // above, and the hook's own Japanese deny message pinned below) — before this fix only the hook
+  // header was pinned, so the other 3 faces could silently drop the disclosure with validate still
+  // reporting PASS.
+  ['CLAUDE.md', /the user's own session model \(`\/model`\) cannot be gated at all[\s\S]*?may be invisible to this hook \(unverified\)[\s\S]*?never state or imply it covers every route to Fable/, 'CLAUDE.md §1.11 "Known limits" must keep both disclosed holes ((a) session /model unreachable, (b) inherited-model dispatch may be invisible) together with the "never state or imply it covers every route to Fable" scope-limit sentence'],
+  ['README.md', /起動先モデルが分かるサブエージェントの起動[\s\S]*?対象外[\s\S]*?この仕組みから見えないことがあります/, 'README.md must keep the §1.11 gate\'s two-hole disclosure in Japanese (session model out of scope; inherited-model dispatch may be invisible) — dropping it leaves users unaware of what the gate does not cover'],
+  ['.claude/hooks/block-fable-when-off.js', /この仕組みで止められるのは「モデル名が分かるサブエージェントの起動」だけです[\s\S]*?Fable で動いている場合[\s\S]*?この仕組みからは見えないことがあります/, 'block-fable-when-off.js\'s Japanese deny message (shown to the model on every blocked dispatch) must keep the same two-hole disclosure as the English header — this is a separate string from the header comment pinned above, and dropping it removes the disclosure from the one place a blocked dispatch actually sees'],
   // --- backlog-sweep Batch H L9 (2026-08-06) ---
   ['.claude/rules/agents.md', /recorded user ruling/, 'agents.md clause (A) tail must keep the "recorded user ruling" binding for the unlocked-run exception — without it, reviewer.md/verifier.md have no SOT explaining why a self-declared "approved"/"unlocked" claim in scope.json/PLAN.md is insufficient'],
   // --- todo-gate-sweep Batch 4 (2026-08-07): decide() ignores lock.status, so a present-but-unlocked
@@ -701,6 +710,181 @@ for (const [relPath, must, why] of INVARIANTS) {
       if (!resolveRequireTarget(p, m[1]))
         fail(`${rel(p)}:${i + 1} — require("${m[1]}") does not resolve to any file (checked exact/.js/.json/index.js)`);
     });
+  }
+}
+
+// ---- 12. Negative invariants: patterns that must NEVER appear in a given set of files ----
+// Inverse of #6 INVARIANTS above: INVARIANTS can only assert "file X must contain pattern P"
+// (single file, presence-only) — it has no way to express "no file in this set may EVER contain
+// pattern P" (2026-08-07 backlog M-1). Declarative, one-row-per-rule shape so it stays extensible:
+// add one row, not new scan code.
+// Row shape: [label, files (absolute paths, pre-filtered by the row itself), valueCapturePattern
+// ("g" flag, one capture group), badValue (the captured value that is a violation), why].
+//
+// First rule: a hook must never write an explicit permissionDecision:"allow" response on stdout.
+// 18 of the 20 registered hooks share this property today (implicit only: silent stdout + exit 0
+// = allow; only "deny" is ever written explicitly) — an explicit allow is not a documented protocol
+// need here and risks short-circuiting a later hook in the same PreToolUse chain. cmd-write-guard.js
+// and scope-guard.js legitimately write permissionDecision on this exact field, but always with the
+// value "deny" (see the same-named but separate STDOUT_DENY_HOOKS list in
+// .claude/hooks/lib/hook-probes.test.js, which exists for that file's own probing logic). A prior
+// version of this check excluded those two files by filename instead of by value — which left
+// exactly the two files most likely to ever carry a real "allow" completely unscanned, and also
+// only looked at the non-recursive .js top level of .claude/hooks/ (missing all files under lib/
+// and any .mjs/.cjs). Fixed 2026-08-07: scan every .js/.mjs/.cjs file under .claude/hooks/
+// recursively with no per-file exclusion, and only treat a captured "allow" value as a violation —
+// a captured "deny" always passes, even inside cmd-write-guard.js/scope-guard.js.
+// Comment lines (trimmed line starting with "//" or "*", same convention as sections 9/11) are
+// skipped so a line that merely *explains* this rule in prose (as this very comment block does,
+// were it copied into a hook file) doesn't false-fail on its own wording.
+// Known, disclosed evasion (not closed by this fix — flagged here rather than silently left open):
+// a value built via a variable or string concatenation (e.g. `permissionDecision: decision` or
+// `'al' + 'low'`) does not match this literal-string-value regex and passes silently — this check
+// only catches a literal "allow"/"deny" string constant on the permissionDecision field.
+const walkHookCodeFiles = (dir, out) => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) walkHookCodeFiles(p, out);
+    else if (/\.(js|mjs|cjs)$/.test(e.name)) out.push(p);
+  }
+};
+const hookCodeFiles = [];
+walkHookCodeFiles(path.join(ROOT, '.claude', 'hooks'), hookCodeFiles);
+
+const NEGATIVE_INVARIANTS = [
+  [
+    'no hook writes an explicit permissionDecision:"allow" response on stdout',
+    hookCodeFiles,
+    /permissionDecision['"]?\s*:\s*['"](allow|deny)['"]/g,
+    'allow',
+    'a hook must only ever signal "deny" explicitly (silence + exit 0 already means allow) — an explicit allow response could short-circuit a later hook in the same PreToolUse chain',
+  ],
+];
+for (const [label, files, pattern, badValue, why] of NEGATIVE_INVARIANTS)
+  for (const f of files) {
+    const lines = read(f).split('\n');
+    lines.forEach((line, i) => {
+      if (/^(\/\/|\*)/.test(line.trim())) return;
+      const re = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g');
+      for (const m of line.matchAll(re))
+        if (m[1] === badValue)
+          fail(`negative invariant violated in ${rel(f)}:${i + 1} — ${why} [${label}]`);
+    });
+  }
+
+// ---- 13. Guide roster cross-check: skill/agent/command names named in docs/claude-harness-guide/
+// must actually exist. #4's FORBIDDEN list only catches names on an explicit deny-list (already-
+// removed subsystems) — it cannot notice a name that was simply never added there (e.g. a stale or
+// mistyped name, or a name for something that quietly stopped existing). Two capture shapes only,
+// deliberately narrow to avoid flagging ordinary prose as a name:
+//   (a) explicit path references of the exact form .claude/(skills|agents|commands)/<name> — the
+//       name is bounded by the next non-[A-Za-z0-9_-] character, so a wildcard segment such as
+//       .claude/agents/*.md or .claude/skills/*/SKILL.md never produces a spurious capture (the
+//       character class does not match "*").
+//   (b) the two roster <table>s in skills-agents.html that ARE the canonical name lists, identified
+//       by their <caption> text (".claude/agents/*.md の要約" / ".claude/skills/*/SKILL.md の要約")
+//       — only the first <td><code>...</code></td> cell of each row in exactly those two tables.
+//       Deliberately NOT every table with a <code> first cell (e.g. the Model Tier Policy summary
+//       table's first column is a tier badge, not a name) — only these two captioned tables are
+//       treated as name rosters, so a name-shaped word in an unrelated table is never flagged.
+//       The row regex tolerates one attribute on <tr>/<td>/<code> (e.g. class="mono") — a bare-tag
+//       regex used to drop straight to 0 matches the moment any styling attribute was added to a
+//       roster table, and 0 matches read identically to "nothing to check", so the whole cross-check
+//       PASSed silently (2026-08-07 fix; the floor check below turns that silence into a FAIL).
+// Name sourcing note: REAL_NAMES.agents is agentNames, collected earlier from each agent file's own
+// frontmatter `name:` field (the file's declared identity, read from inside the file); REAL_NAMES.
+// skills/commands instead come from a non-recursive directory listing (skill dir name / command
+// file basename) — deliberately not generalized to a recursive listing, since no nested command
+// exists today and adding one would be speculative (CLAUDE.md §1.7).
+{
+  // clip(): caption text is taken verbatim from the guide's own HTML and embedded into fail
+  // messages below — bound both its length and its character shape (collapse whitespace/newlines
+  // to a single space) so a stray/malformed caption can't inject multi-line or oversized text into
+  // this validator's own output.
+  const clip = (s) => s.trim().replace(/\s+/g, ' ').slice(0, 100);
+  const guideDir = path.join(ROOT, 'docs', 'claude-harness-guide');
+  if (!fs.existsSync(guideDir))
+    warn('docs/claude-harness-guide/ does not exist — the guide roster cross-check (#13) has nothing to check');
+  const guideFiles = fs.existsSync(guideDir) ? fs.readdirSync(guideDir).filter((f) => f.endsWith('.html')) : [];
+  if (fs.existsSync(guideDir) && guideFiles.length === 0)
+    warn('docs/claude-harness-guide/ exists but contains no .html files — the guide roster cross-check (#13) has nothing to check');
+  const REAL_NAMES = {
+    skills: new Set(fs.readdirSync(skillsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)),
+    agents: agentNames,
+    commands: new Set(
+      fs.existsSync(commandsDir) ? fs.readdirSync(commandsDir).filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, '')) : []
+    ),
+  };
+  const SINGULAR = { skills: 'skill', agents: 'agent', commands: 'command' };
+  const PATH_REF_RE = /\.claude\/(skills|agents|commands)\/([A-Za-z0-9_-]+)/g;
+  const ROSTER_TABLES = [
+    { kind: 'agents', captionMatch: /agents\/\*\.md.*要約/ },
+    { kind: 'skills', captionMatch: /skills\/\*\/SKILL\.md.*要約/ },
+  ];
+  // Attribute-tolerant row shape: still requires <code> to open the first cell immediately
+  // (deliberately narrow, see (b) above), but a class/id/etc. on <tr>/<td>/<code> no longer drops
+  // the row out of the match.
+  const ROSTER_ROW_RE = /<tr[^>]*>\s*<td[^>]*>\s*<code[^>]*>([A-Za-z0-9_-]+)<\/code>/g;
+
+  // Floor check (one level up from the row-count floor below): count, per ROSTER_TABLES entry,
+  // how many <caption> texts across all guide files matched its captionMatch regex. If ONE
+  // heading's wording drifts (e.g. the agents roster's "の要約" -> "の概要") while the OTHER
+  // roster's caption is untouched, a single global "matched >=1 caption somewhere" counter would
+  // stay positive (the still-matching skills caption keeps it alive) and hide that the agents
+  // roster specifically stopped being checked — so this counts each kind separately. Any kind
+  // with 0 matches across every guide file must FAIL, not PASS-by-doing-nothing (2026-08-08 fix,
+  // same rationale as the row-count floor this mirrors).
+  const matchedRosterCaptionsByKind = Object.fromEntries(ROSTER_TABLES.map((r) => [r.kind, 0]));
+
+  for (const f of guideFiles) {
+    const p = path.join(guideDir, f);
+    const text = read(p);
+
+    for (const m of text.matchAll(PATH_REF_RE)) {
+      const [, kind, name] = m;
+      if (!REAL_NAMES[kind].has(name))
+        fail(`docs/claude-harness-guide/${f}: references ".claude/${kind}/${name}" but no such ${SINGULAR[kind]} exists`);
+    }
+
+    for (const capMatch of text.matchAll(/<caption>([\s\S]*?)<\/caption>/g)) {
+      const captionText = clip(capMatch[1]);
+      const roster = ROSTER_TABLES.find((r) => r.captionMatch.test(captionText));
+      if (!roster) continue;
+      matchedRosterCaptionsByKind[roster.kind]++;
+      const tableStart = text.lastIndexOf('<table', capMatch.index);
+      const tableEnd = text.indexOf('</table>', capMatch.index);
+      if (tableStart === -1 || tableEnd === -1) {
+        fail(`docs/claude-harness-guide/${f}: roster table "${captionText}" caption matched but its <table>...</table> markers could not be located — cannot verify roster names`);
+        continue;
+      }
+      const tableHtml = text.slice(tableStart, tableEnd);
+      let rowCount = 0;
+      for (const rowMatch of tableHtml.matchAll(ROSTER_ROW_RE)) {
+        rowCount++;
+        const name = rowMatch[1];
+        if (!REAL_NAMES[roster.kind].has(name))
+          fail(`docs/claude-harness-guide/${f}: roster table "${captionText}" lists "${name}" but no such ${SINGULAR[roster.kind]} exists`);
+      }
+      // Floor check: a matched roster caption with 0 extracted name rows means the cross-check
+      // silently verified nothing (markup drift on <tr>/<td>/<code>, or a genuinely empty table) —
+      // that must FAIL, not PASS-by-doing-nothing.
+      if (rowCount === 0)
+        fail(`docs/claude-harness-guide/${f}: roster table "${captionText}" matched 0 name rows — the cross-check checked nothing (markup drift on <tr>/<td>/<code>, or the table is genuinely empty)`);
+    }
+  }
+
+  // See the counter's own comment above: a ROSTER_TABLES kind with 0 matched captions across
+  // every guide file means its captionMatch regex matched no heading anywhere — that kind's
+  // roster silently went unchecked, same failure shape the row-count floor above catches one
+  // level down.
+  if (guideFiles.length > 0) {
+    for (const roster of ROSTER_TABLES) {
+      if (matchedRosterCaptionsByKind[roster.kind] === 0)
+        fail(
+          `docs/claude-harness-guide/: no <caption> matched the expected ${roster.kind} roster heading ` +
+          `(pattern ${roster.captionMatch}) in any .html file — that roster's cross-check checked nothing`
+        );
+    }
   }
 }
 

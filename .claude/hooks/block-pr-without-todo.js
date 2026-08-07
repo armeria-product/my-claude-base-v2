@@ -26,14 +26,19 @@
 // unsuffixed destination) so `cd dev/foo && gh pr create` is checked against dev/foo's own repo
 // root (found by walking up from the effective cwd for a `.git` entry), not the workspace root —
 // this is what makes a dev/{name} product-repo branch need no special-cased routing here.
-// Every directory-change construct this cannot reliably follow — `pushd`/`popd`, PowerShell
+// Directory-change constructs this cannot reliably follow — `pushd`/`popd`, PowerShell
 // `Set-Location`/`sl`/`chdir`, a bare `cd` with no destination (-> $HOME), a `cd` whose
 // destination contains `$` (variable expansion), a suffixed `cd.exe`/`cd.cmd`/`cd.com`/`cd.ps1`
 // (or the `pushd`/`popd` equivalents), or any segment beginning with `(` (subshell/grouping
-// entry) — makes the WHOLE command resolve to fail-open (null), not just that one segment: once
-// cwd tracking is uncertain, evaluating a later `gh ... pr create` against a stale/wrong cwd would
-// answer using the WRONG repo's todo.md/branch (a false deny OR a false allow), which is worse
-// than not answering at all.
+// entry) — make cwd tracking permanently uncertain from that point on: any `gh ... pr create`
+// occurrence found AFTER one of these is skipped rather than answered against a stale/wrong cwd
+// (see findPrCreateCwds() below for the exact rule). An occurrence found BEFORE the construct is
+// unaffected — cwd tracking up to that point was exact, so it is still resolved and judged
+// normally: e.g. `gh pr create -t x; cd` (a destination-less, therefore untrackable, `cd` AFTER
+// the only occurrence) still denies against a stale todo.md — verified 2026-08-08. The command as
+// a whole only resolves to fail-open (null) when EVERY occurrence ends up unresolved this way —
+// no `gh ... pr create` is present at all, or the only occurrence(s) all come after an untrackable
+// construct.
 //
 // EVERY `gh ... pr create` occurrence in the command is evaluated (not just the first) — if the
 // command chains more than one (e.g. across `&&`/`;`), a deny on any one of them denies the whole
@@ -63,10 +68,12 @@
 //     never seen as its own segment and is not detected. `(gh pr create)` and `{ gh pr create; }`
 //     also pass through undetected: the trailing `)` glues onto the preceding token (`create)`,
 //     which no longer matches the literal `create`), and `{` becomes the opaque leading command
-//     token itself, with `gh`/`pr`/`create` demoted to its args. Verified 2026-08-07 (all three
+//     token itself, with `gh`/`pr`/`create` demoted to its args. Verified 2026-08-08 (all three
 //     forms exit 0 against a fixture that a plain `gh pr create` correctly denies). Fixing the
 //     tokenizer to also split on newlines is out of scope here — it is shared by every other
-//     guard in this harness and needs its own impact review — disclosed, not fixed.
+//     guard in this harness and needs its own impact review — disclosed, not fixed. (A
+//     newline-splitting version of this tokenizer was tried and withdrawn 2026-08-08 after review
+//     found several new bypasses it introduced elsewhere — not committed here.)
 //   - the judged signal (tasks/todo.md's mtime) is plain filesystem state with no integrity
 //     check: touching it to a future date once (via `touch`, an editor, or any other write)
 //     satisfies this gate permanently for every later branch, regardless of what that later
@@ -74,19 +81,25 @@
 //     `.git/logs/refs/heads/<branch>` reflog file makes branchCreatedMs() throw (see below) and
 //     this hook fail OPEN — also verified 2026-08-07. Neither is fixed here; see the
 //     workflow-reminder framing above.
-//   - a linked worktree or a submodule checkout has `.git` as a FILE, not a directory. findRepoRoot()
-//     only checks `fs.existsSync(path.join(dir, '.git'))`, which is true for a file too, so it
-//     stops there and treats the worktree/submodule directory itself as the repo root; the
-//     subsequent `.git/HEAD` read then tries to treat that file as a directory, throws, and the
-//     outer try/catch turns that into a silent fail-open (exit 0) — verified 2026-08-07 against a
-//     real `git worktree add` checkout. Not fixed here, only disclosed; this is a realistic path
-//     in this harness since review seats are documented to run from a throwaway worktree.
+//   - a branch name containing `/` or `..` is rejected by isSafeBranchName() (see below) as a
+//     path-injection precaution, and currentBranch() then returns null the same as a detached
+//     HEAD — so this gate is a permanent no-op (fail-open) for any nested branch name, including
+//     an ordinary one like `feature/foo`, not just an adversarial one. Verified 2026-08-08: a
+//     real repo checked out on `feature/foo` with tasks/todo.md pinned to predate the branch still
+//     exits 0 (allowed). Deliberately left this way (a LOW-severity over-restriction, not fixed
+//     here) rather than trusting a branch name read from an unauthenticated `.git/HEAD` file.
 //
 // Fail-open (exit 0) on ANY resolution failure — not a repo, detached HEAD, no reflog for the
 // branch (e.g. a throwaway repo with no branch history yet), no tasks/todo.md, an unparsable
-// reflog line — so this gate can never itself block the normal PR flow when it cannot determine
-// an answer. Every other Bash|PowerShell-matched hook in this harness follows the same
-// fail-open convention; this hook does not introduce a new fail-closed precedent.
+// reflog line, or a `.git` FILE (linked worktree / submodule checkout) whose `gitdir`/`commondir`
+// pointer content doesn't match the shape resolveGitDir()/resolveCommonGitDir() expect — so this
+// gate can never itself block the normal PR flow when it cannot determine an answer. A linked
+// worktree with the NORMAL gitdir/commondir shape IS now resolved and correctly judged (verified
+// 2026-08-07 against a real `git worktree add` checkout: before this fix it silently fell open
+// because `.git/HEAD` was read as if `.git` were a directory when it is actually a file there;
+// after the fix it reads the worktree's own HEAD and the main repo's shared reflog and denies
+// correctly). Every other Bash|PowerShell-matched hook in this harness follows the same fail-open
+// convention; this hook does not introduce a new fail-closed precedent.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -120,35 +133,52 @@ function isUntrackableCwdCmd(cmd) {
 
 // Find the effective cwd of EVERY `gh ... pr create` occurrence within `command`, tracking `cd`
 // across segments in order (see header for the precise/non-liberal cd-tracking scope and the full
-// list of untrackable move constructs). Returns an array of cwds — one per occurrence, in the
-// order found, possibly with duplicates if the cwd didn't change between two occurrences — or
-// null if no occurrence was found, OR an untrackable move construct was seen ANYWHERE in the
-// command (before, between, or after any occurrence): once cwd tracking is uncertain for any part
-// of the command, this bails on the whole command rather than return a partial/possibly-wrong
-// result for occurrences it did resolve.
+// list of untrackable move constructs). Returns an array of cwds — one per occurrence whose cwd
+// was actually resolvable, in the order found, possibly with duplicates if the cwd didn't change
+// between two occurrences — or null if no occurrence was found, OR every occurrence found had an
+// unresolvable cwd.
+//
+// Once an untrackable move construct (subshell/grouping entry, pushd/popd, Set-Location and its
+// aliases, a suffixed cd/pushd/popd, a destination-less `cd`, or a `cd` whose destination contains
+// `$`) is seen, cwd tracking becomes permanently uncertain from that point onward — `cur` is no
+// longer trusted, later `cd`s are not applied, and any LATER `gh ... pr create` occurrence is
+// skipped (not resolved, not added to the returned array) rather than evaluated against a stale or
+// guessed cwd. An occurrence found BEFORE the untrackable construct is unaffected and still
+// resolves normally: cwd tracking up to that point was exact, so there is no reason to also
+// discard those already-correct results (2026-08-07 fix — previously ANY untrackable construct
+// ANYWHERE in the command, including after the last relevant occurrence, discarded every
+// occurrence found so far and made the whole command fail open; see hook-probes.samples.json
+// S-pr-todo/pt-deny-pushd-after-create for the regression pin).
 function findPrCreateCwds(command, startCwd) {
   let cur = startCwd;
+  let cwdUnknown = false;
   const cwds = [];
   for (const { cmd, args } of segments(command)) {
     // A subshell/grouping entry: lib/parse-cmd.js glues a leading '(' onto the command token
     // (`(cd` -> cmd "(cd", `(gh` -> cmd "(gh") and this hook does not scope cwd changes to the
     // subshell, so it cannot tell whether a real shell actually changed directory inside one.
-    if (cmd.startsWith('(')) return null;
-    if (isUntrackableCwdCmd(cmd)) return null;
+    if (cmd.startsWith('(') || isUntrackableCwdCmd(cmd)) {
+      cwdUnknown = true;
+      continue;
+    }
 
     if (cmd === 'gh') {
       const i = findSubcmdIndex(args, GH_GLOBAL_VALUE_FLAGS);
       if (i >= 0 && args[i] === 'pr') {
         const rest = args.slice(i + 1);
         const j = findSubcmdIndex(rest, GH_GLOBAL_VALUE_FLAGS);
-        if (j >= 0 && rest[j] === 'create') cwds.push(cur);
+        if (j >= 0 && rest[j] === 'create' && !cwdUnknown) cwds.push(cur);
       }
     }
-    if (cmd === 'cd') {
+    if (cmd === 'cd' && !cwdUnknown) {
       const dest = args.filter((a) => !a.startsWith('-'))[0];
       // No destination (-> $HOME) or a variable-expanded destination ($VAR): this hook has no
-      // shell to resolve either against, so bail rather than keep the previous (now-stale) cwd.
-      if (!dest || dest.includes('$')) return null;
+      // shell to resolve either against, so cwd tracking becomes uncertain from here on rather
+      // than keeping the previous (now-stale) cwd.
+      if (!dest || dest.includes('$')) {
+        cwdUnknown = true;
+        continue;
+      }
       cur = path.resolve(cur, dest);
     }
   }
@@ -158,6 +188,9 @@ function findPrCreateCwds(command, startCwd) {
 // Walk up from `startDir` looking for a `.git` entry (dir or file). Returns the containing dir
 // (the repo root: the workspace root if startDir is under it directly, or a dev/{name} product
 // repo's own root if it has its own .git), or null if none is found (filesystem root reached).
+// `.git` being a FILE (a linked worktree or submodule checkout) is deliberately still accepted
+// here — resolveGitDir()/resolveCommonGitDir() below are what actually read that file's content;
+// this function only locates it.
 function findRepoRoot(startDir) {
   let dir = path.resolve(startDir);
   for (;;) {
@@ -168,11 +201,87 @@ function findRepoRoot(startDir) {
   }
 }
 
-// The branch HEAD currently points to, or null for a detached HEAD.
+// Bound check for a resolved absolute path read from an attacker-writable pointer file (a `.git`
+// file's `gitdir:` line, or a linked worktree's `commondir` file): reject a resolved location that
+// escapes both repoRoot's own tree AND every PATH containing a ".git" segment. A legitimate
+// `gitdir:`/`commondir` value always resolves to somewhere under a directory literally named
+// ".git" — either repoRoot's own (the normal, non-worktree case, which never reaches this check
+// since resolveGitDir() returns early for it), or the MAIN checkout's `.git/worktrees/<name>` and
+// `.git` themselves for the linked-worktree case. This is a NAME check on the resolved path's
+// components (`.split(path.sep).includes('.git')`), not a check that real git structure actually
+// exists there — it does not call fs.existsSync or read anything, so a path that merely contains a
+// ".git" segment but points at nothing on disk still passes here (verified 2026-08-08: a made-up,
+// nonexistent path under a `.git` directory returns true); an actually-missing target then fails
+// later, in resolveGitDir()/resolveCommonGitDir()'s own readFileSync calls, not here. This does NOT
+// prevent pointing at a different, unrelated repo's real `.git` directory either (also out of scope
+// for this check — the value still names a real git internal directory, just the wrong one); it
+// only rejects a resolved path with no ".git" path segment at all (e.g. `gitdir:
+// ../../../../etc`), which is the escape 2026-08-07's review flagged (see hook-probes.samples.json
+// S-pr-todo/pt-allow-gitdir-escape-outside-repo).
+function isWithinRepoTree(resolvedPath, repoRoot) {
+  const rel = path.relative(repoRoot, resolvedPath);
+  if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) return true;
+  return resolvedPath.split(path.sep).includes('.git');
+}
+
+// The actual git directory for `repoRoot`. For a normal checkout `.git` is a directory and this
+// is just `<repoRoot>/.git`. For a linked worktree or a submodule checkout, `.git` is instead a
+// FILE whose content is `gitdir: <path>` (the path is relative to the directory containing that
+// file) — read and resolve it. Throws (does not return null) on anything that doesn't match this
+// shape, INCLUDING a resolved path that fails isWithinRepoTree() above; the caller's own try/catch
+// is what turns that into fail-open, same convention as every other resolution step in this file
+// (see header).
+function resolveGitDir(repoRoot) {
+  const gitPath = path.join(repoRoot, '.git');
+  if (fs.statSync(gitPath).isDirectory()) return gitPath;
+  const content = fs.readFileSync(gitPath, 'utf8');
+  const m = content.match(/^gitdir:\s*(.+?)\s*$/m);
+  if (!m) throw new Error('unrecognized .git file content');
+  const resolved = path.resolve(repoRoot, m[1]);
+  if (!isWithinRepoTree(resolved, repoRoot)) throw new Error('gitdir escapes the repo tree');
+  return resolved;
+}
+
+// The git dir that actually holds refs/heads and their reflogs. For a normal checkout, or for a
+// submodule's own module dir (`.git/modules/<name>`, fully self-contained), this is `gitDir`
+// itself. For a LINKED WORKTREE, `gitDir` is instead the per-worktree admin directory
+// (`<main-repo>/.git/worktrees/<name>`) — refs/heads and their reflogs are NOT duplicated there;
+// they live in the main repo's git dir, which the admin directory's own `commondir` file points at
+// (its content is a path, typically relative, e.g. "../.."). Absence of a `commondir` file means
+// `gitDir` is already the common dir (the normal-checkout and submodule cases). `repoRoot` is only
+// used for the isWithinRepoTree() bound check (same anchor resolveGitDir() uses above), not for
+// resolving `rel` itself, which stays relative to `gitDir` per git's own convention.
+function resolveCommonGitDir(gitDir, repoRoot) {
+  const commondirPath = path.join(gitDir, 'commondir');
+  if (!fs.existsSync(commondirPath)) return gitDir;
+  const rel = fs.readFileSync(commondirPath, 'utf8').trim();
+  const resolved = path.resolve(gitDir, rel);
+  if (!isWithinRepoTree(resolved, repoRoot)) throw new Error('commondir escapes the repo tree');
+  return resolved;
+}
+
+// A branch name is only trusted when it is a single path segment: it is used verbatim as the last
+// path.join() argument building the reflog path in branchCreatedMs() below, and path.join()
+// SILENTLY COLLAPSES ".." components rather than rejecting them — a HEAD file containing
+// `ref: refs/heads/../heads/main` (something git's own `checkout -b` refuses to create, but this
+// hook reads HEAD as a plain file with no such validation) would redirect branchCreatedMs() to a
+// DIFFERENT branch's real reflog instead of failing to resolve. Rejecting any "/" also means a
+// legitimate nested branch name (e.g. "feature/foo") is treated as unresolvable (fails open) —
+// a deliberate over-restriction for this LOW-severity fix rather than a real, common case.
+function isSafeBranchName(branch) {
+  return !/[\\/]/.test(branch) && !branch.includes('..');
+}
+
+// The branch HEAD currently points to, or null for a detached HEAD OR an unsafe branch name (see
+// isSafeBranchName() above — the caller treats null the same as a detached HEAD: fail open). HEAD
+// is read from `gitDir` itself (not the common dir): a linked worktree's checked-out branch is
+// recorded in its OWN per-worktree HEAD file, distinct from the main checkout's HEAD.
 function currentBranch(repoRoot) {
-  const head = fs.readFileSync(path.join(repoRoot, '.git', 'HEAD'), 'utf8').trim();
+  const gitDir = resolveGitDir(repoRoot);
+  const head = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8').trim();
   const m = head.match(/^ref:\s*refs\/heads\/(.+)$/);
-  return m ? m[1] : null;
+  if (!m) return null;
+  return isSafeBranchName(m[1]) ? m[1] : null;
 }
 
 // The branch's creation time (ms since epoch), read from the FIRST line of its reflog file — the
@@ -184,9 +293,13 @@ function currentBranch(repoRoot) {
 // any reflog) — fs.readFileSync's ENOENT propagates to the caller, whose own try/catch is what
 // actually produces the fail-open result for that case, not a null return from this function.
 // Only returns null (a value the caller also treats as fail-open) when the file DOES exist but its
-// first line's timestamp field doesn't parse as a number.
+// first line's timestamp field doesn't parse as a number. The reflog always lives under the
+// COMMON git dir (resolveCommonGitDir()), not necessarily `repoRoot`'s own gitdir — for a linked
+// worktree these differ (see resolveCommonGitDir() above); for a normal checkout or a submodule
+// they are the same directory, so this is a no-op there.
 function branchCreatedMs(repoRoot, branch) {
-  const reflogPath = path.join(repoRoot, '.git', 'logs', 'refs', 'heads', branch);
+  const commonDir = resolveCommonGitDir(resolveGitDir(repoRoot), repoRoot);
+  const reflogPath = path.join(commonDir, 'logs', 'refs', 'heads', branch);
   const firstLine = fs.readFileSync(reflogPath, 'utf8').split('\n')[0] || '';
   const fields = firstLine.split('\t')[0].trim().split(/\s+/);
   const ts = Number(fields[fields.length - 2]);
