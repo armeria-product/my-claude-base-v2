@@ -4,6 +4,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -23,6 +24,28 @@ const SANDBOX_FABLE_ON = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-fable-on
 const SANDBOX_FABLE_ON_MESSY = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-fable-on-messy');
 const SANDBOX_FABLE_OFF = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-fable-off');
 const SANDBOX_FABLE_ONX = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-fable-onx');
+// todo-gate-sweep Batch 3 (2026-08-07): three real git repos for block-pr-without-todo.js
+// probes, rooted under tmp/ (gitignored), never <REPO> — the real workspace's tasks/todo.md and
+// current branch vary by session (same flakiness reason SANDBOX_GIT_MAIN was built to avoid for
+// block-direct-to-main.js). Deny/allow are made deterministic via fs.utimesSync pinning
+// tasks/todo.md's mtime to a fixed far-past/far-future date, rather than relying on real
+// wall-clock ordering against git's 1-second-granularity reflog timestamp (see
+// buildSandboxTodoRepo() below).
+const SANDBOX_TODO_DENY = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-todo-deny');
+const SANDBOX_TODO_ALLOW = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-todo-allow');
+const SANDBOX_TODO_NOREFLOG = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-todo-noreflog');
+// todo-gate-sweep P2 item 1 (2026-08-07): a REAL linked worktree (`.git` there is a FILE, not a
+// directory) for block-pr-without-todo.js's worktree-resolution fix (resolveGitDir()/
+// resolveCommonGitDir()). SANDBOX_TODO_WORKTREE_BASE is the main checkout the worktree is linked
+// from; SANDBOX_TODO_WORKTREE is the linked worktree itself.
+const SANDBOX_TODO_WORKTREE_BASE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-todo-wt-base');
+const SANDBOX_TODO_WORKTREE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-todo-wt');
+// todo-gate-sweep P3 item 2 (2026-08-07): fixtures for block-pr-without-todo.js's gitdir/commondir/
+// branch-name bound-check fix. SANDBOX_TODO_GITDIR_ESCAPE_TARGET is NOT named ".git" on purpose
+// (see buildSandboxTodoGitdirEscape() below); SANDBOX_TODO_BRANCH_ESCAPE gets a hand-written HEAD.
+const SANDBOX_TODO_GITDIR_ESCAPE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-todo-gitdir-escape');
+const SANDBOX_TODO_GITDIR_ESCAPE_TARGET = path.join(ROOT, 'tmp', 'hook-probes', 'evil-gitdir-store');
+const SANDBOX_TODO_BRANCH_ESCAPE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-todo-branch-escape');
 const SAMPLES_FILE = path.join(__dirname, 'hook-probes.samples.json');
 const PROTECTED_BRANCHES = new Set(['main', 'master']);
 
@@ -138,6 +161,125 @@ function buildFableSandboxes() {
   buildFableSandbox(SANDBOX_FABLE_ONX, 'ONX\n');
 }
 
+// todo-gate-sweep Batch 3 (2026-08-07): a real git repo with one commit on `main` (so a `topic`
+// branch can be created from it — an empty repo has no commit to branch from, and no reflog
+// entry gets written until a ref actually moves) and a tasks/todo.md file, then `topic` is
+// checked out (the reflog "branch: Created from HEAD" entry block-pr-without-todo.js reads is
+// written at THIS checkout, before any further commits happen on topic — matching how a real
+// `git switch -c <branch> main` records branch-creation time separately from later work).
+function buildSandboxTodoRepo(root) {
+  fs.mkdirSync(root, { recursive: true });
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root });
+  execFileSync('git', ['config', 'user.email', 'probe@example.com'], { cwd: root });
+  execFileSync('git', ['config', 'user.name', 'probe'], { cwd: root });
+  fs.mkdirSync(path.join(root, 'tasks'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'tasks', 'todo.md'), '# todo\n');
+  execFileSync('git', ['add', '-A'], { cwd: root });
+  execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: root });
+  execFileSync('git', ['checkout', '-q', '-b', 'topic'], { cwd: root });
+}
+
+function setTodoMtime(root, when) {
+  fs.utimesSync(path.join(root, 'tasks', 'todo.md'), when, when);
+}
+
+const TODO_PAST_MTIME = new Date('2000-01-01T00:00:00Z');
+const TODO_FUTURE_MTIME = new Date('2099-01-01T00:00:00Z');
+
+// todo-gate-sweep P2 item 1 (2026-08-07): a base repo with one commit on `main`, plus a linked
+// worktree (`git worktree add -b <branch>`) checked out on its own new branch. `git worktree add`
+// writes the same "branch: Created from ..." reflog entry a normal `git switch -c` does, but the
+// worktree's `.git` is a FILE ("gitdir: <base>/.git/worktrees/<name>"), not a directory -- the
+// exact shape block-pr-without-todo.js's resolveGitDir()/resolveCommonGitDir() exist to handle.
+// tasks/todo.md is created directly INSIDE the worktree (a linked worktree is a separate directory
+// on disk; it does not share untracked files with the base checkout) so its mtime can be pinned
+// independently, mirroring buildSandboxTodoRepo()'s deterministic-mtime approach.
+function buildSandboxTodoWorktree() {
+  if (fs.existsSync(path.join(SANDBOX_TODO_WORKTREE, '.git'))) return;
+  fs.mkdirSync(SANDBOX_TODO_WORKTREE_BASE, { recursive: true });
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: SANDBOX_TODO_WORKTREE_BASE });
+  execFileSync('git', ['config', 'user.email', 'probe@example.com'], { cwd: SANDBOX_TODO_WORKTREE_BASE });
+  execFileSync('git', ['config', 'user.name', 'probe'], { cwd: SANDBOX_TODO_WORKTREE_BASE });
+  fs.writeFileSync(path.join(SANDBOX_TODO_WORKTREE_BASE, 'f.txt'), 'x\n');
+  execFileSync('git', ['add', 'f.txt'], { cwd: SANDBOX_TODO_WORKTREE_BASE });
+  execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: SANDBOX_TODO_WORKTREE_BASE });
+  execFileSync(
+    'git',
+    ['worktree', 'add', '-q', '-b', 'topic-wt', SANDBOX_TODO_WORKTREE, 'main'],
+    { cwd: SANDBOX_TODO_WORKTREE_BASE }
+  );
+  fs.mkdirSync(path.join(SANDBOX_TODO_WORKTREE, 'tasks'), { recursive: true });
+  fs.writeFileSync(path.join(SANDBOX_TODO_WORKTREE, 'tasks', 'todo.md'), '# todo\n');
+  setTodoMtime(SANDBOX_TODO_WORKTREE, TODO_PAST_MTIME); // predates topic-wt's creation -> deny
+}
+
+// todo-gate-sweep P3 item 2 (2026-08-07): a REAL repo built with `git init --separate-git-dir=
+// <dir>` where <dir> ("evil-gitdir-store") is deliberately NOT named ".git" and lives OUTSIDE
+// SANDBOX_TODO_GITDIR_ESCAPE's own tree -- git itself writes the resulting ".git" FILE's
+// "gitdir: <dir>" content, so this is a genuinely valid git internal structure at an unexpected
+// location, not hand-fabricated file content. This is the fixture resolveGitDir()'s
+// isWithinRepoTree() bound check exists to reject: before the fix, this hook followed the pointer
+// unconditionally and produced a real (non-fail-open) verdict from outside the repo root; after
+// the fix, the resolved path is neither under repoRoot nor under any ".git" directory, so it is
+// rejected and the occurrence fails open. tasks/todo.md is pinned to predate the topic branch
+// (deny-producing IF the pointer were followed, same convention as buildSandboxTodoRepo()).
+function buildSandboxTodoGitdirEscape() {
+  if (fs.existsSync(path.join(SANDBOX_TODO_GITDIR_ESCAPE, '.git'))) return;
+  fs.mkdirSync(SANDBOX_TODO_GITDIR_ESCAPE, { recursive: true });
+  execFileSync(
+    'git',
+    ['init', '-q', '-b', 'main', `--separate-git-dir=${SANDBOX_TODO_GITDIR_ESCAPE_TARGET}`],
+    { cwd: SANDBOX_TODO_GITDIR_ESCAPE }
+  );
+  execFileSync('git', ['config', 'user.email', 'probe@example.com'], { cwd: SANDBOX_TODO_GITDIR_ESCAPE });
+  execFileSync('git', ['config', 'user.name', 'probe'], { cwd: SANDBOX_TODO_GITDIR_ESCAPE });
+  fs.mkdirSync(path.join(SANDBOX_TODO_GITDIR_ESCAPE, 'tasks'), { recursive: true });
+  fs.writeFileSync(path.join(SANDBOX_TODO_GITDIR_ESCAPE, 'tasks', 'todo.md'), '# todo\n');
+  execFileSync('git', ['add', '-A'], { cwd: SANDBOX_TODO_GITDIR_ESCAPE });
+  execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: SANDBOX_TODO_GITDIR_ESCAPE });
+  execFileSync('git', ['checkout', '-q', '-b', 'topic'], { cwd: SANDBOX_TODO_GITDIR_ESCAPE });
+  setTodoMtime(SANDBOX_TODO_GITDIR_ESCAPE, TODO_PAST_MTIME);
+}
+
+// todo-gate-sweep P3 item 2 (2026-08-07): a real repo (normal ".git" directory) whose
+// ".git/HEAD" is overwritten with a hand-written "ref: refs/heads/../heads/main" -- a ref shape
+// git's own `checkout -b` refuses to create (check-ref-format rejects ".."), simulating a HEAD
+// file an attacker wrote directly rather than via git. This is the fixture isSafeBranchName()
+// exists to reject: branchCreatedMs() builds the reflog path with path.join(), which silently
+// COLLAPSES the ".." instead of rejecting it, so before the fix this redirected the lookup to
+// refs/heads/main's own real reflog instead of failing to resolve.
+function buildSandboxTodoBranchEscape() {
+  if (fs.existsSync(path.join(SANDBOX_TODO_BRANCH_ESCAPE, '.git'))) return;
+  buildSandboxTodoRepo(SANDBOX_TODO_BRANCH_ESCAPE);
+  setTodoMtime(SANDBOX_TODO_BRANCH_ESCAPE, TODO_PAST_MTIME);
+  fs.writeFileSync(path.join(SANDBOX_TODO_BRANCH_ESCAPE, '.git', 'HEAD'), 'ref: refs/heads/../heads/main\n');
+}
+
+function buildSandboxTodoSandboxes() {
+  if (!fs.existsSync(path.join(SANDBOX_TODO_DENY, '.git'))) {
+    buildSandboxTodoRepo(SANDBOX_TODO_DENY);
+    setTodoMtime(SANDBOX_TODO_DENY, TODO_PAST_MTIME);
+    // Nested product repo with the OPPOSITE (allow-producing) timestamp, so
+    // pt-allow-cd-into-product-repo can pin that repo-root resolution finds THIS .git, not the
+    // outer deny-producing one, once `cd dev/prod` moves the effective cwd.
+    const prodRoot = path.join(SANDBOX_TODO_DENY, 'dev', 'prod');
+    buildSandboxTodoRepo(prodRoot);
+    setTodoMtime(prodRoot, TODO_FUTURE_MTIME);
+  }
+  if (!fs.existsSync(path.join(SANDBOX_TODO_ALLOW, '.git'))) {
+    buildSandboxTodoRepo(SANDBOX_TODO_ALLOW);
+    setTodoMtime(SANDBOX_TODO_ALLOW, TODO_FUTURE_MTIME);
+  }
+  if (!fs.existsSync(path.join(SANDBOX_TODO_NOREFLOG, '.git'))) {
+    // git init only, zero commits: refs/heads/topic and its reflog never get created.
+    fs.mkdirSync(SANDBOX_TODO_NOREFLOG, { recursive: true });
+    execFileSync('git', ['init', '-q', '-b', 'topic'], { cwd: SANDBOX_TODO_NOREFLOG });
+  }
+  buildSandboxTodoWorktree();
+  buildSandboxTodoGitdirEscape();
+  buildSandboxTodoBranchEscape();
+}
+
 // fable-gate (2026-08-06, plan Phase 3 O-4 ruling): single substitution point for all 4 call
 // sites (loadRows, registerTests, and its two inline integrity-test re-parses). This does not
 // weaken the deliberate independence of the hardcoded *counts* below — each site still re-parses
@@ -151,6 +293,12 @@ function substitute(raw) {
     .split('<SANDBOX_FABLE_ON>').join(slash(SANDBOX_FABLE_ON))
     .split('<SANDBOX_FABLE_OFF>').join(slash(SANDBOX_FABLE_OFF))
     .split('<SANDBOX_FABLE_ONX>').join(slash(SANDBOX_FABLE_ONX))
+    .split('<SANDBOX_TODO_DENY>').join(slash(SANDBOX_TODO_DENY))
+    .split('<SANDBOX_TODO_ALLOW>').join(slash(SANDBOX_TODO_ALLOW))
+    .split('<SANDBOX_TODO_NOREFLOG>').join(slash(SANDBOX_TODO_NOREFLOG))
+    .split('<SANDBOX_TODO_WORKTREE>').join(slash(SANDBOX_TODO_WORKTREE))
+    .split('<SANDBOX_TODO_GITDIR_ESCAPE>').join(slash(SANDBOX_TODO_GITDIR_ESCAPE))
+    .split('<SANDBOX_TODO_BRANCH_ESCAPE>').join(slash(SANDBOX_TODO_BRANCH_ESCAPE))
     .split('<SANDBOX>').join(slash(SANDBOX))
     .split('<REPO>').join(slash(ROOT))
     .split('<SANDBOX_GIT_MAIN>').join(slash(SANDBOX_GIT_MAIN))
@@ -160,6 +308,45 @@ function substitute(raw) {
 function loadRows() {
   const raw = fs.readFileSync(SAMPLES_FILE, 'utf8');
   return JSON.parse(substitute(raw));
+}
+
+// P4 (2026-08-07): count-only checks (EXPECTED_SAMPLE_COUNT, EXPECTED_SET_COUNTS) can't tell
+// "the right rows are present" from "the same number of rows are present but one row's content
+// got swapped for another's" -- e.g. deleting gp-status-allowed's row and duplicating
+// gp-branch-D's row in its place leaves every count identical. This hash covers full row
+// content, so that kind of swap changes the digest.
+//
+// Input: the RAW (pre-substitution) parsed rows, i.e. JSON.parse(raw) -- NOT
+// JSON.parse(substitute(raw)). substitute() inlines this machine's absolute checkout path (and
+// OS-specific slashes) into placeholders like <REPO>/<SANDBOX>, so a substituted hash would
+// differ by clone location/OS and fail on every machine but the one it was computed on. Hashing
+// the placeholder text keeps the digest portable.
+//
+// Order: rows are sorted by "set/name" (the same identity EXPECTED_SKIP_TAGS above is keyed by,
+// not physical position) before hashing, so reordering rows within the file does NOT change the
+// hash -- only a change to some row's actual content under an existing or new set/name does.
+// Reordering carries no signal here (nothing in this file or the hooks it drives depends on row
+// order), so treating it as a false positive would just train people to blindly re-paste the
+// literal; keying by content-under-identity instead keeps the hash meaningful. The comparator
+// below uses plain `<`/`>` on the "set/name" strings (UTF-16 code-unit order), NOT
+// String#localeCompare() -- localeCompare() without a fixed locale collates using whatever
+// locale the running environment defaults to, which reorders these ASCII keys differently under
+// different OS/language settings and would make the hash non-reproducible across machines even
+// with byte-identical row content. NOTE: this hash is still sensitive to each row OBJECT's own
+// key order (JSON.stringify serializes keys in insertion order, unaffected by the row sort
+// above), so reordering keys within a row's JSON without changing any value still flips the
+// digest.
+//
+// Algorithm: sha256 hex digest of JSON.stringify(sorted rows). Update EXPECTED_SAMPLES_HASH (the
+// one literal below) whenever a row is intentionally added/changed/removed -- same one-literal
+// update as EXPECTED_SAMPLE_COUNT.
+function samplesHash(rows) {
+  const sorted = [...rows].sort((a, b) => {
+    const ka = `${a.set}/${a.name}`;
+    const kb = `${b.set}/${b.name}`;
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+  return crypto.createHash('sha256').update(JSON.stringify(sorted)).digest('hex');
 }
 
 function buildEnv(overrides) {
@@ -194,11 +381,16 @@ function runRow(row) {
   }
 }
 
+// Hooks that always exit 0 and signal deny via a "permissionDecision":"deny" JSON blob on
+// stdout instead of exit code 2 (scope-guard.js is the Edit/Write counterpart of
+// cmd-write-guard.js's Bash/PowerShell path; both share lib/scope-decision.js's decide()).
+const STDOUT_DENY_HOOKS = ['cmd-write-guard.js', 'scope-guard.js'];
+
 function verdictOf(row, result) {
-  if (row.hook.endsWith('cmd-write-guard.js')) {
+  if (STDOUT_DENY_HOOKS.some((h) => row.hook.endsWith(h))) {
     if (result.exit !== 0) {
       throw new Error(
-        `${row.set}/${row.name}: cmd-write-guard.js exited ${result.exit} (expected 0; ` +
+        `${row.set}/${row.name}: ${row.hook} exited ${result.exit} (expected 0; ` +
         `this hook signals deny via stdout JSON, not exit code) — stderr: ${result.stderr}`
       );
     }
@@ -260,6 +452,7 @@ function runDump() {
   buildSandboxGit();
   buildSandboxGitMain();
   buildFableSandboxes();
+  buildSandboxTodoSandboxes();
 
   const allRows = loadRows();
   const rows = setName ? allRows.filter((r) => r.set === setName) : allRows;
@@ -290,11 +483,12 @@ function registerTests() {
   buildSandboxGit();
   buildSandboxGitMain();
   buildFableSandboxes();
+  buildSandboxTodoSandboxes();
 
   const raw = fs.readFileSync(SAMPLES_FILE, 'utf8');
   const allRows = JSON.parse(substitute(raw));
 
-  const EXPECTED_SAMPLE_COUNT = 213;
+  const EXPECTED_SAMPLE_COUNT = 247;
   // Independently-hardcoded expectation (not re-derived from allRows) so this assertion can't
   // silently pass no matter what skipIf tags actually exist in the samples file — mirrors the
   // EXPECTED_SAMPLE_COUNT literal above. Keyed by exact set/name (not just a per-tag count) so a
@@ -319,6 +513,24 @@ function registerTests() {
       assert.ok(!seen.has(key), `duplicate set+name pair: ${key}`);
       seen.add(key);
     }
+  });
+
+  // P4 (2026-08-07): full-content hash, orthogonal to the count check above -- a swap that
+  // preserves both the total count and every set's count (e.g. one row's payload/expect copied
+  // over another row's, or a row deleted and a different one duplicated in its place) passes the
+  // count test above but changes this hash. See samplesHash() for the algorithm (sha256 over
+  // pre-substitution rows sorted by set/name) and why it's built that way.
+  const EXPECTED_SAMPLES_HASH = '015b972fb49fde9ecd9065aef8c6d1b951dc4b0be7cb0d2c3f063b981efc02f7';
+
+  test('samples file integrity: full-content hash matches (catches same-count content swaps the row/set count checks miss)', () => {
+    const rawRows = JSON.parse(raw); // pre-substitution rows -- see samplesHash() comment for why
+    const actualHash = samplesHash(rawRows);
+    assert.strictEqual(
+      actualHash,
+      EXPECTED_SAMPLES_HASH,
+      'row CONTENT changed (hash mismatch), not row count -- if intentional, recompute samplesHash() ' +
+      'over the current samples file and paste the new value into EXPECTED_SAMPLES_HASH'
+    );
   });
 
   test('samples file integrity: skipIf tags match the expected set/name table', () => {
@@ -350,16 +562,17 @@ function registerTests() {
   // is added to/removed from/moved between sets. Verified this equals EXPECTED_SAMPLE_COUNT and
   // covers exactly the sets present in the samples file below.
   const EXPECTED_SET_COUNTS = {
-    'S-git-pure': 31,
-    'S-git-env': 18,
+    'S-git-pure': 32,
+    'S-git-env': 19,
     'S-gh': 15,
-    'S-state': 29,
-    'S-lock': 32,
+    'S-state': 30,
+    'S-lock': 39,
     'S-fs': 20,
     'S-prompt': 8,
     'S-session': 5,
     'S-agent': 50,
     'S-secret': 5,
+    'S-pr-todo': 24,
   };
 
   const setsInOrder = [...new Set(allRows.map((r) => r.set))];
@@ -382,7 +595,12 @@ function registerTests() {
     });
 
     test(`${setName}: canaries pass (scoped to this set)`, () => {
-      const results = setRows.map((row) => ({ row, result: runRow(row) }));
+      // checkCanaries() only ever looks up __canary_deny_exit / __canary_allow /
+      // __canary_deny_stdout by name, so running every non-canary row here just burns child
+      // processes for nothing -- both this filter and checkCanaries() depend on the
+      // "__canary_" name prefix, so don't rename a canary row without updating both.
+      const canaryRows = setRows.filter((r) => r.name.startsWith('__canary_'));
+      const results = canaryRows.map((row) => ({ row, result: runRow(row) }));
       const failures = checkCanaries(results);
       assert.deepStrictEqual(failures, []);
     });

@@ -474,7 +474,7 @@ body{
 
     <h2>このガイドについて</h2>
     <p>ここで説明しているのは、<code>CLAUDE.md</code> と <code>.claude/</code> 配下（agents / skills / rules / hooks / scripts / clover）が組み合わさってできている運用の仕組みそのもの。「指揮者(conductor)」であるメインセッションが作業役のエージェントに仕事を渡し、品質ゲートを通し、結果を <code>tasks/</code> に記録する——という一連の流れを、初めて触る人でも掴めるように整理している。</p>
-    <p>正本（一次情報）は常に <code>CLAUDE.md</code> と各ファイル自身。このガイドはそれを読みやすくまとめた副読本であり、内容に食い違いがあれば正本側が正しい。各ページの記述は、資料作成時点でリポジトリの現物（設定ファイル・エージェント定義・スキル定義）を突き合わせて検証している。</p>
+    <p>正本（一次情報）は常に <code>CLAUDE.md</code> と各ファイル自身。このガイドはそれを読みやすくまとめた副読本であり、内容に食い違いがあれば正本側が正しい。各ページの記述は、ページ末尾の「正本一覧」に記した時点でリポジトリの現物（設定ファイル・エージェント定義・スキル定義）と突き合わせて書いたスナップショットであり、その後のリポジトリ変更を自動で追いかける仕組みはない。判断に迷ったら、まず正本側を直接確認すること。</p>
 
     <div class="callout callout--note">
       <div class="callout__label">隣にある関連資料</div>
@@ -548,7 +548,7 @@ body{
 ├── commands/          セッションコマンド（2）
 │   ├── save-session.md
 │   └── resume-session.md
-├── hooks/             settings.json 経由・強制実行（19）
+├── hooks/             settings.json 経由・強制実行（20）
 │   ├── session-start.js / session-journal.js /
 │   │   clover-auto-install.js                          ← SessionStart
 │   ├── session-journal.js                               ← SessionEnd（同一ファイルを再登録）
@@ -561,9 +561,9 @@ body{
 │   ├── scope-guard.js                                    ← PreToolUse (Edit|Write|NotebookEdit)
 │   ├── archive-session-state.js                          ← PreToolUse (Write)
 │   └── cmd-write-guard.js / block-destructive-git.js /
-│       block-direct-to-main.js / block-destructive-fs.js /
-│       block-no-verify.js / check-commit-safety.js /
-│       block-secret-read.js                              ← PreToolUse (Bash|PowerShell)
+│       block-direct-to-main.js / block-pr-without-todo.js /
+│       block-destructive-fs.js / block-no-verify.js /
+│       check-commit-safety.js / block-secret-read.js     ← PreToolUse (Bash|PowerShell)
 └── scripts/           共有ツール（Node・抜粋。ほかにtest/設定ファイル等）
     ├── validate.mjs        ハーネス自身の整合性チェック（checkスキルが実行）
     ├── html2pdf.mjs        HTML→PDF変換（WeasyPrint・未導入でも失敗させない）

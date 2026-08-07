@@ -482,7 +482,7 @@ footer.sot code{ font-size:.92em; }
 
     <div class="doc-eyebrow">設計</div>
     <h1>スキル / エージェント設計</h1>
-    <p class="doc-subtitle">skill と agent の役割分担、現在のエージェント7体・スキル17件の一覧、モデル階層（tier）の考え方、外部モデルへのルーティングをまとめる。</p>
+    <p class="doc-subtitle">skill と agent の役割分担、現在のエージェント7体・スキル15件の一覧、モデル階層（tier）の考え方、外部モデルへのルーティングをまとめる。</p>
     <div class="doc-meta">
       <span class="meta-chip"><b>対象</b> .claude/agents・.claude/skills・relay 規約</span>
       <span class="meta-chip"><b>正本</b> 各 *.md の frontmatter・CLAUDE.md §2 / §5.3</span>
@@ -544,7 +544,7 @@ footer.sot code{ font-size:.92em; }
       </table>
     </div>
 
-    <h2>現在の skill 一覧（17件）</h2>
+    <h2>現在の skill 一覧（15件）</h2>
     <div class="table-wrap">
       <table>
         <caption>.claude/skills/*/SKILL.md の要約（発動フレーズの例つき）</caption>
@@ -558,8 +558,6 @@ footer.sot code{ font-size:.92em; }
           <tr><td><code>check</code></td><td>完了報告前の自動検証入口。製品コード/ハーネス本体/HTML資料を自動判別</td><td>「checkして」「整合性チェックして」</td></tr>
           <tr><td><code>doc</code></td><td>資料・ドキュメント作成の入口。document-authorへ委任しHTML→（要求時）PDF/PPTXへ</td><td>「資料を作って」「HTMLでまとめて」</td></tr>
           <tr><td><code>relay</code></td><td>外部モデルへのルーティング規約のSOT。RELAY-MODELマーカー・alias表・合議の組み方を定義</td><td>「外部モデルで」「gptで動かして」</td></tr>
-          <tr><td><code>audit</code></td><td>harness feature相当をより厳格化（セキュリティレビュー常時並列・fusion judge）した高リスク向け監査</td><td>高リスク変更・複数システム横断の変更時</td></tr>
-          <tr><td><code>improve</code></td><td>todoから1-2件選び実装→check→コミット→push→PR更新→todo更新までを1周する自己改善イテレーション</td><td>「改善を続けて」「/improve」</td></tr>
           <tr><td><code>commit</code></td><td>構造化コミット作成（Constraint/Rejected/Confidence/Not-testedトレーラー付与）</td><td>「コミットして」</td></tr>
           <tr><td><code>pr</code></td><td>ブランチ判定→commit→push→gh pr createまでのPRワークフロー。外向き操作前は必ず確認を取る</td><td>「PR作って」「プルリク出して」</td></tr>
           <tr><td><code>preview</code></td><td>dev server起動→スクリーンショット→コンソールエラー確認までの視覚検証</td><td>「プレビューして」「動かして」</td></tr>
@@ -639,7 +637,7 @@ footer.sot code{ font-size:.92em; }
     </div>
 
     <footer class="sot">
-      正本一覧: <code>D:\my-claude-base\CLAUDE.md</code>（§2 Model Tier Policy, §5.3）・<code>D:\my-claude-base\.claude\agents\*.md</code>（全7ファイル）・<code>D:\my-claude-base\.claude\skills\*\SKILL.md</code>（全17スキル）・<code>D:\my-claude-base\.claude\rules\agents.md</code>・<code>D:\my-claude-base\.claude\skills\relay\SKILL.md</code>・<code>D:\my-claude-base-v2\clover\models.json</code>。2026-08-03時点のrepo現物と突き合わせて記述。
+      正本一覧: <code>D:\my-claude-base-v2\CLAUDE.md</code>（§2 Model Tier Policy, §5.3）・<code>D:\my-claude-base-v2\.claude\agents\*.md</code>（全7ファイル）・<code>D:\my-claude-base-v2\.claude\skills\*\SKILL.md</code>（全15スキル）・<code>D:\my-claude-base-v2\.claude\rules\agents.md</code>・<code>D:\my-claude-base-v2\.claude\skills\relay\SKILL.md</code>・<code>D:\my-claude-base-v2\clover\models.json</code>。2026-08-03時点のrepo現物と突き合わせて記述。
     </footer>
 
   </main>

@@ -535,7 +535,7 @@ footer.sot code{ font-size:.92em; }
           <tr><td>PreToolUse</td><td><code>Task|Agent</code></td><td><code>relay-required-agent.js</code> / <code>block-review-floor.js</code> / <code>block-fable-when-off.js</code></td></tr>
           <tr><td>PreToolUse</td><td><code>Edit|Write|NotebookEdit</code></td><td><code>scope-guard.js</code></td></tr>
           <tr><td>PreToolUse</td><td><code>Write</code></td><td><code>archive-session-state.js</code></td></tr>
-          <tr><td>PreToolUse</td><td><code>Bash|PowerShell</code></td><td><code>cmd-write-guard.js</code> / <code>block-destructive-git.js</code> / <code>block-direct-to-main.js</code> / <code>block-destructive-fs.js</code> / <code>block-no-verify.js</code> / <code>check-commit-safety.js</code> / <code>block-secret-read.js</code></td></tr>
+          <tr><td>PreToolUse</td><td><code>Bash|PowerShell</code></td><td><code>cmd-write-guard.js</code> / <code>block-destructive-git.js</code> / <code>block-direct-to-main.js</code> / <code>block-pr-without-todo.js</code> / <code>block-destructive-fs.js</code> / <code>block-no-verify.js</code> / <code>check-commit-safety.js</code> / <code>block-secret-read.js</code></td></tr>
         </tbody>
       </table>
     </div>
@@ -545,7 +545,7 @@ footer.sot code{ font-size:.92em; }
     <p><code>node .claude/scripts/validate.mjs</code> はハーネス本体（agent / skill / rule / hook / CLAUDE.md 自身など）の整合性を機械的に検査する、ハーネス変更の最終チェックポイント。<code>check</code> skill は変更対象が <code>.claude/</code> 配下や CLAUDE.md / README.md のときに、これを自動で選ぶ。</p>
     <div class="table-wrap">
       <table>
-        <caption>validate.mjs の主なチェック（現行11項目）</caption>
+        <caption>validate.mjs の主なチェック（現行15項目）</caption>
         <thead>
           <tr><th>チェック内容</th><th>検出時</th></tr>
         </thead>
@@ -554,6 +554,8 @@ footer.sot code{ font-size:.92em; }
           <tr><td>skill の frontmatter（<code>name:</code> とディレクトリ名の一致、<code>description</code> 必須、<code>subagent_type:</code> が実在 agent を参照しているか）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>hooks 登録 ―― <code>settings.json</code> に書かれた hook ファイルの実在確認。<code>block-*.js</code> のような安全装置が未登録のとき</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>hooks 登録 ―― <code>block-*.js</code> 以外の hook ファイルが <code>settings.json</code> に未登録のとき</td><td><span class="badge badge--warn">WARN</span></td></tr>
+          <tr><td>v2 配線の不変条件 ―― <code>.claude/state/**</code>・<code>.claude/.fable-status</code> への <code>Edit</code> 拒否、Bash マッチャーの PowerShell 網羅、<code>journal.js</code>・<code>session-journal.js</code>・<code>archive-session-state.js</code>（削除経路の再混入禁止も含む）・scope-lock 3点セット（<code>approve-lock.js</code> / <code>scope-guard.js</code> / <code>cmd-write-guard.js</code>）・<code>block-review-floor.js</code> の authority allowlist・<code>block-fable-when-off.js</code> のゲート配線が、それぞれ想定どおり登録・実装されているか</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
+          <tr><td>CLI バージョン下限確認 ―― 上の <code>Edit(path)</code> が <code>Write</code>/<code>NotebookEdit</code> も守るという前提が効く <code>claude --version</code> の下限を下回っていないか（CLI が見つからない／取得失敗時はフェイルオープンで無警告）</td><td><span class="badge badge--warn">WARN</span></td></tr>
           <tr><td>全 agent 名が CLAUDE.md §2 の tier 表に載っているか</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>廃止済み名称の死んだ参照（<code>code-reviewer</code> / <code>plan-lite・full</code> / <code>.codex/</code> / <code>CLAUDE_JP</code> / <code>addons</code> / 「frontier dispatch override」旧称 等が CLAUDE.md・README.md・<code>.claude</code> 配下に残っていないか）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>rules の frontmatter（<code>paths:</code> が空でなく存在するか。空だと発火しないルールになる）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
@@ -561,6 +563,8 @@ footer.sot code{ font-size:.92em; }
           <tr><td>機密ファイルの deny-list 整合 ―― <code>settings.json</code> の <code>permissions.deny</code> と <code>block-secret-read.js</code> のパターンが対応しているか</td><td><span class="badge badge--warn">WARN</span></td></tr>
           <tr><td>relay の alias 辞書ポインタ ―― <code>relay/SKILL.md</code> が <code>models.json</code> を正本として指し続けているか</td><td><span class="badge badge--warn">WARN</span></td></tr>
           <tr><td>Windows パス / エンコーディング（POSIX固定パスの残存、PowerShell 呼び出しでの OutputEncoding 欠如）／ <code>tasks/lessons.md</code> のサイズ（18KB 超）</td><td><span class="badge badge--warn">WARN</span></td></tr>
+          <tr><td>否定不変条件 ―― <code>.claude/hooks/</code> 配下のコード全体（<code>lib/</code> 含む再帰走査）に、hook が明示的に <code>permissionDecision:"allow"</code> を書いていないか（現状1ルール。無言 + exit 0 が暗黙の allow）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
+          <tr><td><code>docs/claude-harness-guide/</code> 内の名簿突合 ―― <code>.claude/(skills|agents|commands)/&lt;name&gt;</code> 形式の参照、および agent・skill 名簿表（<code>&lt;caption&gt;</code> で識別）が実在物と一致しているか（ガイド自体が無い場合は WARN）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
         </tbody>
       </table>
     </div>

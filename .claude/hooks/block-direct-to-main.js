@@ -50,20 +50,25 @@
 //         - `gh api graphql -f query='mutation { mergePullRequest(...) }'`   (the GraphQL mutation)
 //       Do not add detection for only one of these without re-deciding the tradeoff above.
 //   (ii) `gh.exe pr merge` / `gh.cmd pr merge` ARE now detected: lib/parse-cmd.js strips a trailing
-//       `.exe`/`.cmd` suffix from the resolved basename (ruling GP2), so both resolve to `cmd === "gh"`
-//       here, same as the git-side checks in this file. This is NOT an exhaustive fix for every
-//       suffixed/wrapped spelling of gh, though — see the CWD_BUILTINS and step-3 comments in
-//       lib/parse-cmd.js for the full, explicitly non-exhaustive list of residual gaps that module
-//       does NOT close (also plan Table C). The gh-relevant ones: an unquoted path containing spaces
-//       (e.g. `C:/Program Files/gh/bin/gh.exe pr merge` resolves to `cmd === "program"`, not `"gh"`);
-//       a backslash-separated path (parse-cmd.js only splits on `/`, not `\`); wrapper-prefix peeling
-//       not recognizing `sudo.exe`/`env.exe` as wrappers; `eval.exe "gh pr merge 12"` (the basename
-//       strips to `eval`, but extractEvalArg() matches raw text `/\beval\s/`, which does not match
-//       `eval.exe `, so the inner command is never parsed); other PATHEXT suffixes (`.com`, `.ps1`);
-//       a double suffix (e.g. `gh.exe.cmd` strips only the outer `.cmd`, leaving `gh.exe`). `.bat` is
-//       deliberately NOT stripped (ruling G1): `gh.bat pr merge` still resolves to `cmd === "gh.bat"`
-//       and is not detected. None of these are fixed here; named only so this comment does not read
-//       as an exhaustive account of what is closed.
+//       `.exe`/`.cmd`/`.com`/`.ps1` suffix from the resolved basename (ruling GP2, `.com`/`.ps1`
+//       added in plan Batch D), so all four resolve to `cmd === "gh"` here, same as the git-side
+//       checks in this file. The wrapper-prefix peel also now recognizes suffixed wrappers
+//       (`sudo.exe`/`env.exe`, plan Batch C), so `sudo.exe gh pr merge`/`env.exe gh pr merge` are
+//       detected too. Verified directly against this file 2026-08-07: `sudo.exe gh pr merge`,
+//       `env.exe gh pr merge`, `gh.com pr merge`, and `gh.ps1 pr merge` all resolve to `cmd ===
+//       "gh"` and deny (these four were previously listed here as gaps; they are not anymore).
+//       This is still NOT an exhaustive fix for every suffixed/wrapped spelling of gh, though — see
+//       the CWD_BUILTINS and step-3 comments in lib/parse-cmd.js for the full, explicitly
+//       non-exhaustive list of residual gaps that module does NOT close (also plan Table C). The
+//       gh-relevant ones still open (verified 2026-08-07, all still exit 0/undetected): an unquoted
+//       path containing spaces (e.g. `C:/Program Files/gh/bin/gh.exe pr merge` resolves to `cmd ===
+//       "program"`, not `"gh"`); a backslash-separated path (parse-cmd.js only splits on `/`, not
+//       `\`); `eval.exe "gh pr merge 12"` (the basename strips to `eval`, but extractEvalArg()
+//       matches raw text `/\beval\s/`, which does not match `eval.exe `, so the inner command is
+//       never parsed); a double suffix (e.g. `gh.exe.cmd` strips only the outer `.cmd`, leaving
+//       `gh.exe`). `.bat` is deliberately NOT stripped (ruling G1): `gh.bat pr merge` still resolves
+//       to `cmd === "gh.bat"` and is not detected. None of these remaining ones are fixed here;
+//       named only so this comment does not read as an exhaustive account of what is closed.
 //   (iii) The "ARE now detected" in (ii) is specific to THIS file: its gh/git checks read only
 //       lib/parse-cmd.js's normalized `cmd`, so GP2's strip reaches them directly. That is NOT true
 //       of every guard in this codebase — a guard whose first check is a raw-text regex match on the
@@ -78,6 +83,19 @@
 // then per-token unquoting) so a quoted commit message / heredoc that merely mentions "main"
 // never false-triggers, while a quoted refspec (e.g. push origin "main") is still inspected (lessons 2026-06-28).
 // Fail-open: any error (not a repo, detached HEAD, git unavailable) -> exit 0.
+//
+// Known gap, not fixed here: a `git push` glued directly onto an unquoted `$(`/backtick opener
+// with no separating whitespace never resolves to `cmd === "git"` (lib/parse-cmd.js has no special
+// handling for command substitution) — verified directly against this file 2026-08-08:
+// `x=$(git push origin main\n)` exits 0/allow even though it pushes to main for real. A second,
+// related gap: an unbalanced/unterminated quote earlier in the same multi-line command (e.g. a
+// stray `\'` outside quotes) is read by splitOnQuoteAwareOperators() as opening a real string with
+// no matching close, so everything after it — including a later `git push origin main` on its own
+// physical line — is treated as still inside that string and never reaches this check; verified
+// directly against this file 2026-08-08. Both are pre-existing limitations of the shared tokenizer
+// (lib/parse-cmd.js splits only on `&&`/`||`/`;`/`|`, never on a bare newline — see
+// block-pr-without-todo.js's header for the same non-detection disclosed for `gh ... pr create`),
+// not introduced or closed by anything in this session.
 
 const { execSync } = require('node:child_process');
 const { segments } = require('./lib/parse-cmd');
