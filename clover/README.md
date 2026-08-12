@@ -3,6 +3,20 @@
 メインの会話は Claude のまま、**配下の特定の worker（サブエージェント）だけ**を
 外部モデル（GPT 系など）に振り分ける中継。
 
+## ON/OFF スイッチ（先に読む）
+
+中継が動くのは `.claude/.relay-status` に `ON` の一語が入っている間だけ。`OFF`／ファイル無しの
+ときは、**この README にあるどの起動方法でも中継は立たない**（`ON` に切り替えるには `/relay on`）。
+
+理由: 中継が立つと `ANTHROPIC_BASE_URL` がそちらを向き、claude.ai のバックエンドと対になって
+成立する機能（リモコンと、そのスラッシュコマンド）が丸ごと使えなくなる。切ったつもりの中継が
+生きていると、この機能が理由も分からず消えたままになる。
+
+判定は `src/lifecycle.mjs` の `relayEnabled()` の1か所だけ。bash 側の入口は
+`bin/relay-enabled.mjs`（0 なら起動可・1 なら不可を返すだけの小さな中継）を通して同じ判定を使う。
+止める側（`relay-serve stop` / `status`）は OFF でも動く（そうしないと、立っている中継を
+止められなくなるため）。
+
 ## 起動
 
 ```bash
@@ -10,7 +24,8 @@ bash clover/bin/clover
 ```
 
 中継経由で Claude Code が立ち上がる。ウィンドウを閉じる／Ctrl-C で終了すると、
-中継（router・shim）も一緒に止まる。
+中継（router・shim）も一緒に止まる。`.relay-status` が OFF のときは、起動せずに理由を表示して
+終わる（中継なしで使いたいときは、普通に `claude` と打つ）。
 
 ## claude と打つだけで使う（推奨）
 
@@ -59,6 +74,8 @@ bash clover/bin/clover
 
 **安全性:** 中継の起動に失敗しても（ポート競合など）、`claude` は普通の Claude としてそのまま
 起動する（フォールバック）。GPT には切り替えられないが、動作が壊れることはない。
+`.relay-status` が OFF のときも同じで、中継を立てずに普通の Claude が起動する。
+起動時の一行で見分けられる: `relay is OFF` = わざと切ってある／`relay unavailable` = 立てられなかった。
 
 **本物の claude を直接使いたい時の逃げ道:**
 bash/zsh は `command claude --version` でラッパー関数をバイパスできる。PowerShell は
@@ -143,6 +160,9 @@ codex 経由（GPT 系など）の認証は `~/.codex/auth.json` の OAuth ト�
 `bin/clover` の他に、`bash clover/bin/relay-serve start|stop`（`/relay on|off` が内部で呼ぶ）で
 router・shim をセッションと独立したバックグラウンドとして常駐させる経路もある。
 `src/` 配下のコードを変更した場合は、どちらの経路で立てていても再起動が要る。
+
+`start` も `.relay-status` の ON/OFF に従う（`stop` / `status` は従わない）。`/relay on` は
+先に `ON` を書いてから `start` を呼ぶ手順なので、この順序を守っている限り引っかからない。
 
 ## `claude` ラッパー経路の寿命管理
 

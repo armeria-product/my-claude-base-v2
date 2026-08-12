@@ -29,6 +29,15 @@ kill_port() {
 }
 
 start() {
+  # OFF（またはファイル無し）なら常駐も立てない（CLAUDE.md §1.8）。
+  # `/relay on` は先に ON を書いてから start を呼ぶ手順なので、この確認には引っかからない。
+  # 塞ぐのは start だけ: `/relay off` は OFF を書いた後に stop を呼ぶため、stop/status を塞ぐと
+  # 中継を止められなくなる。
+  if ! node "$DIR/relay-enabled.mjs"; then
+    echo "clover: relay が OFF のため中継を起動しません（.claude/.relay-status）。ON にするには /relay on。" >&2
+    return 1
+  fi
+
   # ランチャー経由の中継（アイドルリーパー有効=x_clover_idle_ms>0）が居座っている場合は、
   # relay-serve の常駐に切り替える前に一度止める（IDLE_MS未設定の常駐と衝突させないため）。
   if up "$ROUTER_PORT"; then

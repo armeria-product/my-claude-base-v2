@@ -32,7 +32,7 @@ actually reachable still depends on whether *this* session was launched via `clo
 
 **on**
 1. Write `ON` (that one word only, no extra newlines/text) into `.claude/.relay-status`.
-2. Run `bash clover/bin/relay-serve start` to bring up the relay server (idempotent — reuses a running one).
+2. Run `bash clover/bin/relay-serve start` to bring up the relay server (idempotent — reuses a running one). **This order matters**: `start` refuses while the switch still reads OFF.
 3. Run `echo "$ANTHROPIC_BASE_URL"` to check whether this session is on the relay path.
    - `http://127.0.0.1:8788` → external-model selection is effective in this session too.
    - otherwise → report (plain JP): the relay server started, but this session itself is not routed through it (needs launch via `bin/clover`); external-model selection won't take effect here.
@@ -139,7 +139,13 @@ Composition section of `.claude/skills/quality-loop/SKILL.md`.
 
 ## Start / stop
 
-There are two independent ways the relay server (router 8788 / shim 8791) comes up, with different
+**All three paths below are gated on `.claude/.relay-status` first.** Unless it reads `ON`, none of
+them brings router/shim up and none of them redirects `ANTHROPIC_BASE_URL` (CLAUDE.md §1.8) — the
+check lives once in `relayEnabled()` (`clover/src/lifecycle.mjs`), reached from bash through
+`clover/bin/relay-enabled.mjs`. Only `start` is gated: `relay-serve stop` and `relay-serve status`
+keep working while OFF, which is what makes the `/relay off` order below (write OFF, then stop) work.
+
+There are three ways the relay server (router 8788 / shim 8791) comes up, with different
 lifetimes:
 
 **(a) `bash clover/bin/clover`** — launches `claude` itself through the relay. Brings up

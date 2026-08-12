@@ -4,13 +4,15 @@
 // 1行だけ出す（到達できなければ STDOUT は空）。claude 本体の起動はシェル側のネイティブ機能に
 // 任せる（このスクリプトは claude を一切 spawn しない＝引数のクォート/エスケープ問題が構造的に無い）。
 // 中継が立たなくても exit 0 で終わる（フォールバック＝呼び出し元のシェルは必ず継続できる）。
+// `.claude/.relay-status` が OFF（またはファイル無し）なら、中継を立てずに STDOUT 空で終わる
+// ＝接続先が書き換わらない（CLAUDE.md §1.8）。
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { sessionsDir, sweepSessions } from '../src/lifecycle.mjs';
+import { sessionsDir, sweepSessions, relayEnabled, relayStatusFile } from '../src/lifecycle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SHIM = path.join(__dirname, '..', 'src', 'codex-responses-shim.mjs');
@@ -103,8 +105,29 @@ function primaryModelOption() {
 
 // routed 時は「シェルが claude に渡す環境変数」を KEY=VALUE 形式で1行ずつ STDOUT に出す
 // （呼び出し元のシェル関数がこれを読んで env にセットする）。未到達なら STDOUT は空（フォールバック）。
+// Best-effort trace: the calling shells discard this process's stderr, so relay.log is the only
+// place an after-the-fact "why was the relay not up?" can be answered from. A failed append must
+// not stop the launcher (see the fallback invariant at the top of this file).
+function logSkipped() {
+  try {
+    fs.appendFileSync(
+      LOG,
+      `${new Date().toISOString()} launcher: relay OFF (${relayStatusFile()}) — router/shim not started\n`
+    );
+  } catch {}
+}
+
 async function main() {
   sweepSessions();
+
+  // OFF (or no switch file) -> start nothing and print no env lines, so the calling shell launches
+  // plain claude with ANTHROPIC_BASE_URL untouched. See relayEnabled() in src/lifecycle.mjs for why
+  // "relay off" has to mean "server not running", not merely "don't call external models".
+  if (!relayEnabled()) {
+    logSkipped();
+    console.error('clover: relay が OFF のため中継は起動しません（通常の Claude で起動します）');
+    process.exit(0);
+  }
 
   let routed = false;
   try {
