@@ -88,6 +88,18 @@
 //     real repo checked out on `feature/foo` with tasks/todo.md pinned to predate the branch still
 //     exits 0 (allowed). Deliberately left this way (a LOW-severity over-restriction, not fixed
 //     here) rather than trusting a branch name read from an unauthenticated `.git/HEAD` file.
+//   - H-2 (2026-08-12), the --base/-B check specifically: `gh pr create -dB develop` — a
+//     CLUSTERED short flag, where `-d` (some boolean flag) and `-B` (value-taking) are combined
+//     into one token, with `-B`'s value in a SEPARATE following token. findBadBaseValues() below
+//     only recognizes `-B`/`--base` as a token's complete leading content (space-separated:
+//     `-B develop`) or with a value attached to that same token (`-Bdevelop`, `-B=develop`) — it
+//     never peels a leading or embedded `-B` off a multi-flag cluster, so `-dB develop` matches
+//     neither branch and is not detected as a bad base. Deliberately not implemented: correctly
+//     finding a cluster's boundary requires knowing gh's full boolean-vs-value-taking short-flag
+//     surface (which short flags are booleans that can lead a cluster, and which take a value and
+//     must end one) — the same class of hand-rolled CLI-grammar expansion the 2026-08-08 ruling on
+//     lib/parse-cmd.js steered away from, even though this classification would live in this hook
+//     file, not literally in parse-cmd.js. Disclosed, not fixed.
 //
 // Fail-open (exit 0) on ANY resolution failure — not a repo, detached HEAD, no reflog for the
 // branch (e.g. a throwaway repo with no branch history yet), no tasks/todo.md, an unparsable
@@ -179,6 +191,21 @@ function isUntrackableCwdCmd(cmd) {
 // the caller only looks at [0] and .length). Returns an empty array when no occurrence carries a
 // bad base, including when there is no `gh ... pr create` occurrence at all — never null, since
 // the caller only checks .length, not identity.
+// H-2 (2026-08-12): a quoted value survives as ONE token with its quote characters still
+// attached when it reaches here (e.g. --base="main" -> value === '"main"') --
+// lib/parse-cmd.js's tokenizer only strips a quote pair spanning a token's FULL width from the
+// start, not one that begins mid-token after '='; fixing the tokenizer itself is out of bounds
+// here (2026-08-08 ruling). Stripping one matching leading/trailing quote pair locally is enough
+// to stop --base="main" from being misread as a bad base value and denied with a confusing
+// `""main""` message (M-1, 2026-08-12).
+function stripMatchingQuotes(v) {
+  if (v == null || v.length < 2) return v;
+  const first = v[0];
+  const last = v[v.length - 1];
+  if ((first === '"' && last === '"') || (first === "'" && last === "'")) return v.slice(1, -1);
+  return v;
+}
+
 function findBadBaseValues(command) {
   const badBases = [];
   for (const { cmd, args } of segments(command)) {
@@ -194,6 +221,13 @@ function findBadBaseValues(command) {
       let value = null;
       if (a === '--base' || a === '-B') value = createArgs[k + 1];
       else if (a.startsWith('--base=')) value = a.slice('--base='.length);
+      // H-2 (2026-08-12): -B's value can also be attached directly to the flag, getopt/pflag
+      // short-option style (-Bdevelop), or joined with a literal '=' (-B=develop) -- both were
+      // previously invisible here, unlike --base's own space- and '='-separated forms just above.
+      // Deliberately NOT handled: a CLUSTERED short flag (e.g. -dB develop, with -d and -B combined
+      // into one token) -- see the header's Known non-coverage list for the decision and why.
+      else if (a.startsWith('-B') && a !== '-B') value = a.slice(2).replace(/^=/, '');
+      value = stripMatchingQuotes(value);
       if (value != null && value !== 'main' && value !== 'master') {
         badBases.push(value);
         break;
@@ -438,12 +472,17 @@ process.stdin.on('end', () => {
     const prCreateCwds = findPrCreateCwds(command, payload.cwd || process.cwd());
     if (!prCreateCwds) process.exit(0);
 
-    if (prCreateCwds.some((cwd) => isTodoStaleForBranch(cwd))) {
-      console.error(DENY_MESSAGE);
-      process.exit(2);
-    }
-    if (prCreateCwds.some((cwd) => isCodemapStaleForBranch(cwd))) {
-      console.error(DENY_CODEMAP_MESSAGE);
+    // L-2 (2026-08-12): todo.md and CODEMAP.md staleness are two independent, opt-in checks (see
+    // the A5 header paragraph) over the SAME cwd list — both are evaluated and reported together
+    // in one message when both fire, rather than exiting on the first and leaving the second
+    // failure for a follow-up run to discover.
+    const todoStale = prCreateCwds.some((cwd) => isTodoStaleForBranch(cwd));
+    const codemapStale = prCreateCwds.some((cwd) => isCodemapStaleForBranch(cwd));
+    if (todoStale || codemapStale) {
+      const messages = [];
+      if (todoStale) messages.push(DENY_MESSAGE);
+      if (codemapStale) messages.push(DENY_CODEMAP_MESSAGE);
+      console.error(messages.join('\n\n'));
       process.exit(2);
     }
     process.exit(0);

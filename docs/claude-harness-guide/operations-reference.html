@@ -475,7 +475,7 @@ footer.sot code{ font-size:.92em; }
     <div class="doc-meta">
       <span class="meta-chip"><b>対象</b> .claude 配下の変更全般</span>
       <span class="meta-chip"><b>正本</b> CLAUDE.md ほか各ファイル</span>
-      <span class="meta-chip"><b>最終確認</b> 2026-08-06</span>
+      <span class="meta-chip"><b>最終確認</b> 2026-08-12</span>
       <span class="badge badge--done">現状の repo で裏取り済み</span>
     </div>
 
@@ -494,7 +494,7 @@ footer.sot code{ font-size:.92em; }
       <li>frontmatter の形式（<code>model</code> / <code>description</code> / <code>tools</code> / 必要なら <code>effort</code>）を既存 agent と揃える。</li>
       <li><code>model:</code> はnative alias（<code>fable</code> / <code>opus</code> / <code>sonnet</code> / <code>haiku</code> / <code>inherit</code>）、または clover の外部モデル id（<code>claude-&lt;alias&gt;</code>。<code>&lt;alias&gt;</code> は <code>clover/models.json</code> に実在するもの）のみを書く。実在の Claude モデル ID を直接固定するのは禁止 ―― バージョンが上がるたびに書き換えが要る壊れ方をするため。</li>
       <li>planner / reviewer は <code>model: opus</code> と <code>effort: max</code> を保つ。権威席の許可集合はnative <code>fable | opus</code>のみ。<code>.claude/.fable-status</code>が<code>ON</code>のとき（CLAUDE.md §1.11）だけ呼び出しに<code>model: fable</code>を明示でき（明示入力がfrontmatterより優先）、混在・無言fallback・sonnet/haiku/inherit/unknown/外部idへの降格は禁止。この判定は起動時に <code>block-fable-when-off.js</code> フックが強制するが、見えるのは起動先モデルが分かるサブエージェント起動だけ ―― あなた自身のセッションのモデル選択（<code>/model</code>）は対象外で、モデル名を指定しない起動がセッションのモデルをそのまま引き継いだ場合も見えないことがある。</li>
-      <li>clover のモデル id を書いた agent は、clover 経由で起動したセッションでしか動かない。特定の呼び出しだけ一時的に外部モデルへ振りたい場合は、frontmatter 固定よりも relay skill の <code>RELAY-MODEL:</code> マーカー（呼び出しごとに指定）の方が、素の起動でも壊れず可搬性が高い。</li>
+      <li>clover のモデル id を書いた agent は、clover 経由で起動したセッションでしか動かない。特定の呼び出しだけ一時的に外部モデルへ振りたい場合は、frontmatter 固定よりも relay skill の <code>RELAY-MODEL:</code> マーカー（呼び出しごとに指定）の方が、素の起動でも壊れず可搬性が高い。ただしマーカー便には<code>relay-required-agent.js</code>による追加条件があり、dispatch の <code>description</code> に指定した alias の文字列を含めないと、relay の ON/OFF に関わらず拒否される（利用者にも機械ジャーナルにも見えるのは description だけのため）。frontmatter 固定の route（前者）はこの条件の対象外。</li>
       <li>読み取り専用の agent（reviewer / verifier / explorer）には、Write / Edit / NotebookEdit のような書き込み系ツールを一切持たせない。</li>
       <li>読み取り専用 agent の Bash は「読み取り・テスト実行専用」に限定する。唯一の例外は reviewer の敵対的変異検証（adversarial mutation probe）で、明示的に許可された使い捨ての worktree の中でだけ書き込みが許される（本体のツリーには触れない）。</li>
       <li>planner と reviewer は <code>effort: max</code> の frontmatter 固定が必須。欠けていると <code>validate.mjs</code> が FAIL にする。</li>
@@ -545,7 +545,7 @@ footer.sot code{ font-size:.92em; }
     <p><code>node .claude/scripts/validate.mjs</code> はハーネス本体（agent / skill / rule / hook / CLAUDE.md 自身など）の整合性を機械的に検査する、ハーネス変更の最終チェックポイント。<code>check</code> skill は変更対象が <code>.claude/</code> 配下や CLAUDE.md / README.md のときに、これを自動で選ぶ。</p>
     <div class="table-wrap">
       <table>
-        <caption>validate.mjs の主なチェック（現行15項目）</caption>
+        <caption>validate.mjs の主なチェック（現行16項目）</caption>
         <thead>
           <tr><th>チェック内容</th><th>検出時</th></tr>
         </thead>
@@ -563,6 +563,7 @@ footer.sot code{ font-size:.92em; }
           <tr><td>機密ファイルの deny-list 整合 ―― <code>settings.json</code> の <code>permissions.deny</code> と <code>block-secret-read.js</code> のパターンが対応しているか</td><td><span class="badge badge--warn">WARN</span></td></tr>
           <tr><td>relay の alias 辞書ポインタ ―― <code>relay/SKILL.md</code> が <code>models.json</code> を正本として指し続けているか</td><td><span class="badge badge--warn">WARN</span></td></tr>
           <tr><td>Windows パス / エンコーディング（POSIX固定パスの残存、PowerShell 呼び出しでの OutputEncoding 欠如）／ <code>tasks/lessons.md</code> のサイズ（18KB 超）</td><td><span class="badge badge--warn">WARN</span></td></tr>
+          <tr><td>不可視バイト（NUL）の混入 ―― CLAUDE.md・README.md・<code>.claude</code> 配下・本ガイド配下のファイルに、書き込み時の変換ミスなどでNULバイトが紛れ込んでいないか。走査対象が0件のときも素通りさせず検出する</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>否定不変条件 ―― <code>.claude/hooks/</code> 配下のコード全体（<code>lib/</code> 含む再帰走査）に、hook が明示的に <code>permissionDecision:"allow"</code> を書いていないか（現状1ルール。無言 + exit 0 が暗黙の allow）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td><code>docs/claude-harness-guide/</code> 内の名簿突合 ―― <code>.claude/(skills|agents|commands)/&lt;name&gt;</code> 形式の参照、および agent・skill 名簿表（<code>&lt;caption&gt;</code> で識別）が実在物と一致しているか（ガイド自体が無い場合は WARN）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
         </tbody>
@@ -623,7 +624,7 @@ footer.sot code{ font-size:.92em; }
     </ul>
 
     <footer class="sot">
-      正本一覧: CLAUDE.md（§1.5 / §1.10 / §2 / §3 / §6.1 / §8 / §10）・.claude/rules/agents.md・.claude/rules/dev-projects.md・.claude/settings.json・.claude/scripts/validate.mjs・.claude/skills/relay/SKILL.md・.claude/skills/doc/SKILL.md。2026-08-06 時点の repo 現物と突き合わせて記述。
+      正本一覧: CLAUDE.md（§1.5 / §1.10 / §2 / §3 / §6.1 / §8 / §10）・.claude/rules/agents.md・.claude/rules/dev-projects.md・.claude/settings.json・.claude/scripts/validate.mjs・.claude/skills/relay/SKILL.md・.claude/skills/doc/SKILL.md・.claude/hooks/relay-required-agent.js。2026-08-12 時点の repo 現物と突き合わせて記述。
     </footer>
 
   </main>

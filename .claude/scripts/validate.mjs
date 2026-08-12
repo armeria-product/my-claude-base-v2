@@ -655,23 +655,39 @@ for (const [relPath, must, why] of INVARIANTS) {
 // Reuses the same `scan` file list check #4 already built above (CLAUDE.md, README.md, every
 // .md/.js/.json/.html under .claude/**, and every .md/.js/.json/.html under
 // docs/claude-harness-guide/**) instead of walking the tree again.
-// Floor: an empty scan set is a FAIL here, not a silent pass — tasks/todo.md already carries an
-// open finding that check #12 (below) silently passes on an empty scan set; this check must not
-// reproduce that defect.
-// Scope limit: this only covers the records/harness files in `scan` above (.claude/**, CLAUDE.md,
-// README.md, docs/claude-harness-guide/**). A NUL byte in product code (dev/**, outside its own
-// tasks/ mirror) is the product's own gate's problem, not this one's.
+// Floor (fixed 2026-08-12, HIGH-1): `scan.length === 0` can never fire — `scan` is seeded with 2
+// literal paths (CLAUDE.md, README.md) at its declaration above, regardless of whether they exist
+// on disk, so the list is never empty. Worse, the loop below skips a path that
+// `fs.existsSync` says is missing, so "the candidate list is non-empty" is not the same claim as
+// "at least one file was actually opened and scanned" — a run where every candidate path is
+// missing (e.g. scan retargeted to a wiped directory) silently reports PASS with 0 bytes ever
+// read. The real floor, mirroring check #13's count-actual-matches-not-list-length shape below,
+// is a counter incremented only on an actual successful read, checked after the loop.
+// Scope limit (corrected 2026-08-12, MEDIUM-2): this only covers the records/harness files
+// `walkMd` collects into `scan` above — CLAUDE.md, README.md, and every .md/.js/.json/.html
+// under .claude/** and docs/claude-harness-guide/**. walkMd's extension filter is
+// /\.(md|js|json|html)$/ — .mjs is NOT in it, so every .mjs file under .claude/** (including this
+// validator, validate.mjs itself, plus html2pdf.mjs/html2pptx.mjs/deckpack.mjs/fusion-detect.mjs)
+// is invisible to this check: a NUL byte there is a silent PASS. Widening the filter to include
+// .mjs was tried and reverted: `scan` is shared with check #4's dead-ref FORBIDDEN-pattern scan
+// above, and validate.mjs is self-referential (it defines the FORBIDDEN patterns using the exact
+// strings — real model ids, "/wrap", "audit" — that those patterns exist to catch), so widening
+// turned validate.mjs's own source into 8 dead-ref FAILs against itself; fixing that cleanly needs
+// a second, separately-exempted scan list, which is more machinery than a NUL-byte coverage gap
+// warrants (CLAUDE.md §1.7). A NUL byte in product code (dev/**, outside its own tasks/ mirror) is
+// the product's own gate's problem, not this one's — same as before.
 {
-  if (scan.length === 0) {
-    fail(`NUL-byte scan: file set is empty (expected at least CLAUDE.md/README.md) — scan cannot run`);
-  }
+  let filesActuallyRead = 0;
   for (const p of scan) {
     if (!fs.existsSync(p)) continue;
     const buf = fs.readFileSync(p);
+    filesActuallyRead++;
     const nulOffset = buf.indexOf(0);
     if (nulOffset !== -1)
       fail(`NUL byte in ${rel(p)} at byte offset ${nulOffset} — likely a mis-encoded \\uXXXX escape (see dev/reprodocs/tasks/lessons.md 2026-07-31)`);
   }
+  if (filesActuallyRead === 0)
+    fail(`NUL-byte scan: 0 files were actually read out of ${scan.length} candidate path(s) (all missing on disk) — the scan ran but checked nothing`);
 }
 
 // ---- 10. tasks/lessons.md size: WARN before session-start injection starts truncating ----

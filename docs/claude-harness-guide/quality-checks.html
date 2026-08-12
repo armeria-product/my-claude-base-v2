@@ -475,7 +475,7 @@ footer.sot code{ font-size:.92em; }
     <div class="doc-meta">
       <span class="meta-chip"><b>対象</b> quality-loop / check / doc の検証設計</span>
       <span class="meta-chip"><b>正本</b> quality-loop・check・doc の各 SKILL.md</span>
-      <span class="meta-chip"><b>最終確認</b> 2026-08-03</span>
+      <span class="meta-chip"><b>最終確認</b> 2026-08-12</span>
       <span class="badge badge--done">現状の repo で裏取り済み</span>
     </div>
 
@@ -511,6 +511,7 @@ footer.sot code{ font-size:.92em; }
       <div class="callout__label">なぜ自分でレビューできないのか</div>
       <p>Writer/Reviewer Separation の根拠はシンプル。自分が書いたものを自分で審査すると、見落としを見落としたまま承認してしまう構造的なリスクがある。だから常に<strong>別インスタンス・独立コンテキスト</strong>の authority を立てる、というのがこのハーネスの一貫した設計判断（例外は1〜2行の自明な修正のみ）。writerとauthorityがともにOpus（§1.11ゲートON時はともにFable）でも自己承認は不可。「別モデル」まで保証されるのは、条件を満たして外部モデルが別のco-reviewer席として同席した場合だけ。</p>
     </div>
+    <p>この分離は起動時にも機械で確認される。<code>block-review-floor.js</code>フックが、executor / debugger / document-author / general-purposeという作業役から、reviewer・plannerという権威役を<strong>直接</strong>起動しようとする呼び出しを拒否する。判定に使えるのはdispatchに記録されたagent_typeだけで、これらの作業役からreviewer/plannerを直接起動することはできず、レビューが必要ならコンダクター（親セッション）に差し戻して、コンダクターから起動し直す。ただしplanner→planner（plannerが自分自身をレビューするSelf-Review Mode）とreviewer→*は、この仕組みでは機械的に区別が付かないため、意図的に対象から外れている（裁定待ち）。</p>
 
     <h2>check skill — 完了報告前の単一入口</h2>
     <p><code>check</code> は変更対象を自動判別し、適切な検証を実行する。</p>
@@ -646,7 +647,7 @@ footer.sot code{ font-size:.92em; }
     </div>
 
     <footer class="sot">
-      正本一覧: .claude/skills/check/SKILL.md・.claude/skills/quality-loop/SKILL.md・.claude/skills/doc/SKILL.md・.claude/agents/verifier.md・.claude/agents/document-author.md・CLAUDE.md（§1.2 / §1.3 / §6.1 / §10）。2026-08-03 時点の repo 現物と突き合わせて記述。
+      正本一覧: .claude/skills/check/SKILL.md・.claude/skills/quality-loop/SKILL.md・.claude/skills/doc/SKILL.md・.claude/agents/verifier.md・.claude/agents/document-author.md・.claude/hooks/block-review-floor.js・CLAUDE.md（§1.2 / §1.3 / §6.1 / §10）。2026-08-12 時点の repo 現物と突き合わせて記述。
     </footer>
 
   </main>

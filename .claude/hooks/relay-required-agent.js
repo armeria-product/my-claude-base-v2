@@ -75,7 +75,10 @@ function transparencyDenyMessage(alias, subagentType) {
     `BLOCKED: サブエージェント "${subagentType || '(unnamed)'}" の起動が RELAY-MODEL:${alias} で外部モデルを指定していますが、\n` +
     `description に alias "${alias}" が含まれていません。\n` +
     `ユーザーの画面に見えるのは description だけです（プロンプト本文や実際に使うモデル名は表示されません）。\n` +
-    `description の中に "${alias}" を含めて、外部モデルで動くことが一目で分かるようにしてから、もう一度実行してください。`
+    `description の中に "${alias}" を含めて、外部モデルで動くことが一目で分かるようにしてから、もう一度実行してください。\n` +
+    `（既知の抜け穴: system フィールド経由の RELAY-MODEL:alias は、alias の直後にカンマなど空白以外の文字が続く形\n` +
+    `（例: RELAY-MODEL:${alias},ほかの alias）だと、その文字ごと alias として読み込まれて一致せず、relay が OFF でも\n` +
+    `この確認ごと素通りすることがあります。プロンプト本文の先頭行に書く形はこの影響を受けません。）`
   );
 }
 

@@ -22,8 +22,11 @@
 // facts an earlier session had already mapped, so the goal here is "know the map exists and where
 // it is" cheaply, every session, not "read the whole map" every session (that cost was flagged
 // explicitly). Opt-in / fail-open: no CODEMAP.md at tasksDir -> no block, no error. Does not
-// participate in the TOTAL_CAP/allocateBudget accounting below — it is a fixed small summary,
-// not a trimmable file body.
+// participate in the TOTAL_CAP/allocateBudget accounting below — it has its own independent
+// hard cap (CODEMAP_CAP) applied directly in codemapPointerBlock(), not the shared budget/trim
+// machinery used by the five blocks above. Correction (2026-08-12, post-review): the `##`
+// headings list was previously unbounded (no cap at all) despite this comment's earlier "fixed
+// small summary" claim — a CODEMAP.md with many/long headings could grow this block arbitrarily.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -32,6 +35,7 @@ const { projectRoot, journalPath } = require('./lib/journal-util');
 const TOTAL_CAP = 24 * 1024; // combined upper limit
 const MIN_FLOOR = 2 * 1024; // minimum guaranteed per file
 const JOURNAL_SLICE = 2 * 1024; // today's journal: tail slice read upfront
+const CODEMAP_CAP = 2 * 1024; // CODEMAP pointer block's `##` headings list: independent hard byte cap (matches MIN_FLOOR/JOURNAL_SLICE scale)
 
 let data = '';
 process.stdin.on('data', (c) => (data += c));
@@ -146,9 +150,19 @@ function codemapPointerBlock(tasksDir, projectDir) {
   }
   const relPath = path.relative(projectDir, codemapPath).split(path.sep).join('/');
   const headings = text.split('\n').filter((line) => /^##\s+/.test(line));
+  let headingsBlock = headings.length ? headings.join('\n') + '\n' : '';
+  // Correction (2026-08-12, post-review): this block was previously unbounded — a CODEMAP.md
+  // with many/long headings could grow it arbitrarily. Hard-cap it, mirroring the trimTail/
+  // trimHead UTF-8-boundary-safe truncation idiom used for the five budgeted blocks above.
+  if (Buffer.byteLength(headingsBlock, 'utf8') > CODEMAP_CAP) {
+    const buf = Buffer.from(headingsBlock, 'utf8').subarray(0, CODEMAP_CAP);
+    headingsBlock =
+      buf.toString('utf8').replace(/�+$/, '') +
+      `\n[…見出し一覧を ${CODEMAP_CAP} バイトで打ち切り。全文は ${relPath}]\n`;
+  }
   return (
     `\n=== CODEMAP ===\n${relPath}\n` +
-    (headings.length ? headings.join('\n') + '\n' : '') +
+    headingsBlock +
     `構造を grep で調べ直す前にこれを読む。`
   );
 }
