@@ -47,7 +47,8 @@ Report any phase whose tool is not found as SKIP.
 - Run the test suite.
 - Report: X passed, Y failed, Z skipped.
 - Show full detail (assertion + relevant stack) for up to ~3 representative failures; remaining failures get name + count + rerun command — never paste a full suite dump.
-- Attribute each failure: check the failing test's path against `git diff --name-only`. A failure untouched by the diff is pre-existing/unattributed — report it (information for the conductor, like a dirty tree) rather than auto-FAIL; FAIL applies only to failures attributable to the change.
+- Attribute each failure: check the failing test's path against `git diff --name-only`. A failure untouched by the diff is **unattributed — classification impossible**, never "pre-existing": only a same-suite run with every change removed (`git stash push -u` → run → `git stash pop`) establishes "pre-existing", and this agent holds no git writes to take that control itself. Report it as 「分類不能・対照実行が必要」 and name the stash-run as the control the conductor must run; FAIL applies only to failures attributable to the change.
+- `git diff --name-only` resolves against the repo of the current working directory — state which repo root the diff was taken in. At this workspace root, `.gitignore` excludes `tasks/*.md`, `dev/`, and `plans/`, so a diff taken there is structurally empty for those trees — measured 2026-08-12: `git status --porcelain plans/` returns 0 lines and exit 0 with 5 plan directories present.
 - Report coverage if available.
 
 ### Phase 5: Behavioral + Regression

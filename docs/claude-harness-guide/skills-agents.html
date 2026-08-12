@@ -486,7 +486,7 @@ footer.sot code{ font-size:.92em; }
     <div class="doc-meta">
       <span class="meta-chip"><b>対象</b> .claude/agents・.claude/skills・relay 規約</span>
       <span class="meta-chip"><b>正本</b> 各 *.md の frontmatter・CLAUDE.md §2 / §5.3</span>
-      <span class="meta-chip"><b>最終確認</b> 2026-08-03</span>
+      <span class="meta-chip"><b>最終確認</b> 2026-08-12</span>
       <span class="badge badge--done">現状の repo で裏取り済み</span>
     </div>
 
@@ -628,7 +628,7 @@ footer.sot code{ font-size:.92em; }
     </figure>
 
     <h2>外部モデルへのルーティング（relay）</h2>
-    <p>native名（<code>fable</code>/<code>opus</code>/<code>sonnet</code>/<code>haiku</code>/<code>inherit</code>）以外のモデル名が指定された場合だけ、relay skillの規約に従い、<code>RELAY-MODEL:&lt;alias&gt;</code>マーカーを先頭行に付けたworkerをspawnする。native Fable は relay に依存せず外部aliasへ変換しない。マーカーの解決はCLAUDE.md §1.8のON/OFFゲートが前提で、OFFなら外部モデルは一切呼ばれない。ONでも、実際にこのセッション自身がrelay経由で動いているとは限らない点に注意（サーバーが起動しているだけの場合がある）。</p>
+    <p>native名（<code>fable</code>/<code>opus</code>/<code>sonnet</code>/<code>haiku</code>/<code>inherit</code>）以外のモデル名が指定された場合だけ、relay skillの規約に従い、<code>RELAY-MODEL:&lt;alias&gt;</code>マーカーを先頭行に付けたworkerをspawnする。native Fable は relay に依存せず外部aliasへ変換しない。このマーカー便には独立した2つの関門がある。(1) <strong>CLAUDE.md §1.8のON/OFFゲート</strong> ―― OFFなら外部モデルは一切呼ばれない。(2) <strong><code>relay-required-agent.js</code>によるdescription必須化</strong> ―― マーカーで外部モデルを指定した起動は、ゲートがONでもOFFでも常に、dispatchの<code>description</code>にそのaliasの文字列を含めないと拒否される。ユーザーの画面にも機械ジャーナルにも残るのはdescriptionだけで、プロンプト本文や実際に使うモデル名は表示されないため。前段のfrontmatterにclover idを直接固定するroute（legacy）はこのdescription必須化の対象外 ―― 呼び出しごとの宣言ではなく、agent定義に静的に効く設定だから。ゲートがONでも、実際にこのセッション自身がrelay経由で動いているとは限らない点に注意（サーバーが起動しているだけの場合がある）。</p>
     <p>エイリアス一覧はここには複製しない ―― <code>clover/models.json</code>を直接参照するのが正本で、既定（先頭エントリ）が既定の外部co-reviewerに使われる。参考までに執筆時点（2026-08-03）の先頭エントリは<code>gpt-5.6-sol</code>（via codex, effort: xhigh）だが、一覧そのものは頻繁に更新され得るため常に<code>models.json</code>側を見る。</p>
     <p>未知のalias名を指定された場合は、標準tierへ黙って切り替えず、必ずユーザーに確認する。alias名は「opus」「sonnet」「haiku」「fable」で始めてはならない（<code>claude-&lt;alias&gt;</code>という実IDが本物のClaudeモデル名と衝突するのを防ぐための命名規則）。</p>
     <div class="callout callout--note">
@@ -637,7 +637,7 @@ footer.sot code{ font-size:.92em; }
     </div>
 
     <footer class="sot">
-      正本一覧: <code>D:\my-claude-base-v2\CLAUDE.md</code>（§2 Model Tier Policy, §5.3）・<code>D:\my-claude-base-v2\.claude\agents\*.md</code>（全7ファイル）・<code>D:\my-claude-base-v2\.claude\skills\*\SKILL.md</code>（全15スキル）・<code>D:\my-claude-base-v2\.claude\rules\agents.md</code>・<code>D:\my-claude-base-v2\.claude\skills\relay\SKILL.md</code>・<code>D:\my-claude-base-v2\clover\models.json</code>。2026-08-03時点のrepo現物と突き合わせて記述。
+      正本一覧: <code>D:\my-claude-base-v2\CLAUDE.md</code>（§2 Model Tier Policy, §5.3）・<code>D:\my-claude-base-v2\.claude\agents\*.md</code>（全7ファイル）・<code>D:\my-claude-base-v2\.claude\skills\*\SKILL.md</code>（全15スキル）・<code>D:\my-claude-base-v2\.claude\rules\agents.md</code>・<code>D:\my-claude-base-v2\.claude\skills\relay\SKILL.md</code>・<code>D:\my-claude-base-v2\clover\models.json</code>・<code>D:\my-claude-base-v2\.claude\hooks\relay-required-agent.js</code>。2026-08-12時点のrepo現物と突き合わせて記述。
     </footer>
 
   </main>

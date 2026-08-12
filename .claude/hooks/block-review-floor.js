@@ -24,6 +24,34 @@
 //
 // Broken input JSON remains fail-open because no role can be resolved. Once reviewer/planner is
 // resolved, an unreadable/missing model is an unresolved authority dispatch and fails closed.
+//
+// Batch A / A2 addition (2026-08-12): a SECOND, independent axis — the caller. Denies when
+// payload.agent_type (the calling subagent's own role on a nested Task|Agent dispatch — absent for
+// a conductor-issued, i.e. top-level, dispatch) is a worker-tier caller (see WORKER_CALLERS below)
+// AND tool_input.subagent_type resolves to reviewer or planner (CLAUDE.md §1.3: writer ≠ reviewer;
+// those roles have unrestricted Task and executor.md never restates the prohibition). Explicitly OUT
+// of scope, left to a future user ruling: planner→planner (planner's documented Self-Review Mode) and
+// reviewer→* are NOT denied — both stay out of the denied-caller set on purpose below, so this needs
+// no extra special-casing. This axis only looks at payload.agent_type and tool_input.subagent_type —
+// it does not re-check the model axis above, and firing this check short-circuits before the model
+// resolution/fs read below. Same fail-open convention: unparsable JSON exits 0 before either axis is
+// evaluated.
+//
+// Provenance correction (2026-08-12, post-review): payload.agent_type is set by the Claude Code CLI
+// harness itself on a nested Task|Agent dispatch — NOT by journal.js. journal.js is a PostToolUse-only
+// hook (see its own header) that only READS payload.agent_type, to format a "(via <role>)" log suffix;
+// it has no code path that writes or sets any payload field, and a PostToolUse hook for one call could
+// not retroactively affect an earlier, separate PreToolUse payload even if it tried. Evidence: real
+// journal lines carry that suffix for nested dispatches, e.g. tasks/journal/2026-08/02.md:492 records
+// an executor-launched nested Task with agent_type="executor".
+//
+// LIVE-FIRE CONFIRMED (2026-08-12, conductor probe): the field IS present on the PreToolUse payload —
+// this is measured, not inferred. A real executor subagent was dispatched with the single instruction
+// to call Task{subagent_type:"reviewer", model:"opus"}; the call was denied by THIS hook and the
+// executor reported the deny message verbatim. So the caller axis is active on real dispatches, not
+// only on the synthetic agent_type injected by the hook-probe samples. If a future change makes the
+// samples pass while real dispatches sail through, re-run that probe — the samples alone cannot tell
+// you, because they supply the field themselves.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -33,6 +61,30 @@ const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const REVIEW_AUTHORITY = new Set(['reviewer', 'planner']);
 const ALLOWED_AUTHORITY_MODELS = new Set(['fable', 'opus']);
 const DENIED_AUTHORITY_MODELS = new Set(['sonnet', 'haiku', 'inherit']);
+// A2 (2026-08-12): callers denied from seating an authority role — see the header paragraph for
+// the explicit planner→planner / reviewer→* carveout (both stay OUT of this set on purpose).
+// workflow-subagent added post-review (2026-08-12): confirmed via tasks/journal/2026-08/{05,06,07,
+// 08,09,10,12}.md as a real, frequently-occurring agent_type (hundreds of nested-dispatch log lines)
+// that was missing from this set — not a registered .claude/agents/*.md persona, so it was likely
+// overlooked when this set was first written. Journal history shows no case of a workflow-subagent
+// caller itself dispatching a nested Task|Agent (reviewer/planner or otherwise): this closes a
+// structural denylist gap for a real caller identity, not a fix for an observed escalation.
+// Non-coverage spot-check (2026-08-12, post-review): document-author's own frontmatter
+// (.claude/agents/document-author.md tools:) is "Read, Write, Edit, Glob, Grep, Bash" -- Task/Agent
+// is absent, so it can never itself be the caller of a Task|Agent dispatch and this axis can never
+// actually fire for it; its membership below is a harmless defensive redundancy, not a load-bearing
+// check. verifier and explorer (tools: "Bash, Glob, Grep, Read", same absence) are NOT in this set,
+// for the identical structural reason -- neither can issue a Task|Agent call either, so their
+// absence is not a coverage gap the way the planner→planner / reviewer→* carveout above is a
+// deliberate policy choice. This spot-check covered only these three; executor/debugger/planner
+// declare no tools: restriction (all tools, Task/Agent included, per each agent's own frontmatter).
+const WORKER_CALLERS = new Set([
+  'executor',
+  'debugger',
+  'document-author',
+  'general-purpose',
+  'workflow-subagent',
+]);
 
 const norm = (model) => String(model ?? '').trim().toLowerCase().replace(/^claude-/, '');
 
@@ -41,16 +93,32 @@ process.stdin.on('data', (chunk) => (data += chunk));
 process.stdin.on('end', () => {
   let subagentType = '';
   let model = '';
+  let agentType = '';
   try {
-    const toolInput = JSON.parse(data).tool_input || {};
+    const payload = JSON.parse(data);
+    const toolInput = payload.tool_input || {};
     subagentType = toolInput.subagent_type || '';
     model = toolInput.model || '';
+    agentType = payload.agent_type || '';
   } catch {
     process.exit(0);
   }
 
   const normSubagentType = String(subagentType).trim().toLowerCase();
   if (!REVIEW_AUTHORITY.has(normSubagentType)) process.exit(0);
+
+  const normAgentType = String(agentType).trim().toLowerCase();
+  if (WORKER_CALLERS.has(normAgentType)) {
+    console.error(
+      `BLOCKED: "${agentType}" からのサブエージェント起動で、レビュー権威ロール "${subagentType}" を直接起動しようとしています。\n` +
+        `CLAUDE.md §1.3: レビューは書いた本人以外が行います。executor / debugger / document-author / general-purpose / workflow-subagent から\n` +
+        `reviewer・planner を直接起動することはできません。レビューが必要なら、コンダクター（親セッション）に\n` +
+        `差し戻して、コンダクターから reviewer/planner を起動してください。\n` +
+        `（判定できるのは dispatch に記録された agent_type だけです。planner が自分自身をレビューする場合と、\n` +
+        `reviewer が別のサブエージェントを呼ぶ場合はこの対象外です。）`
+    );
+    process.exit(2);
+  }
 
   let effectiveModel = model;
   if (!effectiveModel) {

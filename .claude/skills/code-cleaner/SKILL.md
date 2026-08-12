@@ -79,5 +79,5 @@ COMMENT_NOISE: comments that merely restate the code
 ## Rules
 - **Deletions only**. A code-cleaner pass must not add code
 - **Preserving behavior is absolute**. If a test fails, revert immediately
-- Do not delete TODO / FIXME / HACK comments — they are intentional markers, so keep them
+- Do not delete TODO / FIXME / HACK comments, or any comment a machine reads — by class, not just by example: colon-less `@word` directives (`@vitest-environment`, `@ts-expect-error`, `eslint-disable`, pragma comments) and any comment compiled into a generated artifact (OpenAPI descriptions, doc generators). When you can't tell, keep it
 - When in doubt, keep the code. A false negative (leaving slop) is safer than a false positive (breaking code)

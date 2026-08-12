@@ -470,7 +470,7 @@ body{
     <p class="doc-subtitle">1つの依頼が「計画 → 実装 → レビュー → 検証 → コミット/PR → 記録」までどう流れるか、各skillがどこでつながっているかを追う。</p>
     <div class="doc-meta">
       <span class="meta-chip"><b>対象</b> plan / harness / quality-loop / check / doc skill</span>
-      <span class="meta-chip"><b>更新</b> 2026-08-03</span>
+      <span class="meta-chip"><b>更新</b> 2026-08-12</span>
       <span class="badge badge--done">最新化済み</span>
     </div>
 
@@ -539,6 +539,7 @@ body{
       <li><strong>コミット → プッシュ → PR</strong> — 作業ブランチにコミットし、プッシュし、その作業ブランチから<code>main</code>へのPull Requestが存在することを確認する（なければ作成、あれば新しいコミットが自然に積み上がる）。1つの作業ブランチにつきPRは1つ。</li>
       <li><strong>mainを動かすのはユーザー自身</strong> — Claude側から<code>main</code>へローカルでコミット・プッシュ・早送りマージすることは一切しない。ユーザーがPRの中身をGitHub上でレビューし、良ければ「Merge」ボタンで反映する。</li>
     </ol>
+    <p><code>block-pr-without-todo.js</code>フックが、<code>gh pr create</code>の実行そのものにさらに3つの条件を課す。(1) <strong>宛先ブランチの確認</strong> — <code>--base</code>がmain/master以外を指していると拒否する。宛先にした枝が先にマージされて消えると、中身がmainに届かないまま「マージ済み」に見えてしまうため。(2) <strong>todo.mdの更新確認</strong> — このブランチの<code>tasks/todo.md</code>が、ブランチを作った時点より後に更新されているか（更新日時だけを比較する簡易チェックで、内容の妥当性までは見ない）。(3) <strong>CODEMAP.mdの更新確認</strong> — そのリポジトリに<code>tasks/CODEMAP.md</code>があるときだけ、todo.mdと同じ扱いで更新確認が入る（無いリポジトリは無影響）。構造を変えていなければ書き直す必要はなく、<code>最終確認: YYYY-MM-DD</code>の行を今日の日付にするだけでよい。いずれも<code>gh api</code>経由の作成やGitHubのWeb画面からの作成、複数行にまたがる<code>gh pr create</code>コマンドまではカバーしていない。todo.md / CODEMAP.mdの更新確認は、コマンド中で<code>pushd</code>やPowerShellの<code>Set-Location</code>のようなディレクトリ移動が使われると、以降どのリポジトリを見ればよいか追えなくなる（フックのヘッダコメントに明記された既知の対象外）。</p>
     <p>重要な変更のコミットメッセージには、平易な日本語で次の構造化トレーラーを添える。</p>
     <div class="table-wrap">
       <table>
@@ -563,7 +564,7 @@ body{
     <p>ユーザーが読むための成果物（レポート・調査結果・ガイド等）を作るときの入口。<code>document-author</code>（standard tier）に委任し、自己完結HTMLの生成・自己検証・ブラウザ表示までを行わせる。生成後は<code>check</code> skillが独立に自己完結性を再検証する、二段構えのゲート。PDFは要求時に<code>html2pdf.mjs</code>（WeasyPrint、未導入でも失敗せずHTMLのまま残す）で、編集可能なPPTXはスライド用途で要求時に<code>html2pptx.mjs</code>（未導入だと明示的に失敗する）で、それぞれHTMLから派生生成する。</p>
 
     <h2>セッション永続化との関係</h2>
-    <p>会話がコンパクトされても、あるいはセッションが切れても、進行中の状態は<code>tasks/</code>配下の4ファイル — <code>todo.md</code> / <code>lessons.md</code> / <code>session-state.md</code>、大規模実装中はオンデマンド作成の<code>roadmap.md</code>（dev modeでは<code>dev/{name}/tasks/</code>）— に残る。ここには性質の違う2つの仕組みがあり、混同しないよう分けて説明する。(1) <strong>セッション開始のたびに画面へ表示する仕組み</strong> — <code>session-start.js</code>フックが、4ファイルすべてをセッション開始時に読み込んで表示する。ただし表示には合計24KBの上限があり、超えた分は優先度の低いファイルから順に削られる（全文はファイル本体を直接読む）。(2) <strong><code>/save-session</code>が空ファイルを最初に作る仕組み（bootstrap、初回だけ雛形を用意する処理）</strong> — こちらはプロダクト文脈（dev mode）を検出したときだけ動き、<code>session-state.md</code> / <code>todo.md</code> / <code>lessons.md</code>の3ファイルだけが対象で、<code>roadmap.md</code>は対象外（大規模実装を始めるタイミングで指揮者が必要に応じて作る、§6.4）。ルーティング先の判定・書式契約の正本は<code>.claude/rules/session-persistence.md</code>。plan（およびharnessが起動するplanner）は、この§6書式契約に従ってtodoやlessons、大規模実装時はroadmapにも書き込む。</p>
+    <p>会話がコンパクトされても、あるいはセッションが切れても、進行中の状態は<code>tasks/</code>配下の4ファイル — <code>todo.md</code> / <code>lessons.md</code> / <code>session-state.md</code>、大規模実装中はオンデマンド作成の<code>roadmap.md</code>（dev modeでは<code>dev/{name}/tasks/</code>）— に残る。ここには性質の違う2つの仕組みがあり、混同しないよう分けて説明する。(1) <strong>セッション開始のたびに画面へ表示する仕組み</strong> — <code>session-start.js</code>フックが、4ファイルすべてをセッション開始時に読み込んで表示する。ただし表示には合計24KBの上限があり、超えた分は優先度の低いファイルから順に削られる（全文はファイル本体を直接読む）。加えて、同じくオンデマンド作成の5番目のtasksファイル<code>CODEMAP.md</code>（構造の地図、§6.5）がそのリポジトリに存在する場合は、この24KBの枠の<strong>外側</strong>に、ファイルパスと<code>##</code>見出しの一覧だけの短いポインタ block を必ず追記する ―― 本文は入れない。地図の中身を毎回読ませるのではなく、「地図がどこにあるか」だけを毎セッション安く知らせる設計。(2) <strong><code>/save-session</code>が空ファイルを最初に作る仕組み（bootstrap、初回だけ雛形を用意する処理）</strong> — こちらはプロダクト文脈（dev mode）を検出したときだけ動き、<code>session-state.md</code> / <code>todo.md</code> / <code>lessons.md</code>の3ファイルだけが対象で、<code>roadmap.md</code>と<code>CODEMAP.md</code>は対象外（どちらも必要になったタイミングで指揮者が作る、§6.4 / §6.5）。ルーティング先の判定・書式契約の正本は<code>.claude/rules/session-persistence.md</code>。plan（およびharnessが起動するplanner）は、この§6書式契約に従ってtodoやlessons、大規模実装時はroadmapにも書き込む。</p>
 
     <h2>一連の流れ図</h2>
     <figure class="figure">

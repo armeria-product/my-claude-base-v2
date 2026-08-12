@@ -42,7 +42,11 @@ of CLAUDE.md §1.3 Writer/Reviewer Separation.
       - For a code deliverable, the authority dispatch runs against a disposable worktree
         (an isolated copy, stated in the dispatch prompt) so adversarial mutation probes are
         possible; the conductor provisions this worktree at dispatch time and discards it
-        after the verdict (neither worker nor authority creates or deletes it)
+        after the verdict (neither worker nor authority creates or deletes it). Before
+        `git worktree remove`, confirm the shell's cwd is not inside the target and `cd` to the
+        **absolute** main root first if it is; if files then appear to be missing, re-check with
+        absolute paths before escalating — git commands still resolve through the parent repo,
+        which makes the confusion worse
       - The worktree belongs to the repo that owns the deliverable: a dev/{name} product
         deliverable gets a worktree of that product's own repo; a harness deliverable gets a
         worktree of this repo

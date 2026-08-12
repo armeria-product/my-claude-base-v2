@@ -26,17 +26,27 @@ The core of the build-then-see loop. Captures **visual evidence**, the counterpa
   If the tools are deferred, use ToolSearch (load them in bulk with `"preview"`) first, then use them
 - **When unavailable**: launch the dev server with Bash `run_in_background`, then
   confirm the URL/port from the startup log (shift the port if the default collides)
+- **Looking vs. judging**: looking (layout, console errors) may use the dev server. Judging
+  interaction behavior as part of acceptance must use the **same build path the automated gate
+  uses** instead — dev mode can silently swallow behavior a real build would not, and the report
+  (step 4) states which path served the screenshot
 
 ### 3. See (capture visual evidence)
 1. Take a **screenshot** (`preview_screenshot` / Chrome integration)
 2. Check the **console errors** (`preview_console_logs`) — any errors are fix targets
 3. If there are key interactions (buttons, forms), operate one and observe its response
+4. When a design reference exists (mock, comp, screenshot), render it and place it **beside** the
+   implementation; classify every difference as 裁定済み逸脱 / データ差 / 未磨き. Matching design
+   tokens, a green accessibility check, and green e2e are **not** evidence of visual match — only
+   the side-by-side comparison is
 
 ### 4. Verdict and report
 ```markdown
 ## Preview Report: [target]
 - URL: [http://localhost:PORT]
+- Build path: [dev server | production build — the one that served this report]
 - Screenshot: [observations — layout breakage / divergence from expectations]
+- Mock comparison: [裁定済み逸脱 / データ差 / 未磨き per difference, or N/A if no design reference]
 - Console: [clean | N errors (details)]
 - Verdict: looks OK / needs fixes (→ list of fix items)
 ```

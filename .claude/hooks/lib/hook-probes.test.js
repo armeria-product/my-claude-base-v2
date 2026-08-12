@@ -46,6 +46,15 @@ const SANDBOX_TODO_WORKTREE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-tod
 const SANDBOX_TODO_GITDIR_ESCAPE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-todo-gitdir-escape');
 const SANDBOX_TODO_GITDIR_ESCAPE_TARGET = path.join(ROOT, 'tmp', 'hook-probes', 'evil-gitdir-store');
 const SANDBOX_TODO_BRANCH_ESCAPE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-todo-branch-escape');
+// Batch A / A5 (2026-08-12): tasks/CODEMAP.md mtime-vs-branch-creation fixtures for
+// block-pr-without-todo.js's isCodemapStaleForBranch() check, same shape as the SANDBOX_TODO_*
+// pair above but for CODEMAP.md instead of todo.md. See buildSandboxCodemapSandboxes() below.
+const SANDBOX_CODEMAP_DENY = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-codemap-deny');
+const SANDBOX_CODEMAP_ALLOW_NEWER = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-codemap-allow-newer');
+// Batch A / A3 (2026-08-12): relay ON, for relay-required-agent.js's new description/alias
+// transparency check. Needs its own relay-ON root (not SANDBOX_FREE, which is relay OFF and
+// already used by 3 existing relay-OFF rows) — see buildSandboxRelayOn() below for why.
+const SANDBOX_RELAY_ON = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-relay-on');
 const SAMPLES_FILE = path.join(__dirname, 'hook-probes.samples.json');
 const PROTECTED_BRANCHES = new Set(['main', 'master']);
 
@@ -280,6 +289,51 @@ function buildSandboxTodoSandboxes() {
   buildSandboxTodoBranchEscape();
 }
 
+// Batch A / A5 (2026-08-12): mirrors setTodoMtime() above but for tasks/CODEMAP.md. Kept as a
+// separate small function rather than adding a filename parameter to setTodoMtime() -- that
+// function already has several call sites above and this keeps them untouched.
+function setCodemapMtime(root, when) {
+  fs.utimesSync(path.join(root, 'tasks', 'CODEMAP.md'), when, when);
+}
+
+// Batch A / A5 (2026-08-12): reuses buildSandboxTodoRepo() (git repo + tasks/todo.md + `topic`
+// branch checkout) as-is, then adds tasks/CODEMAP.md on top with its own pinned mtime. todo.md's
+// own mtime is pinned to the future (allow-producing) in BOTH roots below so that a deny verdict
+// on SANDBOX_CODEMAP_DENY can only come from the new isCodemapStaleForBranch() check, never from
+// the pre-existing todo-staleness check -- otherwise the deny sample would still "pass" even if
+// the new CODEMAP check were deleted, i.e. it would have no detection power.
+function buildSandboxCodemapSandboxes() {
+  if (!fs.existsSync(path.join(SANDBOX_CODEMAP_DENY, '.git'))) {
+    buildSandboxTodoRepo(SANDBOX_CODEMAP_DENY);
+    setTodoMtime(SANDBOX_CODEMAP_DENY, TODO_FUTURE_MTIME);
+    fs.writeFileSync(path.join(SANDBOX_CODEMAP_DENY, 'tasks', 'CODEMAP.md'), '# CODEMAP\n');
+    setCodemapMtime(SANDBOX_CODEMAP_DENY, TODO_PAST_MTIME);
+  }
+  if (!fs.existsSync(path.join(SANDBOX_CODEMAP_ALLOW_NEWER, '.git'))) {
+    buildSandboxTodoRepo(SANDBOX_CODEMAP_ALLOW_NEWER);
+    setTodoMtime(SANDBOX_CODEMAP_ALLOW_NEWER, TODO_FUTURE_MTIME);
+    fs.writeFileSync(path.join(SANDBOX_CODEMAP_ALLOW_NEWER, 'tasks', 'CODEMAP.md'), '# CODEMAP\n');
+    setCodemapMtime(SANDBOX_CODEMAP_ALLOW_NEWER, TODO_FUTURE_MTIME);
+  }
+}
+
+// Batch A / A3 (2026-08-12): relay ON (unlike SANDBOX_FREE, which is relay OFF and already
+// backs 3 existing relay-required-agent.js rows) plus the clover alias 'probe-ext' seeded, so
+// Route 2 (RELAY-MODEL:<alias> marker) resolves. No .claude/agents/*.md frontmatter is needed
+// here since these samples only exercise Route 2, not Route 1. Detection-power rationale: if this
+// reused SANDBOX_FREE (relay OFF) instead, the pre-existing relay-off deny path would produce the
+// same "deny" verdict even with the new description/alias check deleted -- a relay-ON-only root
+// is what makes the new check the sole cause of the deny.
+function buildSandboxRelayOn() {
+  fs.mkdirSync(path.join(SANDBOX_RELAY_ON, '.claude'), { recursive: true });
+  fs.mkdirSync(path.join(SANDBOX_RELAY_ON, 'clover'), { recursive: true });
+  fs.writeFileSync(path.join(SANDBOX_RELAY_ON, '.claude', '.relay-status'), 'ON\n');
+  fs.writeFileSync(
+    path.join(SANDBOX_RELAY_ON, 'clover', 'models.json'),
+    JSON.stringify({ models: [{ alias: 'probe-ext', model: 'probe-ext-upstream', format: 'openai', via: 'codex' }] })
+  );
+}
+
 // fable-gate (2026-08-06, plan Phase 3 O-4 ruling): single substitution point for all 4 call
 // sites (loadRows, registerTests, and its two inline integrity-test re-parses). This does not
 // weaken the deliberate independence of the hardcoded *counts* below — each site still re-parses
@@ -299,6 +353,9 @@ function substitute(raw) {
     .split('<SANDBOX_TODO_WORKTREE>').join(slash(SANDBOX_TODO_WORKTREE))
     .split('<SANDBOX_TODO_GITDIR_ESCAPE>').join(slash(SANDBOX_TODO_GITDIR_ESCAPE))
     .split('<SANDBOX_TODO_BRANCH_ESCAPE>').join(slash(SANDBOX_TODO_BRANCH_ESCAPE))
+    .split('<SANDBOX_CODEMAP_DENY>').join(slash(SANDBOX_CODEMAP_DENY))
+    .split('<SANDBOX_CODEMAP_ALLOW_NEWER>').join(slash(SANDBOX_CODEMAP_ALLOW_NEWER))
+    .split('<SANDBOX_RELAY_ON>').join(slash(SANDBOX_RELAY_ON))
     .split('<SANDBOX>').join(slash(SANDBOX))
     .split('<REPO>').join(slash(ROOT))
     .split('<SANDBOX_GIT_MAIN>').join(slash(SANDBOX_GIT_MAIN))
@@ -453,6 +510,8 @@ function runDump() {
   buildSandboxGitMain();
   buildFableSandboxes();
   buildSandboxTodoSandboxes();
+  buildSandboxCodemapSandboxes();
+  buildSandboxRelayOn();
 
   const allRows = loadRows();
   const rows = setName ? allRows.filter((r) => r.set === setName) : allRows;
@@ -484,11 +543,13 @@ function registerTests() {
   buildSandboxGitMain();
   buildFableSandboxes();
   buildSandboxTodoSandboxes();
+  buildSandboxCodemapSandboxes();
+  buildSandboxRelayOn();
 
   const raw = fs.readFileSync(SAMPLES_FILE, 'utf8');
   const allRows = JSON.parse(substitute(raw));
 
-  const EXPECTED_SAMPLE_COUNT = 247;
+  const EXPECTED_SAMPLE_COUNT = 276;
   // Independently-hardcoded expectation (not re-derived from allRows) so this assertion can't
   // silently pass no matter what skipIf tags actually exist in the samples file — mirrors the
   // EXPECTED_SAMPLE_COUNT literal above. Keyed by exact set/name (not just a per-tag count) so a
@@ -520,7 +581,7 @@ function registerTests() {
   // over another row's, or a row deleted and a different one duplicated in its place) passes the
   // count test above but changes this hash. See samplesHash() for the algorithm (sha256 over
   // pre-substitution rows sorted by set/name) and why it's built that way.
-  const EXPECTED_SAMPLES_HASH = '015b972fb49fde9ecd9065aef8c6d1b951dc4b0be7cb0d2c3f063b981efc02f7';
+  const EXPECTED_SAMPLES_HASH = '69889403e3999d258eb7aee2ee86a98e520a4f0caeff678b7fb67b01865de7e1';
 
   test('samples file integrity: full-content hash matches (catches same-count content swaps the row/set count checks miss)', () => {
     const rawRows = JSON.parse(raw); // pre-substitution rows -- see samplesHash() comment for why
@@ -567,12 +628,12 @@ function registerTests() {
     'S-gh': 15,
     'S-state': 30,
     'S-lock': 39,
-    'S-fs': 20,
+    'S-fs': 32,
     'S-prompt': 8,
     'S-session': 5,
-    'S-agent': 50,
+    'S-agent': 57,
     'S-secret': 5,
-    'S-pr-todo': 24,
+    'S-pr-todo': 34,
   };
 
   const setsInOrder = [...new Set(allRows.map((r) => r.set))];

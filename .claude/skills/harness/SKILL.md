@@ -37,7 +37,7 @@ Autonomous, convergent bug fixing that touches the user **at most once**. Reprod
 3. **Fix → verify loop (internal, max 3 cycles)** → debugger/executor writes the minimal fix → **verifier** (standard) runs evidence-based PASS/FAIL. On FAIL, findings go **back to the debugger**, not the user; repeat. Follows the quality-loop Loop Contract + §1.5; the user is not consulted between cycles.
 4. **Regression test** → **executor** (standard) adds a test that reproduces the **confirmed root cause** — written as soon as the cause is pinned, and moved with it if the cycle-3 angle change relocates the cause, so "green" is provable against the real cause (not a stale hypothesis).
 5. **reviewer** target: code (heavy) → code review of the fix + regression test before closing the flow (Writer/Reviewer separation — the fix→verify loop's verifier gate is empirical, not an independent authority judgment)
-6. **Converge or escalate once** → never repeat a failing approach: **by the 3rd cycle switch angle** (re-fan hypotheses with what's ruled out, or the debugger's heavy pass — §1.5), so the 3-cycle budget is never spent hammering one stuck approach. If the 3rd cycle still fails, surface to the user **exactly once** via a single batched `AskUserQuestion` with a structured status: `Bug / Reproduction / Tried / Ruled-out / Blocker / Decision-needed` (plain language, Language §). (3-cycle cap = quality-loop Loop Contract + §1.5; the angle change is the §1.5 replan *at* the boundary, not a 4th attempt.)
+6. **Converge or escalate once** → never repeat a failing approach: **by the 3rd cycle switch angle** (re-fan hypotheses with what's ruled out, or the debugger's heavy pass — §1.5), so the 3-cycle budget is never spent hammering one stuck approach. If the 3rd cycle still fails, surface to the user **exactly once** via a single batched `AskUserQuestion` with a structured status: `Bug / Reproduction / Tried / Ruled-out / Blocker / Decision-needed` (plain language, Language §). Every batched `AskUserQuestion` states one line naming the premise all its options share — an option that only varies a detail inside an unstated premise cannot be challenged. (3-cycle cap = quality-loop Loop Contract + §1.5; the angle change is the §1.5 replan *at* the boundary, not a 4th attempt.)
 
 ### refactor
 Safe code restructuring:
@@ -73,9 +73,20 @@ See `.claude/skills/relay/SKILL.md` for the marker syntax and alias dictionary; 
 - The conductor (main session) performs **only delegation, coordination, and judgment**
 - Writing code, implementation, and debugging are **always done via subagents**
 - The conductor is **forbidden** from operating on code directly with Edit / Write; Read is
-  permitted only for the conductor's own CLAUDE.md §1.6 critical-reception duty (verifying a
-  critique's cited claim against the actual file) — investigation/exploration still routes to
-  subagents (CLAUDE.md §2)
+  permitted for the conductor's own CLAUDE.md §1.6 critical-reception duty (verifying a
+  critique's cited claim against the actual file) and for confirming a subordinate's claim
+  before restating it — investigation/exploration still routes to subagents (CLAUDE.md §2)
+- **Confirm before restating**: before putting a subordinate's achievement word (visible /
+  記録済み / 対応済み / 両席一致) into your own text, a record, a commit body, or another dispatch,
+  check the primary source — the file for a code claim, the file's contents for a record claim,
+  **each seat's own text** for a multi-seat agreement claim. A point one seat didn't mention is
+  not agreement.
+- **Verified facts expire**: before asserting a fact you verified earlier, check whether you have
+  since issued an instruction that changes the same object. Never write "change X" and "X is
+  unchanged" in one dispatch — state the property you actually want, not a proxy for it; a proxy
+  becomes a lie the moment it diverges from the property.
+- **No new work while a ruling is outstanding**: while a ruling or question is outstanding with
+  the user, start no work unit, including ones you judge unaffected — the ruling can reorder the plan.
 - Conductor responsibilities: task breakdown, launching subagents, aggregating results, reporting to the user
 
 ## Handoff Protocol
