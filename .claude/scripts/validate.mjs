@@ -647,6 +647,33 @@ for (const [relPath, must, why] of INVARIANTS) {
   }
 }
 
+// ---- 9.5. Zero NUL bytes in harness/record files (Batch A / A4, 2026-08-12) ------------------
+// dev/reprodocs/tasks/lessons.md [2026-07-31] + its Update [2026-08-01]: a written \uXXXX escape
+// sequence was converted into the real NUL byte by tool input; git then treats the file as binary
+// and ripgrep silently skips it, so the damage hides from both `git diff` and grep at once. It
+// happened twice — once to a worker, once to the conductor.
+// Reuses the same `scan` file list check #4 already built above (CLAUDE.md, README.md, every
+// .md/.js/.json/.html under .claude/**, and every .md/.js/.json/.html under
+// docs/claude-harness-guide/**) instead of walking the tree again.
+// Floor: an empty scan set is a FAIL here, not a silent pass — tasks/todo.md already carries an
+// open finding that check #12 (below) silently passes on an empty scan set; this check must not
+// reproduce that defect.
+// Scope limit: this only covers the records/harness files in `scan` above (.claude/**, CLAUDE.md,
+// README.md, docs/claude-harness-guide/**). A NUL byte in product code (dev/**, outside its own
+// tasks/ mirror) is the product's own gate's problem, not this one's.
+{
+  if (scan.length === 0) {
+    fail(`NUL-byte scan: file set is empty (expected at least CLAUDE.md/README.md) — scan cannot run`);
+  }
+  for (const p of scan) {
+    if (!fs.existsSync(p)) continue;
+    const buf = fs.readFileSync(p);
+    const nulOffset = buf.indexOf(0);
+    if (nulOffset !== -1)
+      fail(`NUL byte in ${rel(p)} at byte offset ${nulOffset} — likely a mis-encoded \\uXXXX escape (see dev/reprodocs/tasks/lessons.md 2026-07-31)`);
+  }
+}
+
 // ---- 10. tasks/lessons.md size: WARN before session-start injection starts truncating ----
 {
   const lessonsPath = path.join(ROOT, 'tasks', 'lessons.md');

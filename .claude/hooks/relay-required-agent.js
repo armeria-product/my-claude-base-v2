@@ -19,6 +19,20 @@
 // Fail-open: any error (unknown agent, unreadable files, bad JSON) -> exit 0 (allow).
 // Known limitation: $(...) / `...` / heredoc-constructed prompts aren't parsed — same structural
 // limit as the shared tokenizer used elsewhere in this hook suite.
+//
+// Batch A / A3 addition (2026-08-12): when Route 2 (the RELAY-MODEL:<alias> marker) fires,
+// tool_input.description must also contain that alias, checked UNCONDITIONALLY — before the
+// relayIsOn() check below, so this fires whether relay is ON or OFF. Why: description is the only
+// part of a dispatch the user actually sees (the prompt body and the resolved model are not shown
+// in the transcript); without this, a relay dispatch and a native Claude dispatch looked identical
+// and the user could not tell them apart (dev/reprodocs/tasks/lessons.md [2026-08-10]). Side
+// benefit: journal.js:72 records only description, so this also makes external-model dispatches
+// identifiable after the fact from the journal alone. Route 1 (frontmatter-pinned clover id) is NOT
+// covered by this check — that route is a static per-agent-file setting, not a per-dispatch marker,
+// so there is no per-dispatch description claim to verify. The comparison lowercases both sides
+// (markerAlias is already lowercased at match time above), matching this file's existing
+// case-folded alias convention. Known limitation: a description that merely contains the alias
+// substring passes — this does not verify the description is otherwise accurate or informative.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -56,18 +70,29 @@ function stripRelayNoiseText(s) {
 const MARKER_ANYWHERE_RE = /(?:^|\s)RELAY-MODEL:\s*(\S+)/m;
 const MARKER_FIRSTLINE_RE = /^RELAY-MODEL:\s*([\w.-]+)/i;
 
+function transparencyDenyMessage(alias, subagentType) {
+  return (
+    `BLOCKED: サブエージェント "${subagentType || '(unnamed)'}" の起動が RELAY-MODEL:${alias} で外部モデルを指定していますが、\n` +
+    `description に alias "${alias}" が含まれていません。\n` +
+    `ユーザーの画面に見えるのは description だけです（プロンプト本文や実際に使うモデル名は表示されません）。\n` +
+    `description の中に "${alias}" を含めて、外部モデルで動くことが一目で分かるようにしてから、もう一度実行してください。`
+  );
+}
+
 let data = '';
 process.stdin.on('data', (c) => (data += c));
 process.stdin.on('end', () => {
   let subagentType = '';
   let prompt = '';
   let systemText = '';
+  let description = '';
   try {
     const toolInput = JSON.parse(data).tool_input || {};
     subagentType = toolInput.subagent_type || '';
     prompt = toolInput.prompt || '';
     const sys = toolInput.system ?? toolInput.systemPrompt;
     if (typeof sys === 'string') systemText = sys;
+    description = toolInput.description || '';
   } catch {
     process.exit(0);
   }
@@ -108,6 +133,16 @@ process.stdin.on('end', () => {
   }
 
   if (!frontmatterHit && !markerHit) process.exit(0); // no relay-model route triggered -> allow
+
+  // A3: Route 2 (marker) dispatches must self-identify in description, regardless of relay state.
+  if (markerHit) {
+    const descriptionLower = String(description || '').toLowerCase();
+    if (!descriptionLower.includes(markerAlias)) {
+      console.error(transparencyDenyMessage(markerAlias, subagentType));
+      process.exit(2);
+    }
+  }
+
   if (relayIsOn()) process.exit(0);
 
   const model = frontmatterHit ? frontmatterModel : markerAlias;

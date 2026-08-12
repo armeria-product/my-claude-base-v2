@@ -14,6 +14,16 @@
 //   Each file is guaranteed MIN_FLOOR (2KB). session-state/todo/roadmap are written head-first,
 //   so trimming drops the tail. lessons (ascending append) and the journal (chronological)
 //   have their most recent — most actionable — entries at the tail: those keep the tail instead.
+//
+// Batch A / A6 addition (2026-08-12): if <tasksDir>/CODEMAP.md exists, also inject a short
+// pointer block — the file's path plus its `##` headings plus one reminder line. This is
+// deliberately NOT the file body (unlike the five blocks above): dev/reprodocs/tasks/lessons.md
+// [2026-08-12] recorded four parallel investigations (26 agents) on 2026-08-12 alone re-deriving
+// facts an earlier session had already mapped, so the goal here is "know the map exists and where
+// it is" cheaply, every session, not "read the whole map" every session (that cost was flagged
+// explicitly). Opt-in / fail-open: no CODEMAP.md at tasksDir -> no block, no error. Does not
+// participate in the TOTAL_CAP/allocateBudget accounting below — it is a fixed small summary,
+// not a trimmable file body.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -72,6 +82,8 @@ process.stdin.on('end', () => {
   for (const f of files) {
     blocks.push(`\n=== ${f.label} ===\n` + (f.text == null ? f.empty : f.text));
   }
+  const codemapBlock = codemapPointerBlock(tasksDir, projectDir);
+  if (codemapBlock) blocks.push(codemapBlock);
 
   console.log(
     JSON.stringify({
@@ -119,6 +131,26 @@ function lockStatus(projectDir) {
   } catch {
     return '🔓 scope-lock: none（ロックなし — 通常モード）';
   }
+}
+
+// A6: short pointer block for tasks/CODEMAP.md — path + `##` headings + one reminder line.
+// Deliberately does not read/inject the file body (see header comment). Returns null when the
+// file doesn't exist at this tasksDir (opt-in, fail-open — same convention as lockStatus above).
+function codemapPointerBlock(tasksDir, projectDir) {
+  const codemapPath = path.join(tasksDir, 'CODEMAP.md');
+  let text;
+  try {
+    text = fs.readFileSync(codemapPath, 'utf8');
+  } catch {
+    return null;
+  }
+  const relPath = path.relative(projectDir, codemapPath).split(path.sep).join('/');
+  const headings = text.split('\n').filter((line) => /^##\s+/.test(line));
+  return (
+    `\n=== CODEMAP ===\n${relPath}\n` +
+    (headings.length ? headings.join('\n') + '\n' : '') +
+    `構造を grep で調べ直す前にこれを読む。`
+  );
 }
 
 // Fit within the combined budget. Overflow is trimmed from the tail, starting with the

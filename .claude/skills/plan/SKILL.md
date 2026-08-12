@@ -154,7 +154,7 @@ Output `{base}/research.md`:
 | Is the estimated complexity within acceptable bounds? | YES / NO |
 | Have Gap Proposals / Objections been presented to the user and ruled on? | YES / NO / N/A (not product-shaped) / N/A (researched — none arose) |
 
-Gap Proposals and objections are presented in a single batched `AskUserQuestion` (plain language), with the ruling on each item recorded. The challenge happens at this gate — not during implementation. Even an overruled objection gets recorded before being followed. Each ruling is appended to research.md's corresponding item (the specific Gap Proposals / Objections line) at the moment of the gate, so the record survives a NO-GO or an abort; after GO it is additionally transcribed into PLAN.md's ledger of adopted / rejected / overruled items.
+Gap Proposals and objections are presented in a single batched `AskUserQuestion` (plain language), with the ruling on each item recorded. Every batched `AskUserQuestion` states one line naming the premise all its options share — an option that only varies a detail inside an unstated premise cannot be challenged. The challenge happens at this gate — not during implementation. Even an overruled objection gets recorded before being followed. Each ruling is appended to research.md's corresponding item (the specific Gap Proposals / Objections line) at the moment of the gate, so the record survives a NO-GO or an abort; after GO it is additionally transcribed into PLAN.md's ledger of adopted / rejected / overruled items.
 
 **Decision**: GO (to Phase 2) / NO-GO (report blockers and stop) / NEEDS-CLARIFICATION (enumerate questions and await answers)
 
@@ -181,6 +181,14 @@ Output `{base}/PLAN.md`:
 ### Verification Strategy
 [how to prove the behavior of the feature as a whole]
 ```
+
+The `### Verification Strategy` section must record a **baseline**: run every gate this work's
+acceptance will use at branch creation, before any change — a green `verify` says nothing about
+`e2e`, and without a baseline nobody can later decide whether a failure is new. When a later ruling
+overturns a decision already written in PLAN.md's body, correct the **body paragraph** in the same
+turn, not only the `### Objections & Rulings` ledger — demote the superseded text to a quote block
+marked 撤回済み (don't delete it) and follow it with the current position and a pointer to the
+record of record; deleting it loses why the option was rejected and the argument returns.
 
 Additionally output `{base}/scope.json` — the machine-readable contract the approve-lock hook transcribes into the scope lock (**required — the heavy path is incomplete without it**):
 
@@ -213,7 +221,8 @@ Phase 3 starts **only after** the approve-lock hook confirms the lock (it inject
 For implementation, **use the harness skill's pipeline as the execution engine** (the SOT for the pipeline definition is harness; plan focuses on "deciding" and does not restate the pipeline here). Choose the appropriate type per phase:
 1. Feature implementation → `harness feature` / bug fix → `harness bugfix` / refactor → `harness refactor`. Since planner self-review is done in Phase 2, each phase uses **the executor onward** of the harness pipeline (implementation through verification) as the execution engine. Every dispatch prompt passes the **paths** of `{base}/PLAN.md` and `{base}/scope.json` — the worker reads them itself; never paraphrase the scope into the prompt (CLAUDE.md §2 Scope handoff — paraphrase is how unapproved implementation creeps in)
 2. Each phase requires passing the test gate. Failure → debug and retry (max 2 times) → if it still fails, stop and report
-3. After all phases complete: **reviewer** (target: code, full-diff review) → address findings → **verifier** (final E2E verification)
+3. Before starting a phase designated as a deferral destination, inventory it: list what accumulated there and eject anything outside that phase's original one-line definition — a deferral record says only "→ phase X", so the drift stays invisible until the phase is opened
+4. After all phases complete: **reviewer** (target: code, full-diff review) → address findings → **verifier** (final E2E verification)
 
 Append to `{base}/PLAN.md`:
 ```markdown

@@ -24,6 +24,18 @@
 //
 // Broken input JSON remains fail-open because no role can be resolved. Once reviewer/planner is
 // resolved, an unreadable/missing model is an unresolved authority dispatch and fails closed.
+//
+// Batch A / A2 addition (2026-08-12): a SECOND, independent axis — the caller. Denies when
+// payload.agent_type (the calling subagent's own role, set by journal.js/the harness on a nested
+// Task|Agent dispatch — absent for a conductor-issued, i.e. top-level, dispatch) is one of
+// executor/debugger/document-author/general-purpose AND tool_input.subagent_type resolves to
+// reviewer or planner (CLAUDE.md §1.3: writer ≠ reviewer; those roles have unrestricted Task and
+// executor.md never restates the prohibition). Explicitly OUT of scope, left to a future user
+// ruling: planner→planner (planner's documented Self-Review Mode) and reviewer→* are NOT denied —
+// both stay out of the denied-caller set on purpose below, so this needs no extra special-casing.
+// This axis only looks at payload.agent_type and tool_input.subagent_type — it does not re-check
+// the model axis above, and firing this check short-circuits before the model resolution/fs read
+// below. Same fail-open convention: unparsable JSON exits 0 before either axis is evaluated.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -33,6 +45,9 @@ const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const REVIEW_AUTHORITY = new Set(['reviewer', 'planner']);
 const ALLOWED_AUTHORITY_MODELS = new Set(['fable', 'opus']);
 const DENIED_AUTHORITY_MODELS = new Set(['sonnet', 'haiku', 'inherit']);
+// A2 (2026-08-12): callers denied from seating an authority role — see the header paragraph for
+// the explicit planner→planner / reviewer→* carveout (both stay OUT of this set on purpose).
+const WORKER_CALLERS = new Set(['executor', 'debugger', 'document-author', 'general-purpose']);
 
 const norm = (model) => String(model ?? '').trim().toLowerCase().replace(/^claude-/, '');
 
@@ -41,16 +56,32 @@ process.stdin.on('data', (chunk) => (data += chunk));
 process.stdin.on('end', () => {
   let subagentType = '';
   let model = '';
+  let agentType = '';
   try {
-    const toolInput = JSON.parse(data).tool_input || {};
+    const payload = JSON.parse(data);
+    const toolInput = payload.tool_input || {};
     subagentType = toolInput.subagent_type || '';
     model = toolInput.model || '';
+    agentType = payload.agent_type || '';
   } catch {
     process.exit(0);
   }
 
   const normSubagentType = String(subagentType).trim().toLowerCase();
   if (!REVIEW_AUTHORITY.has(normSubagentType)) process.exit(0);
+
+  const normAgentType = String(agentType).trim().toLowerCase();
+  if (WORKER_CALLERS.has(normAgentType)) {
+    console.error(
+      `BLOCKED: "${agentType}" からのサブエージェント起動で、レビュー権威ロール "${subagentType}" を直接起動しようとしています。\n` +
+        `CLAUDE.md §1.3: レビューは書いた本人以外が行います。executor / debugger / document-author / general-purpose から\n` +
+        `reviewer・planner を直接起動することはできません。レビューが必要なら、コンダクター（親セッション）に\n` +
+        `差し戻して、コンダクターから reviewer/planner を起動してください。\n` +
+        `（判定できるのは dispatch に記録された agent_type だけです。planner が自分自身をレビューする場合と、\n` +
+        `reviewer が別のサブエージェントを呼ぶ場合はこの対象外です。）`
+    );
+    process.exit(2);
+  }
 
   let effectiveModel = model;
   if (!effectiveModel) {

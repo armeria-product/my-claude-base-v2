@@ -57,6 +57,8 @@ Open items: judgment calls needed; also list MEDIUM/LOW findings rejected on re-
 - Never add features beyond what was asked. Unrequested error handling, logging, config options, or helper abstractions are all features.
 - Never refactor surrounding code unless explicitly requested.
 - Never introduce dependencies without explicit approval.
+- A test that reproduces and proves a defect is not temporary investigation code: keep it as a permanent guard and say so in your report, even under a "delete all temporary investigation code" instruction. Never name a repro test `_tmp-`, `scratch`, or anything else that signals disposability — the name steers a later actor's deletion decision.
+- During any phase longer than ~5 minutes that writes no files (reading, investigation), append one line per phase boundary to `tmp/<task>-progress.log` — the conductor has no other liveness signal; file mtime and port binding do not move during a reading phase.
 - If you break something, fix it before reporting success.
 - Report what you changed, what you verified, and what's left untested.
 - If you touched harness files (.claude/**, CLAUDE.md, README.md), run `node .claude/scripts/validate.mjs` and report PASS/FAIL; a user-facing HTML deliverable gets the check skill's self-containment lint instead.

@@ -1,26 +1,28 @@
 ---
-description: session-state / lessons / todo / roadmap ファイルの配置先判定と bootstrap ルール（dev/ と tasks/ の振り分け）＋ 4ファイルの構造契約
+description: session-state / lessons / todo / roadmap / CODEMAP ファイルの配置先判定と bootstrap ルール（dev/ と tasks/ の振り分け）＋ 5ファイルの構造契約
 paths:
   - tasks/session-state.md
   - tasks/lessons.md
   - tasks/todo.md
   - tasks/roadmap.md
+  - tasks/CODEMAP.md
   - dev/*/tasks/session-state.md
   - dev/*/tasks/lessons.md
   - dev/*/tasks/todo.md
   - dev/*/tasks/roadmap.md
+  - dev/*/tasks/CODEMAP.md
 ---
 
 # Session Persistence Routing Rule
 
-Centralizes location detection and bootstrap for `session-state.md` / `lessons.md` / `todo.md` / `roadmap.md`.
-This rule fires on any write attempt to the 8 paths above.
+Centralizes location detection and bootstrap for `session-state.md` / `lessons.md` / `todo.md` / `roadmap.md` / `CODEMAP.md`.
+This rule fires on any write attempt to the 10 paths above.
 
 > **The journal is outside this rule's routing**: the work journal (`tasks/journal/YYYY-MM/DD.md`)
 > lives under the workspace root's `tasks/` ONLY — it is ONE global timeline, written by hooks
 > (journal.js / session-journal.js) and appended to by /save-session, **append-only, never
 > rotated, and never routed to `dev/{name}/tasks/`** even in dev mode (the dev-mode tasks
-> routing below applies to the 4 state files, not to the journal).
+> routing below applies to the 5 state files, not to the journal).
 
 ## 1. Product Context Detection
 
@@ -35,14 +37,14 @@ When multiple products match: adopt the one with the most hits; on a tie, confir
 
 ## 2. Routing Table
 
-| Situation | session-state | lessons | todo | roadmap |
-|------|--------------|---------|------|---------|
-| Product context present | `dev/{name}/tasks/session-state.md` | `dev/{name}/tasks/lessons.md` | `dev/{name}/tasks/todo.md` | `dev/{name}/tasks/roadmap.md` |
-| No product context | `tasks/session-state.md` | `tasks/lessons.md` | `tasks/todo.md` | `tasks/roadmap.md` |
+| Situation | session-state | lessons | todo | roadmap | CODEMAP |
+|------|--------------|---------|------|---------|---------|
+| Product context present | `dev/{name}/tasks/session-state.md` | `dev/{name}/tasks/lessons.md` | `dev/{name}/tasks/todo.md` | `dev/{name}/tasks/roadmap.md` | `dev/{name}/tasks/CODEMAP.md` |
+| No product context | `tasks/session-state.md` | `tasks/lessons.md` | `tasks/todo.md` | `tasks/roadmap.md` | `tasks/CODEMAP.md` |
 
 ## 3. Bootstrap Rule (new-file creation)
 
-When running `/save-session`, if **a product context is detected**, create the `dev/{name}/tasks/` directory as needed and bootstrap the 3 files below (only the ones not yet created). `roadmap.md` is excluded — created on-demand (§6.4).
+When running `/save-session`, if **a product context is detected**, create the `dev/{name}/tasks/` directory as needed and bootstrap the 3 files below (only the ones not yet created). `roadmap.md` and `CODEMAP.md` are excluded — created on-demand (§6.4, §6.5).
 
 ```markdown
 # TODO — {product-name}
@@ -74,18 +76,18 @@ When **there is no product context** and a write to `dev/{name}/tasks/` is attem
 
 ## 5. Scope of This Rule
 
-Write-target detection for all 4 files, bootstrap for the 3 bootstrapped files, and the structure contract (§6). Actually writing is each actor's responsibility. Actors that follow this rule:
+Write-target detection for all 5 tasks files (CODEMAP.md included, §6.5), bootstrap for the 3 bootstrapped files, and the structure contract (§6). Actually writing is each actor's responsibility. Actors that follow this rule:
 - `.claude/agents/planner.md` — todo.md (checklist only, §6.1); roadmap.md (large-scale step list, §6.4)
 - `.claude/commands/save-session.md` — session-state.md (§6.2) + bootstrap + lessons/todo appends
 - `.claude/commands/resume-session.md` — detecting the source to read from
-- `.claude/hooks/session-start.js` — reads the 4 files + journal tail for context injection (structure-independent)
+- `.claude/hooks/session-start.js` — reads the tasks files + journal tail for context injection (structure-independent); for CODEMAP.md it injects only a pointer (path + headings), never the body
 - `.claude/hooks/archive-session-state.js` — archives session-state.md before overwrite (**no rotation — history is kept in full**)
 
 ---
 
-## 6. File Structure Contract (single source for the "form" of the 4 files)
+## 6. File Structure Contract (single source for the "form" of the 5 files)
 
-**Scope-out**: design artifacts under `plans/{slug}/` (PLAN.md / research.md / scope.json / deviations.md) are not part of the tasks 4 files.
+**Scope-out**: design artifacts under `plans/{slug}/` (PLAN.md / research.md / scope.json / deviations.md) are not part of the tasks 5 files.
 
 ### 6.1 todo.md — a lightweight backlog of only not-started and in-progress items
 
@@ -144,3 +146,42 @@ Reader = the next Claude session. **This file duplicates nothing**: next actions
 ```
 
 **Hygiene rules**: (1) markers `- [ ]` 未実装 / `- [~]` 進行中 / `- [x]` 完了; (2) top-to-bottom = implementation order; (3) mark `[~]` on start and `[x]` only when implementation **and verification** are done; (4) one work unit = one H2 section; (5) one line per step, no design body (link to plans/); (6) created on-demand only for large-scale work; (7) on completion fold into one line under todo.md `Recently Done`, then delete the section (git log is the canonical history).
+
+### 6.5 CODEMAP.md — a lookup map of where things are, created on demand
+
+```markdown
+# CODEMAP — {product}
+
+## Top-level layout
+- `<dir>` — <what it's for, 1 line>
+
+## Main flow
+- <step> — `<file>:<line>`
+
+## Entry points
+- <entry point> — `<file>:<line>`
+
+## Tables / stores
+- <table/store> — <what it holds, how it connects>
+
+## Screens ↔ components
+- <screen> — <component(s)>
+
+## Commands
+- <what it checks> — `<command>`
+
+## Traps
+- <trap, 1 line>
+
+最終確認: YYYY-MM-DD
+```
+
+**Hygiene rules**: (1) only what gets looked up repeatedly — the top-level layout and what each folder is for, the main flow with file:line anchors, the entry points, the tables/stores and how they connect, screens ↔ components, the commands that run the checks, the traps that are easy to hit; (2) do not chase completeness — a map that grows past what is actually consulted stops being maintained and rots; (3) one line per fact, links out for detail; (4) carry a `最終確認: YYYY-MM-DD` line and update it whenever the map is re-checked and still accurate, even with no content changes; (5) created on demand only, like roadmap.md — not bootstrapped; (6) never rotated.
+
+---
+
+## 7. Records Are Not Bulk-Replaced
+
+Records mix **text describing the current state** with **text recording what was true at the time**. A cross-cutting change such as a rename must classify before replacing: code may be replaced wholesale, records may not. Past PR URLs, then-current paths, then-current UI wording, and header names all become false when rewritten wholesale — add a note recording when the rename happened instead of overwriting the old text.
+
+`tasks/journal/**` and `tasks/history/**` are append-only and are never rewritten retroactively.

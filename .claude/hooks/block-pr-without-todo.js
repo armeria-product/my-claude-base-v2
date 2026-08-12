@@ -100,6 +100,32 @@
 // after the fix it reads the worktree's own HEAD and the main repo's shared reflog and denies
 // correctly). Every other Bash|PowerShell-matched hook in this harness follows the same fail-open
 // convention; this hook does not introduce a new fail-closed precedent.
+//
+// Batch A / A1 addition (2026-08-12): independently of the todo.md staleness check above, ANY
+// `gh ... pr create` occurrence in the command carrying `--base <x>` / `-B <x>` / `--base=<x>`
+// where `<x>` is neither `main` nor `master` is denied — CLAUDE.md §3 already states "one branch
+// per work unit ... from up-to-date main ... one PR per branch"; this makes that already-documented
+// policy mechanical (block-direct-to-main.js explicitly allowlists `gh pr create`, so nothing else
+// sees this today). Detection (findBadBaseValues() below) is a SEPARATE pass over segments(command)
+// that deliberately does NOT share findPrCreateCwds()'s cwd-tracking state: the base value is read
+// straight from the command text, not from filesystem state, so it still fires on an occurrence
+// found AFTER an untrackable cd/pushd/Set-Location construct — unlike the todo.md check, which
+// fails open for such an occurrence because it cannot resolve which repo root to check. Same
+// narrow shape as the todo.md detection above: only a literal `gh ... pr create` is recognized
+// (`gh api`, `hub pull-request`, a raw curl, the GitHub web UI, and a later `gh pr edit --base` are
+// all invisible to this hook, same as the Known non-coverage list above), and the same tokenizer
+// limits apply (no newline-splitting, no `(...)`/`{...}` grouping — see lib/parse-cmd.js's header).
+//
+// Batch A / A5 addition (2026-08-12): the SAME mtime-vs-branch-creation comparison above, applied
+// to tasks/CODEMAP.md in the same resolved repo root, opt-in — a repo root with no CODEMAP.md is
+// unaffected (isCodemapStaleForBranch() fails open exactly like isTodoStaleForBranch() does for a
+// repo with no reflog or no branch; see that function below). Same disclosure as the todo.md gate
+// above: this compares ONLY the file's mtime, never its content, so touching CODEMAP.md once with
+// no real update satisfies this gate the same way todo.md's own gate can be satisfied without a
+// real update — a workflow-reminder device, not an adversarial control (see the second header
+// paragraph above). The honest, cheap way to pass this gate on a branch that changed none of the
+// structure the map describes is to update just the map's `最終確認: YYYY-MM-DD` line (contract:
+// .claude/rules/session-persistence.md §6.5).
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -113,6 +139,22 @@ const GH_GLOBAL_VALUE_FLAGS = new Set(['-R', '--repo']);
 
 const DENY_MESSAGE =
   'BLOCKED: gh pr create の前に、tasks/todo.md を今回の作業内容に合わせて更新してから、もう一度実行してください。';
+
+// A1 (2026-08-12): see the header paragraph above for why and what this cannot see (gh api, the
+// GitHub web UI, a later `gh pr edit --base`).
+function denyBaseMessage(base) {
+  return (
+    `BLOCKED: gh pr create の --base が "${base}" になっています。PR の宛先は main（または master）にしてください。\n` +
+    `前の PR がマージされてから、あらためて main を最新化した上で次の枝を切ってください。\n` +
+    `（このチェックは GitHub の Web 画面での作成、gh api 経由の作成、後から行う gh pr edit --base の変更まではカバーしていません。）`
+  );
+}
+
+// A5 (2026-08-12): see the header paragraph above for why this is opt-in and what it does not
+// check (mtime only, never content — a workflow reminder, not an adversarial control).
+const DENY_CODEMAP_MESSAGE =
+  'BLOCKED: gh pr create の前に、tasks/CODEMAP.md を確認してください。構造に変更があれば内容を更新し、無ければ「最終確認: YYYY-MM-DD」の行だけ今日の日付にしてから、もう一度実行してください。\n' +
+  '（これはファイルの更新日時だけを比較する仕組みで、内容までは見ていません。更新し忘れを防ぐためのものです。）';
 
 // Directory-change command names this hook cannot reliably follow (see header) — PowerShell's
 // Set-Location/its aliases, and bash's pushd/popd (which, unlike `cd`, this hook never tracks at
@@ -129,6 +171,36 @@ const SUFFIXED_CWD_BUILTIN_RE = /^(?:cd|pushd|popd)\.(?:exe|cmd|com|ps1)$/;
 
 function isUntrackableCwdCmd(cmd) {
   return UNTRACKABLE_CWD_CMDS.has(cmd) || SUFFIXED_CWD_BUILTIN_RE.test(cmd);
+}
+
+// Independent of findPrCreateCwds() below (see the A1 header paragraph for why): scans every
+// `gh ... pr create` occurrence in `command` for a --base/-B/--base=<x> value that is neither
+// `main` nor `master`, and returns every such value found (in order, possibly with duplicates —
+// the caller only looks at [0] and .length). Returns an empty array when no occurrence carries a
+// bad base, including when there is no `gh ... pr create` occurrence at all — never null, since
+// the caller only checks .length, not identity.
+function findBadBaseValues(command) {
+  const badBases = [];
+  for (const { cmd, args } of segments(command)) {
+    if (cmd !== 'gh') continue;
+    const i = findSubcmdIndex(args, GH_GLOBAL_VALUE_FLAGS);
+    if (i < 0 || args[i] !== 'pr') continue;
+    const rest = args.slice(i + 1);
+    const j = findSubcmdIndex(rest, GH_GLOBAL_VALUE_FLAGS);
+    if (j < 0 || rest[j] !== 'create') continue;
+    const createArgs = rest.slice(j + 1);
+    for (let k = 0; k < createArgs.length; k++) {
+      const a = createArgs[k];
+      let value = null;
+      if (a === '--base' || a === '-B') value = createArgs[k + 1];
+      else if (a.startsWith('--base=')) value = a.slice('--base='.length);
+      if (value != null && value !== 'main' && value !== 'master') {
+        badBases.push(value);
+        break;
+      }
+    }
+  }
+  return badBases;
 }
 
 // Find the effective cwd of EVERY `gh ... pr create` occurrence within `command`, tracking `cd`
@@ -327,6 +399,27 @@ function isTodoStaleForBranch(cwd) {
   }
 }
 
+// A5 (2026-08-12): same comparison as isTodoStaleForBranch() above, applied to tasks/CODEMAP.md —
+// opt-in: a repo root with no CODEMAP.md fails open here (fs.statSync throws ENOENT, caught below,
+// same as every other resolution failure this file treats as fail-open), so a project that has not
+// adopted the CODEMAP mechanism is unaffected. Mirrors isTodoStaleForBranch()'s structure rather
+// than sharing code with it, so each function's fail-open shape stays independently readable
+// (CLAUDE.md §1.7) — the two differ only in which file's mtime is compared.
+function isCodemapStaleForBranch(cwd) {
+  try {
+    const repoRoot = findRepoRoot(cwd);
+    if (!repoRoot) return false;
+    const branch = currentBranch(repoRoot);
+    if (!branch) return false;
+    const createdMs = branchCreatedMs(repoRoot, branch);
+    if (createdMs === null) return false;
+    const codemapMtimeMs = fs.statSync(path.join(repoRoot, 'tasks', 'CODEMAP.md')).mtimeMs;
+    return codemapMtimeMs < createdMs;
+  } catch {
+    return false;
+  }
+}
+
 let data = '';
 process.stdin.on('data', (c) => (data += c));
 process.stdin.on('end', () => {
@@ -336,11 +429,21 @@ process.stdin.on('end', () => {
     const command = String(payload.tool_input?.command || '');
     if (!command) process.exit(0);
 
+    const badBases = findBadBaseValues(command);
+    if (badBases.length > 0) {
+      console.error(denyBaseMessage(badBases[0]));
+      process.exit(2);
+    }
+
     const prCreateCwds = findPrCreateCwds(command, payload.cwd || process.cwd());
     if (!prCreateCwds) process.exit(0);
 
     if (prCreateCwds.some((cwd) => isTodoStaleForBranch(cwd))) {
       console.error(DENY_MESSAGE);
+      process.exit(2);
+    }
+    if (prCreateCwds.some((cwd) => isCodemapStaleForBranch(cwd))) {
+      console.error(DENY_CODEMAP_MESSAGE);
       process.exit(2);
     }
     process.exit(0);
