@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -11,7 +11,7 @@ if (process.env.RELAY_ROUTER_NO_LISTEN !== '1') {
   throw new Error('lifecycle.test.mjs must be run with RELAY_ROUTER_NO_LISTEN=1 to avoid binding a real port on import');
 }
 
-const { sessionsDir, sweepSessions, hasLiveSessions } = await import('../src/lifecycle.mjs');
+const { sessionsDir, sweepSessions, hasLiveSessions, relayEnabled, relayStatusFile } = await import('../src/lifecycle.mjs');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROUTER_PATH = path.join(__dirname, '..', 'src', 'router.mjs');
@@ -68,6 +68,59 @@ test('sessionsDir: defaults to <clover>/run/sessions when env not set', (t) => {
   t.after(() => { if (prev !== undefined) process.env.RELAY_SESSIONS_DIR = prev; });
   const dir = sessionsDir();
   assert.ok(dir.endsWith(path.join('clover', 'run', 'sessions')), `got: ${dir}`);
+});
+
+// --- relayEnabled: the switch that decides whether the relay may start at all ---
+
+// Points relayEnabled() at a throwaway switch file and restores the env afterwards. Returns the
+// path so a test can rewrite the file between assertions.
+function statusFixture(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clover-relay-status-'));
+  const file = path.join(dir, '.relay-status');
+  const prev = process.env.RELAY_STATUS_FILE;
+  process.env.RELAY_STATUS_FILE = file;
+  t.after(() => {
+    if (prev === undefined) delete process.env.RELAY_STATUS_FILE;
+    else process.env.RELAY_STATUS_FILE = prev;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  return file;
+}
+
+test('relayEnabled: ON enables the relay regardless of case or surrounding whitespace', (t) => {
+  const file = statusFixture(t);
+  for (const body of ['ON', 'ON\n', ' on \r\n', 'On', '\tON\t']) {
+    fs.writeFileSync(file, body);
+    assert.equal(relayEnabled(), true, `expected enabled for ${JSON.stringify(body)}`);
+  }
+});
+
+test('relayEnabled: anything other than exactly ON counts as OFF', (t) => {
+  const file = statusFixture(t);
+  // ONLINE / "ON OFF" matter: a substring or prefix match here would let a typo start the relay.
+  for (const body of ['OFF', '', 'ONLINE', 'ON OFF', 'true', '1', 'on=1']) {
+    fs.writeFileSync(file, body);
+    assert.equal(relayEnabled(), false, `expected disabled for ${JSON.stringify(body)}`);
+  }
+});
+
+test('relayEnabled: a missing switch file counts as OFF (a fresh clone has none — it is gitignored)', (t) => {
+  statusFixture(t); // directory exists, the file itself is never written
+  assert.equal(relayEnabled(), false);
+});
+
+test('relayEnabled: an unreadable switch file counts as OFF, it does not throw', (t) => {
+  const file = statusFixture(t);
+  fs.mkdirSync(file); // a directory where a file is expected -> readFileSync throws EISDIR
+  assert.equal(relayEnabled(), false);
+});
+
+test('relayStatusFile: defaults to <repo>/.claude/.relay-status when env not set', (t) => {
+  const prev = process.env.RELAY_STATUS_FILE;
+  delete process.env.RELAY_STATUS_FILE;
+  t.after(() => { if (prev !== undefined) process.env.RELAY_STATUS_FILE = prev; });
+  const file = relayStatusFile();
+  assert.ok(file.endsWith(path.join('.claude', '.relay-status')), `got: ${file}`);
 });
 
 // --- router integration: idle timer + registry sweep ---
@@ -208,9 +261,17 @@ test('POST /__clover/shutdown: 200 and process exits when the registry is empty'
 
 const LAUNCH_PATH = path.join(__dirname, '..', 'bin', 'clover-launch.mjs');
 
+// The launcher starts nothing while the switch reads OFF (relayEnabled above), and the repo's own
+// switch normally does — so the registry test below needs its own ON fixture to reach the code path
+// that writes a session file at all.
+const RELAY_ON_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'clover-relay-on-'));
+const RELAY_ON_FILE = path.join(RELAY_ON_DIR, '.relay-status');
+fs.writeFileSync(RELAY_ON_FILE, 'ON\n');
+after(() => fs.rmSync(RELAY_ON_DIR, { recursive: true, force: true }));
+
 function runLaunch(env) {
   return new Promise((resolve, reject) => {
-    const childEnv = { ...process.env, ...env };
+    const childEnv = { ...process.env, RELAY_STATUS_FILE: RELAY_ON_FILE, ...env };
     delete childEnv.RELAY_ROUTER_NO_LISTEN;
     delete childEnv.RELAY_SHIM_NO_LISTEN;
     const child = spawn(process.execPath, [LAUNCH_PATH], {

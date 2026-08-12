@@ -13,6 +13,17 @@ HOST=127.0.0.1
 SHIM_PORT="${SHIM_PORT:-8791}"
 ROUTER_PORT="${ROUTER_PORT:-8788}"
 
+# `.claude/.relay-status` が OFF（またはファイル無し）なら中継は立てない（CLAUDE.md §1.8）。
+# 中継が立つと ANTHROPIC_BASE_URL がそちらを向き、claude.ai のバックエンドと対で成立する機能
+# （リモコン・そのスラッシュコマンド）が消えるため。ここは「中継経由で起動する」ための入口なので、
+# 黙って素の claude を起動せず、理由を出して止める（素で使いたければ普通に claude と打てばよい）。
+if ! node "$DIR/relay-enabled.mjs"; then
+  echo "clover: relay が OFF のため、中継経由では起動しません（.claude/.relay-status）。" >&2
+  echo "  中継を使う場合は先に ON にしてください:  /relay on" >&2
+  echo "  中継なしでよければ、そのまま  claude  を起動してください。" >&2
+  exit 1
+fi
+
 # codex に未ログイン（auth.json 無し/トークン欠落）でも clover は router 単独（無印素通し）で動かしたいので、
 # 案内だけ出して続行する（codex 経由のリクエスト時のみ shim 側で失敗する＝許容）。
 if ! node -e 'const fs=require("fs"),os=require("os"),p=require("path");try{const a=JSON.parse(fs.readFileSync(p.join(os.homedir(),".codex","auth.json"),"utf8"));process.exit(a&&a.tokens&&a.tokens.access_token&&a.tokens.account_id?0:1)}catch{process.exit(1)}' 2>/dev/null; then

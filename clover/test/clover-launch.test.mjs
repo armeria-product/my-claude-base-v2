@@ -1,6 +1,8 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -17,13 +19,32 @@ function randPort() {
   return 18800 + Math.floor(Math.random() * 5000);
 }
 
+// The launcher starts nothing unless .claude/.relay-status reads ON (relayEnabled(), src/lifecycle.mjs).
+// The repo's own switch is normally OFF, so without this fixture every test below would silently
+// exercise the disabled path and assert nothing about the relay. Tests that want the OFF path pass
+// their own RELAY_STATUS_FILE, which wins over this default.
+const RELAY_ON_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'clover-relay-on-'));
+const RELAY_ON_FILE = path.join(RELAY_ON_DIR, '.relay-status');
+fs.writeFileSync(RELAY_ON_FILE, 'ON\n');
+after(() => fs.rmSync(RELAY_ON_DIR, { recursive: true, force: true }));
+
+// True when nothing holds `port` — used to prove the launcher really did not spawn router/shim
+// (an empty stdout alone would also be produced by a relay that started but failed its health check).
+function portFree(port) {
+  return new Promise((resolve) => {
+    const probe = http.createServer();
+    probe.once('error', () => resolve(false));
+    probe.listen(port, '127.0.0.1', () => probe.close(() => resolve(true)));
+  });
+}
+
 function runLaunch(env) {
   return new Promise((resolve, reject) => {
     // clover-launch.mjs forwards process.env to the router/shim children it spawns, so this
     // suite's own RELAY_ROUTER_NO_LISTEN/RELAY_SHIM_NO_LISTEN (set by the standard test
     // invocation to keep *this* process from binding a port on import) must not leak into
     // those children, or the relay it starts would never actually listen.
-    const childEnv = { ...process.env, ...env };
+    const childEnv = { ...process.env, RELAY_STATUS_FILE: RELAY_ON_FILE, ...env };
     delete childEnv.RELAY_ROUTER_NO_LISTEN;
     delete childEnv.RELAY_SHIM_NO_LISTEN;
     const child = spawn(process.execPath, [LAUNCH_PATH], {
@@ -218,5 +239,38 @@ test('clover-launch: real Anthropic-shaped /v1/models (id starts with claude-, n
   } finally {
     await new Promise((resolve) => decoy.close(resolve));
     await killPortHolder(shimPort);
+  }
+});
+
+test('clover-launch: relay OFF starts nothing and prints no env lines (the base URL is never redirected)', async () => {
+  const shimPort = randPort();
+  const routerPort = randPort();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clover-relay-off-'));
+  const statusFile = path.join(dir, '.relay-status');
+  fs.writeFileSync(statusFile, 'OFF\n');
+
+  try {
+    const result = await runLaunch({
+      SHIM_PORT: String(shimPort),
+      ROUTER_PORT: String(routerPort),
+      RELAY_STATUS_FILE: statusFile,
+    });
+
+    // exit 0 keeps the calling shell's fallback path intact: it must still launch plain claude.
+    assert.equal(result.code, 0, `should exit 0 (fallback, not crash), stderr: ${result.err}`);
+    // Empty stdout is the whole point: no ANTHROPIC_BASE_URL line means the session keeps talking
+    // to api.anthropic.com, so claude.ai-backed features (remote control and its slash commands)
+    // keep working.
+    assert.equal(result.out, '', `stdout must stay empty when the switch is OFF, got: ${JSON.stringify(result.out)} / stderr: ${result.err}`);
+    assert.match(result.err, /relay が OFF/);
+
+    // Give a regression (spawning the children anyway) time to bind before checking the ports.
+    await new Promise((r) => setTimeout(r, 800));
+    assert.equal(await portFree(routerPort), true, 'router must not have been started');
+    assert.equal(await portFree(shimPort), true, 'shim must not have been started');
+  } finally {
+    await killPortHolder(routerPort);
+    await killPortHolder(shimPort);
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

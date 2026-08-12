@@ -32,8 +32,17 @@ function claude {
     }
   }
   # One-line status so a silent fallback (launcher failed, relay down) is visible at a glance.
+  # An empty launcher output has two very different causes, so read the same one-word switch file the
+  # launcher reads and say which one it was: OFF is a deliberate setting, unavailable is a fault.
+  # Display only -- the launcher alone decides whether this session is routed, so a misread here can
+  # only produce a wrong message, never a wrong connection.
   if ($restore.Count -gt 0) { Write-Host 'clover: relay connected (GPT available in /model)' }
-  else { Write-Host 'clover: relay unavailable - plain Claude (no GPT)' }
+  else {
+    $relayOn = $false
+    try { $relayOn = ((Get-Content "<REPO>\.claude\.relay-status" -Raw -ErrorAction Stop).Trim() -ieq 'ON') } catch {}
+    if ($relayOn) { Write-Host 'clover: relay unavailable - plain Claude (no GPT)' }
+    else { Write-Host 'clover: relay is OFF - plain Claude' }
+  }
   try { & $real.Source @args }
   finally {
     foreach ($n in $restore.Keys) { [Environment]::SetEnvironmentVariable($n, $restore[$n], 'Process') }

@@ -31,7 +31,14 @@ claude() {
     done
     return $rc
   else
-    echo "clover: relay unavailable - plain Claude (no GPT)" >&2
+    # ランチャーの出力が空になる理由は2つある（relay が OFF＝意図した設定 / 立てられなかった＝故障）。
+    # ランチャーが読むのと同じ1語のファイルを読んで、どちらなのかを言う。ここは表示専用で、
+    # 経路の判定には一切使わない（読み違えても、出るメッセージがずれるだけ）。
+    if [ "$(tr -d '[:space:]' < "<REPO>/.claude/.relay-status" 2>/dev/null | tr '[:lower:]' '[:upper:]')" = "ON" ]; then
+      echo "clover: relay unavailable - plain Claude (no GPT)" >&2
+    else
+      echo "clover: relay is OFF - plain Claude" >&2
+    fi
     # No relay: `command` bypasses this function to run the real claude unchanged.
     command claude "$@"
   fi
