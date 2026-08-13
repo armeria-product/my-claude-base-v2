@@ -14,7 +14,7 @@
 
 Multi-project hub. Each product lives under `dev/{name}/` (own git repo, own `tasks/` mirror).
 
-- `tasks/` — todo.md / lessons.md / session-state.md (+ `history/` = full archive, never rotated) + `journal/`
+- `tasks/` — todo.md / lessons.md / session-state.md (+ `history/` = frozen pre-2026-08-13 archive, never rotated or added to) + `journal/`
 - `tasks/journal/YYYY-MM/DD.md` — append-only work journal: hooks write machine lines; /save-session appends the human report. **Never rotate or delete journal entries.** ONE global timeline: always at the workspace root's `tasks/journal/` — the dev-mode routing below never applies to it.
 - `plans/{slug}/` — PLAN.md + scope.json (+ deviations.md) produced by /plan
 - `.claude/` — agents / skills / commands / rules / hooks / scripts, plus `state/` = **hook-owned runtime state (scope lock). Claude never writes there; permissions.deny + cmd-write-guard enforce it.**

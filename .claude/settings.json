@@ -111,15 +111,6 @@
         ]
       },
       {
-        "matcher": "Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/archive-session-state.js\""
-          }
-        ]
-      },
-      {
         "matcher": "Bash|PowerShell",
         "hooks": [
           {
