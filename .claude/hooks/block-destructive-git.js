@@ -28,9 +28,10 @@
 //     tried with trailing `)` characters stripped from the target, gated on the invocation having
 //     actually been paren-entered so an ordinary filename that genuinely ends in `)` is never
 //     misread. See normalizeRedirects()/resolveGitInvocation() below for how. Backslash escaping
-//     is tracked per REAL BASH's rules (deliberately not tokenize()'s naive, non-backslash-aware
-//     scan -- see normalizeRedirects()'s own comment for exactly where the two diverge and why
-//     that is the safe direction), so a backslash-escaped quote character (`git show HEAD:a.js \"
+//     is tracked per REAL BASH's rules on the OPERATOR side (deliberately not tokenize()'s naive,
+//     non-backslash-aware scan -- see normalizeRedirects()'s own comment for exactly where the two
+//     diverge; that divergence is safe for quote tracking, but NOT on the redirect TARGET side, see
+//     the two backslash-target entries under "Not covered"), so a backslash-escaped quote (`git show HEAD:a.js \"
 //     > a.js`) no longer desyncs the quote tracker and silently disables the match for the rest of
 //     the string, and the symmetric false positive (`git commit -m "a \" > a.js x"`, one harmless
 //     quoted argument in real bash) is also fixed. `>|` is rewritten to `>` even when it is
@@ -68,6 +69,19 @@
 //     mid-token quote tracking and tokenize()'s naive one disagree here and the target token keeps
 //     its literal quote characters -- see normalizeRedirects()'s comment for the full account of
 //     this divergence.
+//   - a BACKSLASH-ESCAPED redirect target is not resolved either, in both directions (measured
+//     against real bash by executing the command from a script file, so no argv transport could
+//     alter the bytes; identical verdicts under all three commits of this change, i.e. neither
+//     direction is new):
+//       * false ALLOW -- `git show HEAD:a.js > dir/vic\tim.md` and `... > dir/vic\ tim.md` really
+//         truncate `dir/victim.md` / `dir/vic tim.md` in bash (the backslash escapes the next
+//         character), but this hook resolves the literal token and finds no such file.
+//       * false DENY -- `git show HEAD:a.js > dir\victim.md`, the natural Windows spelling, is a
+//         backslash ESCAPE to bash: it writes a junk file `dirvictim.md` and leaves
+//         `dir/victim.md` untouched, yet this hook resolves it as a Windows path, finds the
+//         existing file, and denies with a message asserting an overwrite that would not happen.
+//     Target-side backslashes are therefore NOT bash-accurate even though the operator-side quote
+//     scan is -- do not read the "per real bash" claim above as covering the target token.
 //   - cd forms still unfollowed: pushd/popd, subshell scoping (`( cd x && ... )`), and a
 //     variable-expanded destination (`cd $DIR`) -- cwd tracking below covers plain `cd <path>` and
 //     `cd -` only, same known limit as lib/cmd-targets.js's precise model. In the OPPOSITE
@@ -143,7 +157,12 @@ process.stdin.on('end', () => {
 //     quote characters or mis-split tokens, but it can never CREATE a new OP_MARK, so it can never
 //     turn quoted (inert) text into a false redirect match. The worst it can do is leave stray
 //     quote characters inside argument/target text tokenize() failed to strip (see the next
-//     point) -- a possible false ALLOW on a target-spelling mismatch, not a false DENY.
+//     point) -- a possible false ALLOW on a target-spelling mismatch. That is the direction for
+//     the QUOTE divergence specifically; it is NOT a blanket "never a false DENY" guarantee for
+//     target spellings in general, which the natural Windows spelling `> dir\victim.md` falsifies:
+//     bash reads the backslash as an escape and writes `dirvictim.md`, while this hook resolves it
+//     as a Windows path to the existing `dir/victim.md` and denies an overwrite that would not
+//     happen. Both backslash-target directions are listed under "Not covered" in the header.
 //   - Mid-token quote opening: bash (and this pass) treat a `"`/`'` as significant wherever it
 //     appears; tokenize() only treats one as quote-opening at token START. A split-quoted target
 //     like `CLAUDE"."md` (bash concatenates adjacent quoted/unquoted pieces with no separating
