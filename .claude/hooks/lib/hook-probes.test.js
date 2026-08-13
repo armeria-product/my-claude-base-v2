@@ -55,6 +55,18 @@ const SANDBOX_CODEMAP_ALLOW_NEWER = path.join(ROOT, 'tmp', 'hook-probes', 'sandb
 // transparency check. Needs its own relay-ON root (not SANDBOX_FREE, which is relay OFF and
 // already used by 3 existing relay-OFF rows) — see buildSandboxRelayOn() below for why.
 const SANDBOX_RELAY_ON = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-relay-on');
+// M1 (2026-08-13, cycle-2 authority review): a self-contained root (its own CLAUDE_PROJECT_DIR,
+// like SANDBOX_FABLE_ON/SANDBOX_RELAY_ON above) for pinning block-destructive-git.js's
+// realpathSync() junction-following. It must be self-contained rather than reusing <REPO>: every
+// existing SANDBOX_* root here already lives under <REPO>/tmp/hook-probes/..., so relative to the
+// REAL repo root every one of them already has a `tmp` path segment -- a junction planted inside
+// one would be exempted by the naive raw-spelling check regardless of whether realpath-following
+// works, giving zero detection power for that specific fix. Rooting this sandbox's OWN
+// CLAUDE_PROJECT_DIR at itself (see buildSandboxJunction() below) makes `real-target/` -- the
+// junction's actual destination -- NOT contain a `tmp` segment relative to that root, while the
+// junction's own path (`tmp/jdir/...`) does, isolating the realpath fix as the only thing that can
+// produce a deny here.
+const SANDBOX_JUNCTION = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-junction');
 const SAMPLES_FILE = path.join(__dirname, 'hook-probes.samples.json');
 const PROTECTED_BRANCHES = new Set(['main', 'master']);
 
@@ -334,6 +346,29 @@ function buildSandboxRelayOn() {
   );
 }
 
+// M1 (2026-08-13, cycle-2 authority review): builds a real NTFS directory junction
+// (SANDBOX_JUNCTION/tmp/jdir -> SANDBOX_JUNCTION/real-target) via `mklink /J`, which needs no
+// admin rights on NTFS. Windows-only by construction (mklink is a cmd.exe builtin); the
+// corresponding sample row is tagged skipIf:'non-win32', and this builder itself is gated on
+// process.platform so it is a safe no-op on a non-win32 CI box rather than throwing and breaking
+// every OTHER row in the suite (mklink would not exist there to exec in the first place). The
+// existsSync guard makes re-running the suite idempotent (`mklink` errors if the link already
+// exists).
+function buildSandboxJunction() {
+  fs.mkdirSync(path.join(SANDBOX_JUNCTION, 'real-target'), { recursive: true });
+  fs.mkdirSync(path.join(SANDBOX_JUNCTION, 'tmp'), { recursive: true });
+  fs.writeFileSync(path.join(SANDBOX_JUNCTION, 'real-target', 'precious.txt'), 'secret\n');
+  const linkPath = path.join(SANDBOX_JUNCTION, 'tmp', 'jdir');
+  if (process.platform === 'win32' && !fs.existsSync(linkPath)) {
+    try {
+      execFileSync('cmd', ['/c', 'mklink', '/J', linkPath, path.join(SANDBOX_JUNCTION, 'real-target')]);
+    } catch {
+      // mklink unavailable/failed on this win32 box -- the corresponding row is not skipIf-tagged
+      // for this case, so it will fail loudly (not silently pass) rather than mask the problem.
+    }
+  }
+}
+
 // fable-gate (2026-08-06, plan Phase 3 O-4 ruling): single substitution point for all 4 call
 // sites (loadRows, registerTests, and its two inline integrity-test re-parses). This does not
 // weaken the deliberate independence of the hardcoded *counts* below — each site still re-parses
@@ -356,6 +391,7 @@ function substitute(raw) {
     .split('<SANDBOX_CODEMAP_DENY>').join(slash(SANDBOX_CODEMAP_DENY))
     .split('<SANDBOX_CODEMAP_ALLOW_NEWER>').join(slash(SANDBOX_CODEMAP_ALLOW_NEWER))
     .split('<SANDBOX_RELAY_ON>').join(slash(SANDBOX_RELAY_ON))
+    .split('<SANDBOX_JUNCTION>').join(slash(SANDBOX_JUNCTION))
     .split('<SANDBOX>').join(slash(SANDBOX))
     .split('<REPO>').join(slash(ROOT))
     .split('<SANDBOX_GIT_MAIN>').join(slash(SANDBOX_GIT_MAIN))
@@ -512,6 +548,7 @@ function runDump() {
   buildSandboxTodoSandboxes();
   buildSandboxCodemapSandboxes();
   buildSandboxRelayOn();
+  buildSandboxJunction();
 
   const allRows = loadRows();
   const rows = setName ? allRows.filter((r) => r.set === setName) : allRows;
@@ -545,11 +582,12 @@ function registerTests() {
   buildSandboxTodoSandboxes();
   buildSandboxCodemapSandboxes();
   buildSandboxRelayOn();
+  buildSandboxJunction();
 
   const raw = fs.readFileSync(SAMPLES_FILE, 'utf8');
   const allRows = JSON.parse(substitute(raw));
 
-  const EXPECTED_SAMPLE_COUNT = 276;
+  const EXPECTED_SAMPLE_COUNT = 313;
   // Independently-hardcoded expectation (not re-derived from allRows) so this assertion can't
   // silently pass no matter what skipIf tags actually exist in the samples file — mirrors the
   // EXPECTED_SAMPLE_COUNT literal above. Keyed by exact set/name (not just a per-tag count) so a
@@ -563,6 +601,7 @@ function registerTests() {
     'S-git-env/ge-reset-hard-bare': 'protected-branch',
     'S-git-env/ge-commit-amend': 'protected-branch',
     'S-state/state-ps-setlocation-bypass': 'non-win32',
+    'S-git-pure/gp-redirect-junction-realpath-deny': 'non-win32',
   };
 
   test('samples file integrity: JSON.parse succeeds, row count matches, set+name pairs unique', () => {
@@ -581,7 +620,7 @@ function registerTests() {
   // over another row's, or a row deleted and a different one duplicated in its place) passes the
   // count test above but changes this hash. See samplesHash() for the algorithm (sha256 over
   // pre-substitution rows sorted by set/name) and why it's built that way.
-  const EXPECTED_SAMPLES_HASH = '69889403e3999d258eb7aee2ee86a98e520a4f0caeff678b7fb67b01865de7e1';
+  const EXPECTED_SAMPLES_HASH = 'c2583e39c527a265093b8bea74ba30e6dbfa39644b9285e10369be87ae099b2c';
 
   test('samples file integrity: full-content hash matches (catches same-count content swaps the row/set count checks miss)', () => {
     const rawRows = JSON.parse(raw); // pre-substitution rows -- see samplesHash() comment for why
@@ -623,7 +662,7 @@ function registerTests() {
   // is added to/removed from/moved between sets. Verified this equals EXPECTED_SAMPLE_COUNT and
   // covers exactly the sets present in the samples file below.
   const EXPECTED_SET_COUNTS = {
-    'S-git-pure': 32,
+    'S-git-pure': 69,
     'S-git-env': 19,
     'S-gh': 15,
     'S-state': 30,
