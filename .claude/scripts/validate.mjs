@@ -532,6 +532,7 @@ const INVARIANTS = [
   ['.claude/agents/executor.md', /match⇒deny|match=deny/, 'executor.md must keep the consumer-direction-classification duty (match⇒deny fail-closed vs match⇒allow fail-open sorting before widening a shared matcher)'],
   ['.claude/agents/executor.md', /deny-side/, 'executor.md must keep the deny-side (reverse) verification duty for "still denied" claims'],
   ['.claude/agents/executor.md', /safety-critical harness code/i, 'executor.md must keep the Comment Policy safety-critical-harness-code exception (hooks/validators comments documenting why the check exists and what is deliberately out of scope)'],
+  ['.claude/agents/executor.md', /実装のうちその性質を担っている行/, 'executor.md must keep the mutation-target rule (a mutation check breaks the implementation line that carries the property under test, never the test itself)'],
   ['.claude/skills/quality-loop/SKILL.md', /Lens Catalog[\s\S]*4 seats total/, 'quality-loop must keep the Lens Catalog section with the 4-seat hard cap'],
   ['.claude/skills/quality-loop/SKILL.md', /Security Track \(on request or auto-seated\)/, 'quality-loop must keep the Security Track auto-seat section — the conductor seats security on API/DB/auth/payment signals without being asked (user ruling 2026-08-02)'],
   ['.claude/skills/quality-loop/SKILL.md', /not seated \(no risk signals\)/, 'quality-loop must keep the mandatory security-attendance recording line — a silent skip of the risk check must stay visible'],
@@ -559,6 +560,8 @@ const INVARIANTS = [
   // wording gets passed into decide() as if armed — flagging nearly every file, or throwing on lock:null.
   ['.claude/agents/reviewer.md', /status\s*===\s*["']locked["']/, 'reviewer.md Scope Conformance must state that "locked" means `status === "locked"` — without it the locator reads a merely-present-but-unlocked scope-lock.json as an armed manifest and feeds it into decide()'],
   ['.claude/agents/verifier.md', /status\s*===\s*["']locked["']/, 'verifier.md Scope check must state that "locked" means `status === "locked"` — without it the locator reads a merely-present-but-unlocked scope-lock.json as an armed manifest and feeds it into decide()'],
+  // --- planner self-review ruling (2026-08-13) ---
+  ['.claude/skills/plan/SKILL.md', /freshly spawned instance \(the authoring instance never reviews its own plan\)/, 'plan SKILL.md must keep the 2026-08-13 self-review ruling (planner self-review permitted only as a freshly spawned instance, with the red-team second seat always seated for plan reviews) — dropping it silently reopens the planner→planner axis with no recorded authorization'],
 ];
 for (const [relPath, must, why] of INVARIANTS) {
   const p = path.join(ROOT, relPath);
@@ -747,64 +750,31 @@ for (const [relPath, must, why] of INVARIANTS) {
   }
 }
 
-// ---- 12. Negative invariants: patterns that must NEVER appear in a given set of files ----
-// Inverse of #6 INVARIANTS above: INVARIANTS can only assert "file X must contain pattern P"
-// (single file, presence-only) — it has no way to express "no file in this set may EVER contain
-// pattern P" (2026-08-07 backlog M-1). Declarative, one-row-per-rule shape so it stays extensible:
-// add one row, not new scan code.
-// Row shape: [label, files (absolute paths, pre-filtered by the row itself), valueCapturePattern
-// ("g" flag, one capture group), badValue (the captured value that is a violation), why].
-//
-// First rule: a hook must never write an explicit permissionDecision:"allow" response on stdout.
-// 18 of the 20 registered hooks share this property today (implicit only: silent stdout + exit 0
-// = allow; only "deny" is ever written explicitly) — an explicit allow is not a documented protocol
-// need here and risks short-circuiting a later hook in the same PreToolUse chain. cmd-write-guard.js
-// and scope-guard.js legitimately write permissionDecision on this exact field, but always with the
-// value "deny" (see the same-named but separate STDOUT_DENY_HOOKS list in
-// .claude/hooks/lib/hook-probes.test.js, which exists for that file's own probing logic). A prior
-// version of this check excluded those two files by filename instead of by value — which left
-// exactly the two files most likely to ever carry a real "allow" completely unscanned, and also
-// only looked at the non-recursive .js top level of .claude/hooks/ (missing all files under lib/
-// and any .mjs/.cjs). Fixed 2026-08-07: scan every .js/.mjs/.cjs file under .claude/hooks/
-// recursively with no per-file exclusion, and only treat a captured "allow" value as a violation —
-// a captured "deny" always passes, even inside cmd-write-guard.js/scope-guard.js.
-// Comment lines (trimmed line starting with "//" or "*", same convention as sections 9/11) are
-// skipped so a line that merely *explains* this rule in prose (as this very comment block does,
-// were it copied into a hook file) doesn't false-fail on its own wording.
-// Known, disclosed evasion (not closed by this fix — flagged here rather than silently left open):
-// a value built via a variable or string concatenation (e.g. `permissionDecision: decision` or
-// `'al' + 'low'`) does not match this literal-string-value regex and passes silently — this check
-// only catches a literal "allow"/"deny" string constant on the permissionDecision field.
-const walkHookCodeFiles = (dir, out) => {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) walkHookCodeFiles(p, out);
-    else if (/\.(js|mjs|cjs)$/.test(e.name)) out.push(p);
-  }
-};
-const hookCodeFiles = [];
-walkHookCodeFiles(path.join(ROOT, '.claude', 'hooks'), hookCodeFiles);
-
-const NEGATIVE_INVARIANTS = [
-  [
-    'no hook writes an explicit permissionDecision:"allow" response on stdout',
-    hookCodeFiles,
-    /permissionDecision['"]?\s*:\s*['"](allow|deny)['"]/g,
-    'allow',
-    'a hook must only ever signal "deny" explicitly (silence + exit 0 already means allow) — an explicit allow response could short-circuit a later hook in the same PreToolUse chain',
-  ],
-];
-for (const [label, files, pattern, badValue, why] of NEGATIVE_INVARIANTS)
-  for (const f of files) {
+// ---- 12. Negative invariant: no hook may ever emit permissionDecision:"allow" on stdout -------
+// Silence + exit 0 already means allow; an explicit "allow" could short-circuit a later hook in
+// the same PreToolUse chain. cmd-write-guard.js/scope-guard.js legitimately write
+// permissionDecision on this field, but always with "deny" — only a literal "allow" value fails.
+// Known, disclosed evasion: a value built via a variable or concatenation (e.g.
+// `permissionDecision: decision` or `'al' + 'low'`) does not match this literal-string regex and
+// passes silently.
+{
+  const hooksDir = path.join(ROOT, '.claude', 'hooks');
+  const hookCodeFiles = fs.readdirSync(hooksDir, { recursive: true })
+    .filter((f) => /\.(js|mjs|cjs)$/.test(f))
+    .map((f) => path.join(hooksDir, f));
+  let filesActuallyRead = 0;
+  for (const f of hookCodeFiles) {
     const lines = read(f).split('\n');
+    filesActuallyRead++;
     lines.forEach((line, i) => {
       if (/^(\/\/|\*)/.test(line.trim())) return;
-      const re = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g');
-      for (const m of line.matchAll(re))
-        if (m[1] === badValue)
-          fail(`negative invariant violated in ${rel(f)}:${i + 1} — ${why} [${label}]`);
+      if (/permissionDecision['"]?\s*:\s*['"]allow['"]/.test(line))
+        fail(`negative invariant violated in ${rel(f)}:${i + 1} — a hook must only ever signal "deny" explicitly (silence + exit 0 already means allow)`);
     });
   }
+  if (filesActuallyRead === 0)
+    fail('negative invariant #12 scan: 0 hook code files were actually read under .claude/hooks/ — the scan ran but checked nothing');
+}
 
 // ---- 13. Guide roster cross-check: skill/agent/command names named in docs/claude-harness-guide/
 // must actually exist. #4's FORBIDDEN list only catches names on an explicit deny-list (already-

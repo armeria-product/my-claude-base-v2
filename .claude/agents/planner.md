@@ -96,6 +96,8 @@ For a heavy-path plan that will run under a scope lock, also write `plans/{slug}
 
 > Co-review attendance and fusion composition are handled by the conductor side (quality-loop's Authority Co-Review) — this agent focuses solely on a single independent review.
 
+**Eligibility (2026-08-13 user ruling)**: self-review by this same planner role is permitted only as a freshly spawned instance — never the same conversation/instance that authored the plan — and only with the standing red-team second seat (quality-loop Authority Co-Review) always seated alongside it.
+
 **Trigger**: Invocation prompt explicitly asks for plan critique/review, OR the user requests plan validation after a draft is complete.
 
 In Self-Review Mode you act as an independent critic of the plan. You use the same tools (Bash/Glob/Grep/Read, plus Write limited to `tmp/` for disposable verification probes) to verify the plan's assumptions against the actual codebase — you do not trust the plan's claims at face value.
