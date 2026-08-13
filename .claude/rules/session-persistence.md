@@ -81,7 +81,6 @@ Write-target detection for all 5 tasks files (CODEMAP.md included, §6.5), boots
 - `.claude/commands/save-session.md` — session-state.md (§6.2) + bootstrap + lessons/todo appends
 - `.claude/commands/resume-session.md` — detecting the source to read from
 - `.claude/hooks/session-start.js` — reads the tasks files + journal tail for context injection (structure-independent); for CODEMAP.md it injects only a pointer (path + headings), never the body
-- `.claude/hooks/archive-session-state.js` — archives session-state.md before overwrite (**no rotation — history is kept in full**)
 
 ---
 
@@ -103,11 +102,11 @@ Write-target detection for all 5 tasks files (CODEMAP.md included, §6.5), boots
 ## Backlog (priority order · 1 line each)
 - [ ] <1 line> (priority: med)
 
-## Recently Done (latest 10 only · delete the overflow = git log and SHA are the canonical history)
+## Recently Done (latest 10 only · move the overflow, verbatim, into todo-archive.md — see §6.6)
 - [x] <1 line> (`<sha>`, YYYY-MM-DD)
 ```
 
-**Hygiene rules**: (1) no inline design body text (link to the artifact instead); (2) `Recently Done` capped at 10; (3) design links point to permanent paths (`done/<slug>/` or a commit), never the volatile `plans/<slug>/`; (4) no item-count cap and no Archive Index section.
+**Hygiene rules**: (1) no inline design body text (link to the artifact instead); (2) `Recently Done` capped at 10 — move the overflow verbatim into `todo-archive.md` (§6.6), never delete it: `tasks/*.md` is gitignored (root `.gitignore:2`; product repos mirror it, e.g. `dev/reprodocs/.gitignore:14`), so these files are untracked and deletion is unrecoverable — git log holds no copy; (3) design links point to permanent paths (`done/<slug>/` or a commit), never the volatile `plans/<slug>/`; (4) `todo-archive.md` itself carries no item-count cap and no Archive Index section — it is a flat, append-only log.
 
 ### 6.2 session-state.md — a 2-line pointer, nothing else
 
@@ -118,7 +117,7 @@ Reader = the next Claude session. **This file duplicates nothing**: next actions
 ## START HERE — [YYYY-MM-DD HH:MM] — <branch・latest SHA> → tasks/journal/YYYY-MM/DD.md の HH:MM レポート
 ```
 
-**Hygiene rules**: (1) `## START HERE` appears **exactly once** and the whole file stays ~2 lines; (2) no Next / Blockers / Lock sections — writing them here recreates the duplication this contract exists to prevent; (3) overwrite-save only — the archive-session-state.js hook copies the previous version to `history/session-state-YYYYMMDD-HHMM.md` first, and history is **never rotated or deleted** (full retention); (4) identify commits by SHA.
+**Hygiene rules**: (1) `## START HERE` appears **exactly once** and the whole file stays ~2 lines; (2) no Next / Blockers / Lock sections — writing them here recreates the duplication this contract exists to prevent; (3) overwrite-save is simply overwrite-save — no hook archives the previous version anymore (the archive-session-state.js hook was retired 2026-08-13, once the file shrank to a 2-line pointer): this is safe because the whole content is reproducible from the journal report and git (branch/SHA), never unique data. `tasks/history/` still holds the frozen pre-2026-08-13 archive (7 files) — **never rotated or deleted**, but not added to going forward; (4) identify commits by SHA.
 
 ### 6.3 lessons.md — fully compatible with CLAUDE.md §4 · **ascending append**
 
@@ -145,7 +144,7 @@ Reader = the next Claude session. **This file duplicates nothing**: next actions
 - [ ] <step 3, 1 line>
 ```
 
-**Hygiene rules**: (1) markers `- [ ]` 未実装 / `- [~]` 進行中 / `- [x]` 完了; (2) top-to-bottom = implementation order; (3) mark `[~]` on start and `[x]` only when implementation **and verification** are done; (4) one work unit = one H2 section; (5) one line per step, no design body (link to plans/); (6) created on-demand only for large-scale work; (7) on completion fold into one line under todo.md `Recently Done`, then delete the section (git log is the canonical history).
+**Hygiene rules**: (1) markers `- [ ]` 未実装 / `- [~]` 進行中 / `- [x]` 完了; (2) top-to-bottom = implementation order; (3) mark `[~]` on start and `[x]` only when implementation **and verification** are done; (4) one work unit = one H2 section; (5) one line per step, no design body (link to plans/); (6) created on-demand only for large-scale work; (7) on completion fold into one line under todo.md `Recently Done`, then move the finished section verbatim into `todo-archive.md` (§6.6) — **do not delete it**. `roadmap.md` is `tasks/*.md` and therefore gitignored/untracked exactly like todo.md (root `.gitignore:2`), so git log holds no copy and a deletion here is just as unrecoverable; this rule previously said "delete the section (git log is the canonical history)", which was false for the same reason §6.1's did (corrected 2026-08-13).
 
 ### 6.5 CODEMAP.md — a lookup map of where things are, created on demand
 
@@ -177,6 +176,16 @@ Reader = the next Claude session. **This file duplicates nothing**: next actions
 ```
 
 **Hygiene rules**: (1) only what gets looked up repeatedly — the top-level layout and what each folder is for, the main flow with file:line anchors, the entry points, the tables/stores and how they connect, screens ↔ components, the commands that run the checks, the traps that are easy to hit; (2) do not chase completeness — a map that grows past what is actually consulted stops being maintained and rots; (3) one line per fact, links out for detail; (4) carry a `最終確認: YYYY-MM-DD` line and update it whenever the map is re-checked and still accurate, even with no content changes; (5) created on demand only, like roadmap.md — not bootstrapped; (6) never rotated.
+
+### 6.6 todo-archive.md — verbatim overflow from todo.md's `Recently Done`, created on demand
+
+```markdown
+# Todo Archive — {product}
+
+- [x] <1 line, moved verbatim from Recently Done> (`<sha>`, YYYY-MM-DD)
+```
+
+**Hygiene rules**: (1) verbatim move only — entries are never rewritten or summarized, matching `lessons-archive.md` (§6.3); (2) append-only, never rotated; (3) excluded from SessionStart injection (`session-start.js` reads `todo.md` only); (4) routed the same way as the other tasks files (§2): `dev/{name}/tasks/todo-archive.md` with a product context, else `tasks/todo-archive.md`; (5) created on demand only, like roadmap.md and CODEMAP.md — not bootstrapped.
 
 ---
 

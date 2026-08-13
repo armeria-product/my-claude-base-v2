@@ -548,7 +548,7 @@ body{
 ├── commands/          セッションコマンド（2）
 │   ├── save-session.md
 │   └── resume-session.md
-├── hooks/             settings.json 経由・強制実行（20）
+├── hooks/             settings.json 経由・強制実行（19）
 │   ├── session-start.js / session-journal.js /
 │   │   clover-auto-install.js                          ← SessionStart
 │   ├── session-journal.js                               ← SessionEnd（同一ファイルを再登録）
@@ -559,7 +559,6 @@ body{
 │   ├── relay-required-agent.js / block-review-floor.js /
 │   │   block-fable-when-off.js                           ← PreToolUse (Task|Agent)
 │   ├── scope-guard.js                                    ← PreToolUse (Edit|Write|NotebookEdit)
-│   ├── archive-session-state.js                          ← PreToolUse (Write)
 │   └── cmd-write-guard.js / block-destructive-git.js /
 │       block-direct-to-main.js / block-pr-without-todo.js /
 │       block-destructive-fs.js / block-no-verify.js /

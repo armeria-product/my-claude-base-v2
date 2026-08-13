@@ -115,7 +115,7 @@ CLAUDE.md            … 運用ルールの本体（§番号は各所から引�
   agents/            … サブエージェント定義 7体
   skills/            … スキル 15種（上記）
   commands/          … /save-session・/resume-session
-  hooks/             … フック 20本＋共有ライブラリ（下記「安全装置」）
+  hooks/             … フック 19本＋共有ライブラリ（下記「安全装置」）
   rules/             … パスに連動して自動適用されるルール（agents / dev-projects / session-persistence）
   scripts/           … validate.mjs・statusline（ステータスバー表示）・doc変換（html2pdf / html2pptx / deckpack）・fusion-detect
   state/             … フック専用の状態置き場（スコープロック本体。Claude は書き込み不可・git 追跡外・フックが初回に自動生成するため、フレッシュな clone 直後には存在しない）
@@ -129,12 +129,12 @@ tmp/                 … 使い捨ての作業ファイル（git 追跡外・使
 
 ---
 
-## 安全装置の一覧（フック20本）
+## 安全装置の一覧（フック19本）
 
-全20本のうち、Bash と PowerShell の両方の経路を実際に検査するのは9本だけです — `settings.json` で `Bash|PowerShell` にマッチャー登録された8本（`cmd-write-guard.js` / `block-destructive-git.js` / `block-direct-to-main.js` / `block-pr-without-todo.js` / `block-destructive-fs.js` / `block-no-verify.js` / `check-commit-safety.js` / `block-secret-read.js`）と、両方を含むより広いマッチャーで動く `journal.js`。残り11本は Edit/Write・Task/Agent・SessionStart・UserPromptSubmit・Workflow など別イベントに登録されており、コマンド文字列そのものは検査しません。
+全19本のうち、Bash と PowerShell の両方の経路を実際に検査するのは9本だけです — `settings.json` で `Bash|PowerShell` にマッチャー登録された8本（`cmd-write-guard.js` / `block-destructive-git.js` / `block-direct-to-main.js` / `block-pr-without-todo.js` / `block-destructive-fs.js` / `block-no-verify.js` / `check-commit-safety.js` / `block-secret-read.js`）と、両方を含むより広いマッチャーで動く `journal.js`。残り10本は Edit/Write・Task/Agent・SessionStart・UserPromptSubmit・Workflow など別イベントに登録されており、コマンド文字列そのものは検査しません。
 
 - **スコープロック系**: `approve-lock.js`（「承認」/「解除」の検知＝ロックの唯一の入口） / `scope-guard.js`（Edit/Write の範囲外書き込みを拒否） / `cmd-write-guard.js`（Bash/PowerShell 経由の範囲外書き込みを拒否し、`.claude/state` を常時保護する）
-- **記録系**: `journal.js`（全ツール実行を1行記録し、計画承認後は scope.json の案内を出す） / `session-journal.js`（セッションの境界マーカーを打ち、レポート未生成を検知する） / `session-start.js`（session-state・ロック状態・ジャーナル末尾・todo・lessons を起動時に読み込む） / `archive-session-state.js`（上書きの前に全量を退避する — 削除しない）
+- **記録系**: `journal.js`（全ツール実行を1行記録し、計画承認後は scope.json の案内を出す） / `session-journal.js`（セッションの境界マーカーを打ち、レポート未生成を検知する） / `session-start.js`（session-state・ロック状態・ジャーナル末尾・todo・lessons を起動時に読み込む）
 - **危険操作を止める系**: `block-destructive-git.js`（`push --force` 等の破壊的git操作） / `block-destructive-fs.js`（`rm -rf` 等の破壊的ファイル操作） / `block-secret-read.js`（`.env` など秘密情報の読み取り） / `block-no-verify.js`（`--no-verify` でのコミットフック回避） / `block-direct-to-main.js`（main への直接コミット・直接マージ） / `block-pr-without-todo.js`（このブランチの `tasks/todo.md` を更新しないまま `gh pr create` するのを拒否。ただし見ているのは更新時刻だけで、内容の正しさもどのブランチ向けの編集かも検査しない） / `check-commit-safety.js`（コミット前の安全確認）
 - **運用系**: `check-prompt.js`（リポジトリ状態をプロンプトへ1行注入） / `format-on-write.js`（`dev/` 配下の自動整形） / `relay-required-agent.js`（外部モデル連携がOFFのときに起動をブロック。native Fable は対象外） / `block-review-floor.js`（planner/reviewer の権威モデルを native fable | opus に限定） / `block-fable-when-off.js`（CLAUDE.md §1.11: `.claude/.fable-status` が ON でない限り、role を問わず model: fable での起動を拒否） / `clover-auto-install.js`（clover ラッパーの自動設置）
 - **共有ライブラリ**: `lib/parse-cmd.js`（引用符・heredoc に対応したコマンド解析） / `lib/scope-match.js`（glob照合） / `lib/scope-decision.js`（許可判定チェーン） / `lib/journal-util.js`（ジャーナルへの追記）

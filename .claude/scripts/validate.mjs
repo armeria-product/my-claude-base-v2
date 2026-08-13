@@ -238,16 +238,6 @@ if (claudeMd)
     for (const ev of ['SessionStart', 'SessionEnd'])
       if (!sj.some((e) => e.event === ev))
         fail(`session-journal.js is not registered under ${ev} — session boundary markers (crash detection) break`);
-    const ar = eventsOf('archive-session-state.js');
-    if (!ar.some((e) => e.event === 'PreToolUse' && /\bWrite\b/.test(e.matcher)))
-      fail('archive-session-state.js is not registered under PreToolUse Write — session-state history stops being archived');
-  }
-  // History retention: the archive hook must never regrow a rotation/deletion code path
-  // (user ruling 2026-08-02: session-state history is kept in full).
-  {
-    const p = path.join(ROOT, '.claude', 'hooks', 'archive-session-state.js');
-    if (fs.existsSync(p) && /unlinkSync|rmSync|\brotate\s*\(/.test(read(p)))
-      fail('archive-session-state.js contains a deletion/rotation code path — v2 keeps session-state history in full');
   }
 
   // Scope-lock chain wiring: all three hooks must stay armed on the right events/matchers.

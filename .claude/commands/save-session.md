@@ -35,7 +35,7 @@
 `plans/{slug}/deviations.md` と journal の DENY 行があれば、「範囲外だが価値がありそうな変更」として上記「確認してほしいこと」に**提案として**まとめる。**実装はしない**（再承認後の仕事）。
 
 ### 6. session-state.md の更新（ポインタ2行 — レポートと重複させない）
-`{tasks-dir}/session-state.md` を以下の契約で**上書き**する（上書き前の旧版は archive-session-state.js フックが `history/` へ自動退避する。**履歴は削除しない** — 全量保持）。
+`{tasks-dir}/session-state.md` を以下の契約で**上書き**する（この2行はジャーナルレポートと git から再現できる内容なので、上書き前の退避はもう行わない。`tasks/history/` は2026-08-13以前の退避分を凍結保存したまま — 削除はしないが、これ以上は増えない）。
 
 ```markdown
 # Session State — {context}
