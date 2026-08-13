@@ -389,6 +389,7 @@ const FORBIDDEN = [
   [/frontier dispatch override/i, 'renamed to "frontier authority convention" — the override no longer exists (CLAUDE.md §2 ¹)'],
   [/\borchestrate\b/, 'skill "orchestrate" was renamed to "harness"'],
   [/\bslop-clean\b/, 'skill "slop-clean" was renamed to "code-cleaner"'],
+  [/\barchive-session-state\b/, 'the archive-session-state.js hook was removed 2026-08-13 (session-persistence.md §6.2) — session-state.md is now a 2-line pointer with nothing left to archive'],
   REAL_ID_BARE,
   REAL_ID_GEN,
   REAL_ID_VERTEX,
@@ -504,7 +505,7 @@ const INVARIANTS = [
   ['CLAUDE.md', /worker reads (them|PLAN\.md.*itself)|reads them itself/i, 'CLAUDE.md §2 must still state the scope-handoff rule (workers read PLAN.md/scope.json themselves — no paraphrase)'],
   ['.claude/commands/save-session.md', /やったこと[\s\S]*できなかったこと・保留[\s\S]*確認してほしいこと[\s\S]*次にやること/, 'save-session must keep the fixed 4-section report headings (やったこと / できなかったこと・保留 / 確認してほしいこと / 次にやること)'],
   ['.claude/commands/save-session.md', /SAVE マーカー/, 'save-session must keep the SAVE-marker step — the crash/unreported-session scan keys on it'],
-  ['.claude/rules/session-persistence.md', /never rotated or deleted/i, 'session-persistence §6.2 must keep the full-retention sentence for session-state history'],
+  ['.claude/rules/session-persistence.md', /never rotated or deleted/i, 'session-persistence §6.2 must keep stating that tasks/history/ (the frozen pre-2026-08-13 session-state.md archive) is never rotated or deleted — this only catches the phrase disappearing, not a reversal of the guarantee it names'],
   // --- carried from v1 (subject files exist as of Phase 4) ---
   ['.claude/skills/quality-loop/SKILL.md', /Opus×2/, 'quality-loop must keep Opus×2 as the standing same-model authority pair (the default while the CLAUDE.md §1.11 gate is OFF)'],
   ['.claude/skills/quality-loop/SKILL.md', /Fable×2/, 'quality-loop must keep Fable×2 as the gated same-model authority pair (permitted only while the CLAUDE.md §1.11 gate is ON)'],
