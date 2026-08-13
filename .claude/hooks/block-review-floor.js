@@ -33,8 +33,9 @@
 // of scope: planner→planner (planner's documented Self-Review Mode) is deliberately NOT denied —
 // the 2026-08-13 user ruling landed (no longer pending/"awaiting a future ruling"): allowed only as
 // a freshly spawned instance (never the same instance that authored the plan) with the standing
-// red-team second seat always seated — enforcement is procedural, not mechanical (this hook cannot
-// observe instance identity or seat attendance; SOT: plan SKILL.md Phase 2 step 2 / planner.md
+// red-team second seat attending per quality-loop's Authority Co-Review attendance rule (cycle 1;
+// later cycles are the authority alone) — enforcement is procedural, not mechanical (this hook
+// cannot observe instance identity or seat attendance; SOT: plan SKILL.md Phase 2 step 2 / planner.md
 // Self-Review Mode Eligibility). reviewer→* is likewise NOT denied — both stay out of the
 // denied-caller set on purpose below, so this needs no extra special-casing. This axis only looks
 // at payload.agent_type and tool_input.subagent_type — it does not re-check the model axis above,

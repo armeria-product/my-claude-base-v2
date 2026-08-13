@@ -561,7 +561,9 @@ const INVARIANTS = [
   ['.claude/agents/reviewer.md', /status\s*===\s*["']locked["']/, 'reviewer.md Scope Conformance must state that "locked" means `status === "locked"` — without it the locator reads a merely-present-but-unlocked scope-lock.json as an armed manifest and feeds it into decide()'],
   ['.claude/agents/verifier.md', /status\s*===\s*["']locked["']/, 'verifier.md Scope check must state that "locked" means `status === "locked"` — without it the locator reads a merely-present-but-unlocked scope-lock.json as an armed manifest and feeds it into decide()'],
   // --- planner self-review ruling (2026-08-13) ---
-  ['.claude/skills/plan/SKILL.md', /freshly spawned instance \(the authoring instance never reviews its own plan\)/, 'plan SKILL.md must keep the 2026-08-13 self-review ruling (planner self-review permitted only as a freshly spawned instance, with the red-team second seat always seated for plan reviews) — dropping it silently reopens the planner→planner axis with no recorded authorization'],
+  ['.claude/skills/plan/SKILL.md', /freshly spawned instance \(the authoring instance never reviews its own plan\)/, 'plan SKILL.md must keep the 2026-08-13 self-review ruling (planner self-review permitted only as a freshly spawned instance, with the red-team second seat attending per its attendance rule for plan reviews) — dropping it silently reopens the planner→planner axis with no recorded authorization'],
+  ['.claude/agents/planner.md', /never the same conversation\/instance that authored the plan/, 'planner.md must keep its own copy of the 2026-08-13 Self-Review Mode Eligibility line (freshly spawned instance only, never the authoring instance) — without this pin, deleting the line from planner.md alone (leaving plan SKILL.md untouched) stays undetected'],
+  ['.claude/agents/executor.md', /その性質だけが働く題材/, 'executor.md must keep sentence ② of the mutation-check rule ("その性質だけが働く題材で確かめる" — pick a fixture where no other condition could produce the same passing result before the mutated line runs) — pinning only sentence ① leaves this half of the rule free to vanish silently'],
 ];
 for (const [relPath, must, why] of INVARIANTS) {
   const p = path.join(ROOT, relPath);
@@ -754,6 +756,10 @@ for (const [relPath, must, why] of INVARIANTS) {
 // Silence + exit 0 already means allow; an explicit "allow" could short-circuit a later hook in
 // the same PreToolUse chain. cmd-write-guard.js/scope-guard.js legitimately write
 // permissionDecision on this field, but always with "deny" — only a literal "allow" value fails.
+// Provenance (2026-08-07): an earlier version of this scan was non-recursive (top level of
+// .claude/hooks/ only) and missed everything under lib/; an even earlier version excluded
+// cmd-write-guard.js/scope-guard.js by filename, leaving the two files most likely to ever carry a
+// real "allow" completely unscanned. Recursive, with no per-file exclusion, on purpose.
 // Known, disclosed evasion: a value built via a variable or concatenation (e.g.
 // `permissionDecision: decision` or `'al' + 'low'`) does not match this literal-string regex and
 // passes silently.
@@ -763,9 +769,11 @@ for (const [relPath, must, why] of INVARIANTS) {
     .filter((f) => /\.(js|mjs|cjs)$/.test(f))
     .map((f) => path.join(hooksDir, f));
   let filesActuallyRead = 0;
+  let libReached = false;
   for (const f of hookCodeFiles) {
     const lines = read(f).split('\n');
     filesActuallyRead++;
+    if (rel(f).includes('/lib/')) libReached = true;
     lines.forEach((line, i) => {
       if (/^(\/\/|\*)/.test(line.trim())) return;
       if (/permissionDecision['"]?\s*:\s*['"]allow['"]/.test(line))
@@ -774,6 +782,8 @@ for (const [relPath, must, why] of INVARIANTS) {
   }
   if (filesActuallyRead === 0)
     fail('negative invariant #12 scan: 0 hook code files were actually read under .claude/hooks/ — the scan ran but checked nothing');
+  if (!libReached)
+    fail('negative invariant #12 scan: no scanned path is under .claude/hooks/lib/ — the scan no longer reaches .claude/hooks/lib/ (recursion was lost; this is the exact 2026-08-07 regression shape)');
 }
 
 // ---- 13. Guide roster cross-check: skill/agent/command names named in docs/claude-harness-guide/

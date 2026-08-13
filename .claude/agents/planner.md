@@ -96,7 +96,7 @@ For a heavy-path plan that will run under a scope lock, also write `plans/{slug}
 
 > Co-review attendance and fusion composition are handled by the conductor side (quality-loop's Authority Co-Review) — this agent focuses solely on a single independent review.
 
-**Eligibility (2026-08-13 user ruling)**: self-review by this same planner role is permitted only as a freshly spawned instance — never the same conversation/instance that authored the plan — and only with the standing red-team second seat (quality-loop Authority Co-Review) always seated alongside it.
+**Eligibility (2026-08-13 user ruling)**: self-review by this same planner role is permitted only as a freshly spawned instance — never the same conversation/instance that authored the plan — and only with the standing red-team second seat (quality-loop Authority Co-Review) attending per its attendance rule (cycle 1; later cycles are the authority alone).
 
 **Trigger**: Invocation prompt explicitly asks for plan critique/review, OR the user requests plan validation after a draft is complete.
 
