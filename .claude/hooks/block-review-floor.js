@@ -30,12 +30,17 @@
 // a conductor-issued, i.e. top-level, dispatch) is a worker-tier caller (see WORKER_CALLERS below)
 // AND tool_input.subagent_type resolves to reviewer or planner (CLAUDE.md §1.3: writer ≠ reviewer;
 // those roles have unrestricted Task and executor.md never restates the prohibition). Explicitly OUT
-// of scope, left to a future user ruling: planner→planner (planner's documented Self-Review Mode) and
-// reviewer→* are NOT denied — both stay out of the denied-caller set on purpose below, so this needs
-// no extra special-casing. This axis only looks at payload.agent_type and tool_input.subagent_type —
-// it does not re-check the model axis above, and firing this check short-circuits before the model
-// resolution/fs read below. Same fail-open convention: unparsable JSON exits 0 before either axis is
-// evaluated.
+// of scope: planner→planner (planner's documented Self-Review Mode) is deliberately NOT denied —
+// the 2026-08-13 user ruling landed (no longer pending/"awaiting a future ruling"): allowed only as
+// a freshly spawned instance (never the same instance that authored the plan) with the standing
+// red-team second seat attending per quality-loop's Authority Co-Review attendance rule (cycle 1;
+// later cycles are the authority alone) — enforcement is procedural, not mechanical (this hook
+// cannot observe instance identity or seat attendance; SOT: plan SKILL.md Phase 2 step 2 / planner.md
+// Self-Review Mode Eligibility). reviewer→* is likewise NOT denied — both stay out of the
+// denied-caller set on purpose below, so this needs no extra special-casing. This axis only looks
+// at payload.agent_type and tool_input.subagent_type — it does not re-check the model axis above,
+// and firing this check short-circuits before the model resolution/fs read below. Same fail-open
+// convention: unparsable JSON exits 0 before either axis is evaluated.
 //
 // Provenance correction (2026-08-12, post-review): payload.agent_type is set by the Claude Code CLI
 // harness itself on a nested Task|Agent dispatch — NOT by journal.js. journal.js is a PostToolUse-only
