@@ -549,7 +549,7 @@ function registerTests() {
   const raw = fs.readFileSync(SAMPLES_FILE, 'utf8');
   const allRows = JSON.parse(substitute(raw));
 
-  const EXPECTED_SAMPLE_COUNT = 286;
+  const EXPECTED_SAMPLE_COUNT = 303;
   // Independently-hardcoded expectation (not re-derived from allRows) so this assertion can't
   // silently pass no matter what skipIf tags actually exist in the samples file — mirrors the
   // EXPECTED_SAMPLE_COUNT literal above. Keyed by exact set/name (not just a per-tag count) so a
@@ -581,7 +581,7 @@ function registerTests() {
   // over another row's, or a row deleted and a different one duplicated in its place) passes the
   // count test above but changes this hash. See samplesHash() for the algorithm (sha256 over
   // pre-substitution rows sorted by set/name) and why it's built that way.
-  const EXPECTED_SAMPLES_HASH = 'c35fcdbd23dd21265bf29dd53d3b862cda90a0da0b7fbee5052a814af294ad8a';
+  const EXPECTED_SAMPLES_HASH = '3e4a4c3a9496746be89b227e8d86722ca5ecd2e58629b1d2e87c2cb2a906e43f';
 
   test('samples file integrity: full-content hash matches (catches same-count content swaps the row/set count checks miss)', () => {
     const rawRows = JSON.parse(raw); // pre-substitution rows -- see samplesHash() comment for why
@@ -623,7 +623,7 @@ function registerTests() {
   // is added to/removed from/moved between sets. Verified this equals EXPECTED_SAMPLE_COUNT and
   // covers exactly the sets present in the samples file below.
   const EXPECTED_SET_COUNTS = {
-    'S-git-pure': 42,
+    'S-git-pure': 59,
     'S-git-env': 19,
     'S-gh': 15,
     'S-state': 30,
