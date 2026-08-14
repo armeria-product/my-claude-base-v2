@@ -115,7 +115,7 @@ CLAUDE.md            … 運用ルールの本体（§番号は各所から引�
   agents/            … サブエージェント定義 7体
   skills/            … スキル 15種（上記）
   commands/          … /save-session・/resume-session
-  hooks/             … フック 19本＋共有ライブラリ（下記「安全装置」）
+  hooks/             … フック 20本＋共有ライブラリ（下記「安全装置」）
   rules/             … パスに連動して自動適用されるルール（agents / dev-projects / session-persistence）
   scripts/           … validate.mjs・statusline（ステータスバー表示）・doc変換（html2pdf / html2pptx / deckpack）・fusion-detect
   state/             … フック専用の状態置き場（スコープロック本体。Claude は書き込み不可・git 追跡外・フックが初回に自動生成するため、フレッシュな clone 直後には存在しない）
@@ -129,26 +129,40 @@ tmp/                 … 使い捨ての作業ファイル（git 追跡外・使
 
 ---
 
-## 安全装置の一覧（フック19本）
+## 安全装置の一覧（フック20本）
 
-全19本のうち、Bash と PowerShell の両方の経路を実際に検査するのは9本だけです — `settings.json` で `Bash|PowerShell` にマッチャー登録された8本（`cmd-write-guard.js` / `block-destructive-git.js` / `block-direct-to-main.js` / `block-pr-without-todo.js` / `block-destructive-fs.js` / `block-no-verify.js` / `check-commit-safety.js` / `block-secret-read.js`）と、両方を含むより広いマッチャーで動く `journal.js`。残り10本は Edit/Write・Task/Agent・SessionStart・UserPromptSubmit・Workflow など別イベントに登録されており、コマンド文字列そのものは検査しません。
+全20本のうち、Bash と PowerShell の両方の経路を実際に検査するのは9本だけです — `settings.json` で `Bash|PowerShell` にマッチャー登録された8本（`cmd-write-guard.js` / `block-destructive-git.js` / `block-direct-to-main.js` / `block-pr-without-todo.js` / `block-destructive-fs.js` / `block-no-verify.js` / `check-commit-safety.js` / `block-secret-read.js`）と、両方を含むより広いマッチャーで動く `journal.js`。残り11本は Edit/Write・Task/Agent・SessionStart・UserPromptSubmit・Workflow など別イベントに登録されており、コマンド文字列そのものは検査しません。
 
 - **スコープロック系**: `approve-lock.js`（「承認」/「解除」の検知＝ロックの唯一の入口） / `scope-guard.js`（Edit/Write の範囲外書き込みを拒否） / `cmd-write-guard.js`（Bash/PowerShell 経由の範囲外書き込みを拒否し、`.claude/state` を常時保護する）
 - **記録系**: `journal.js`（全ツール実行を1行記録し、計画承認後は scope.json の案内を出す） / `session-journal.js`（セッションの境界マーカーを打ち、レポート未生成を検知する） / `session-start.js`（session-state・ロック状態・ジャーナル末尾・todo・lessons を起動時に読み込む）
 - **危険操作を止める系**: `block-destructive-git.js`（`push --force` 等の破壊的git操作） / `block-destructive-fs.js`（`rm -rf` 等の破壊的ファイル操作） / `block-secret-read.js`（`.env` など秘密情報の読み取り） / `block-no-verify.js`（`--no-verify` でのコミットフック回避） / `block-direct-to-main.js`（main への直接コミット・直接マージ） / `block-pr-without-todo.js`（このブランチの `tasks/todo.md` を更新しないまま `gh pr create` するのを拒否。ただし見ているのは更新時刻だけで、内容の正しさもどのブランチ向けの編集かも検査しない） / `check-commit-safety.js`（コミット前の安全確認）
 - **運用系**: `check-prompt.js`（リポジトリ状態をプロンプトへ1行注入） / `format-on-write.js`（`dev/` 配下の自動整形） / `relay-required-agent.js`（外部モデル連携がOFFのときに起動をブロック。native Fable は対象外） / `block-review-floor.js`（planner/reviewer の権威モデルを native fable | opus に限定） / `block-fable-when-off.js`（CLAUDE.md §1.11: `.claude/.fable-status` が ON でない限り、role を問わず model: fable での起動を拒否） / `clover-auto-install.js`（clover ラッパーの自動設置）
+- **気づきを促す系**: `deliberation-gate.js`（CLAUDE.md §1.12: 委任先の報告が「うまくいかなかった／回避した」気配のとき、最上位の同期実行の報告に限って一言添えるだけの仕組みで、ブロックはしない。ルールは委任した側すべてを縛る。フックが後押しするのは最上位の同期実行だけ（実測で全委任の約30%が同期、うち約75%が最上位、報告の16%が該当 → 全委任の**およそ4%弱**でしか出ない）。フックが出なかったことは「問題なし」の意味ではない）
 - **共有ライブラリ**: `lib/parse-cmd.js`（引用符・heredoc に対応したコマンド解析） / `lib/scope-match.js`（glob照合） / `lib/scope-decision.js`（許可判定チェーン） / `lib/journal-util.js`（ジャーナルへの追記）
+
+### 熟考ゲート（`deliberation-gate.js`）の発火率を測り直すには
+
+発火するたびに `tasks/journal/` へ `[deliberation] fired family=P|S|PS` の1行だけが追記される（マッチした語句そのものは書かない）。上の一覧にある「報告の16%が該当」を将来もう一度測るときは、次の順で確認する。
+
+1. **まず確認すること**: 委任先の報告が実行担当エージェント（executor.md）指定の5項目の様式（`Symptom:` / `Evidence:` / …）をそのまま守りつつ、その中身がコードブロック（```` ``` ```` で囲む「フェンス」）の内側にある場合、このフックは沈黙する（フェンスの中身は丸ごと除外してから判定するため）。同じ内容がフェンスの外にあれば発火する。つまり「様式を守った報告ほど検知されにくい」という逆向きの効き方が構造として入っている。発火率を数える前に、対象期間の中でこの形（様式を守っている＋フェンスの中）の報告がどれだけあるかを見ないと、数値は過小に出る。
+2. **集計コマンド（行の先頭からアンカーすること）**: 単なる `[deliberation]` の部分一致だと、他のセッションが実行したコマンド文字列（本文検索用の grep コマンド自体など）がジャーナルにそのまま記録され、それを誤ヒットする（実測で2件確認済み）。
+   ```bash
+   grep -cE '^- [0-9]{2}:[0-9]{2}:[0-9]{2} \[.{8}\] \[deliberation\] fired family=' tasks/journal/2026-08/*.md
+   ```
+3. **これは「発火率」であって「精度」ではない**: 上のコマンドで数えられるのは「何回発火したか」だけで、「発火した報告が実際に本物の問題だったか」（精度）とは別の指標。発火率が動いても精度が同じ方向に動くとは限らない — 精度を測るには発火した報告の本文を実際に読んで手作業でラベル付けする必要がある（直近の計測: 精度46%、Tier A再現率50%・全体再現率29%、いずれも上限値。詳細は PR 本文を参照）。
+
+**オン/オフの切り替えは意図的に用意していない**: §1.8（外部モデル連携）や §1.11（Fable）にあるような ON/OFF スイッチファイルを、このフックには置かないと判断した。理由: 常に fail-open（失敗しても処理を止めず黙って通す挙動）で、発火率も全委任のおよそ4%弱と低く、セッション単位で黙らせる必要性は今のところ薄いため。実運用でうるさく感じたら、まず `.claude/hooks/deliberation-gate.js` 冒頭の語彙リスト（`P_STEMS` / `S_STEMS`）を調整するのが先。それでも完全に外したい場合は、`settings.json` の `PostToolUse` 登録と `validate.mjs` の配線チェックを**同じコミットで一緒に**外すこと（配線だけ外して検査を残すと `validate` が FAIL する）。セッション単位で一時的に黙らせる経路は用意していない。
 
 ---
 
 ## 動かして確かめる
 
-- **構成の整合性検査**: `node .claude/scripts/validate.mjs` — フック配線・記録配線・規範文言の消失検知など約30項目のチェックと、フックの構文検査（`node --check`）・相対 `require()` の解決確認を行う。`VERDICT: PASS` が正常
+- **構成の整合性検査**: `node .claude/scripts/validate.mjs` — フック配線・記録配線・規範文言の消失検知・面横断の文言一致など多数のチェックと、フックの構文検査（`node --check`）・相対 `require()` の解決確認を行う。`VERDICT: PASS` が正常
 - **フックの全テストを1コマンドで実行**（手動実行。上記の整合性検査には配線されていない）:
   ```bash
   node --test ".claude/hooks/lib/*.test.js" ".claude/scripts/*.test.mjs"
   ```
-  現時点で全263件のテストのうち、pass/fail/skip の内訳はブランチと OS に依存します（`main`/`master` ブランチでは protected-branch タグの4件が、非 win32 環境では non-win32 タグの1件が、それぞれ OS/ブランチ非依存の単純な分岐条件で skip されるため）。加えて非 win32 環境では、`scope-match.test.js` の `normalizeRel detects outside-root paths` が Windows のドライブレター（`C:\`）を前提にした実装のため fail します（既知の不具合。詳細は `tasks/todo.md` の Backlog を参照）。作業ブランチ・win32（このリポジトリの標準環境）では263 pass・0 fail・0 skip（実測）。作業ブランチ・非win32 では261 pass・1 fail・1 skip（既存の環境差に、今回追加したOS非依存の権威モデルprobe 7件を加えた期待値）。`main`/`master`・非win32 の組み合わせは protected-branch の4件もskipされるため、257 pass・1 fail・5 skip の期待値です。skip 件数の正本は `hook-probes.test.js` の `EXPECTED_SKIP_TAGS`、sample総数とset別件数の正本は同ファイルの独立した固定値です。
+  現時点で全446件のテストのうち、pass/fail/skip の内訳はブランチと OS に依存します（`main`/`master` ブランチでは `hook-probes.test.js` の protected-branch タグの4件が、非 win32 環境では同ファイルの non-win32 タグ2件に加えて `scope-match.test.js` 自身が持つ Windows専用テスト1件（cross-drive パス判定）も、それぞれ OS/ブランチ非依存の単純な分岐条件で skip されるため）。さらに非 win32 環境では、同じ `scope-match.test.js` の `normalizeRel detects outside-root paths` が Windows のドライブレター（`C:\`）を前提にした実装のため fail します（既知の不具合。詳細は `tasks/todo.md` の Backlog を参照）。作業ブランチ・win32（このリポジトリの標準環境）では446 pass・0 fail・0 skip（実測、`deliberation-gate.test.js` の30件を含む。いずれも OS/ブランチ条件で skip されない）。作業ブランチ・非win32 では442 pass・1 fail・3 skip（上記の分岐条件からの導出値・非win32環境では未実測）。`main`/`master`・非win32 の組み合わせは protected-branch の4件もskipされるため、438 pass・1 fail・7 skip の導出値です。skip 件数の正本は `hook-probes.test.js` の `EXPECTED_SKIP_TAGS`（hook-probes 分）と `scope-match.test.js` 自身の skip オプション（Windows専用テスト1件分）、sample総数とset別件数の正本は `hook-probes.test.js` の独立した固定値です。
 - **clover の全テスト**（clover は自己完結のサブプロジェクトなので別コマンド）:
   ```bash
   RELAY_ROUTER_NO_LISTEN=1 RELAY_SHIM_NO_LISTEN=1 node --test clover/test/*.test.mjs

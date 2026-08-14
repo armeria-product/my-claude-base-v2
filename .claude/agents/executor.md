@@ -53,6 +53,19 @@ Deviations: [scope-lock] denials recorded to deviations.md
 Open items: judgment calls needed; also list MEDIUM/LOW findings rejected on re-review, with reasons
 ```
 
+### Error / Change-of-Approach Report Shape
+Whenever your report describes an error you could not resolve — including when the root cause turns out to be external/environmental and no code change would fix it — or a mid-task change of approach, you MUST include this shape, with these exact field names, **in addition to** the fixed shape above (CLAUDE.md §1.12 governs what the dispatcher does with it; this is the producer-side half of that contract):
+
+```
+Symptom: what broke, observed directly
+Evidence: log / reproduction steps / diff that shows it
+Root-cause hypothesis: your best explanation, and how you verified it (not just asserted)
+Why this fix addresses the cause: not just the symptom (write N/A + pointer to Alternatives rejected if no fix exists)
+Alternatives rejected: what else you considered and why you didn't do it
+```
+
+A report that describes such an error or change of approach without this shape is structurally incomplete and gets sent back before its content is even weighed — see CLAUDE.md §1.12.
+
 ## Rules
 - Never add features beyond what was asked. Unrequested error handling, logging, config options, or helper abstractions are all features.
 - Never refactor surrounding code unless explicitly requested.
