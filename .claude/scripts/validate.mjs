@@ -326,6 +326,18 @@ if (claudeMd)
     }
   }
 
+  // Deliberation gate wiring (CLAUDE.md §1.12 / T2.4a): deliberation-gate.js must stay armed on
+  // PostToolUse Task|Agent so a top-level dispatch's report can be screened. This hook is
+  // fail-open and non-blocking (a nudge, not enforcement) — it is deliberately NOT added to the
+  // ^(block-|scope-guard|...) safety-hook regex above (:175): naming it a safety hook there would
+  // misdescribe a hook that can never deny a tool call. This explicit check is what FAILs if it is
+  // unwired or deleted, instead of silently falling back to a WARN.
+  {
+    const dg = eventsOf('deliberation-gate.js');
+    if (!dg.some((e) => e.event === 'PostToolUse' && e.matcher.includes('Task') && e.matcher.includes('Agent')))
+      fail('deliberation-gate.js is not registered under PostToolUse Task|Agent — the CLAUDE.md §1.12 hook nudge never fires');
+  }
+
   // ---- 3.6 CLI version floor: Edit(path)-covers-Write/NotebookEdit precondition ----
   // The state-dir/switch-file tamper-proofing above (this section, (b)) rests entirely on a CLI
   // fact recorded at settings.json permissions.deny check time: a permissions.deny Edit(path)
@@ -564,6 +576,14 @@ const INVARIANTS = [
   ['.claude/skills/plan/SKILL.md', /freshly spawned instance \(the authoring instance never reviews its own plan\)/, 'plan SKILL.md must keep the 2026-08-13 self-review ruling (planner self-review permitted only as a freshly spawned instance, with the red-team second seat attending per its attendance rule for plan reviews) — dropping it silently reopens the planner→planner axis with no recorded authorization'],
   ['.claude/agents/planner.md', /never the same conversation\/instance that authored the plan/, 'planner.md must keep its own copy of the 2026-08-13 Self-Review Mode Eligibility line (freshly spawned instance only, never the authoring instance) — without this pin, deleting the line from planner.md alone (leaving plan SKILL.md untouched) stays undetected'],
   ['.claude/agents/executor.md', /その性質だけが働く題材/, 'executor.md must keep sentence ② of the mutation-check rule ("その性質だけが働く題材で確かめる" — pick a fixture where no other condition could produce the same passing result before the mutated line runs) — pinning only sentence ① leaves this half of the rule free to vanish silently'],
+  // --- conductor-deliberation (2026-08-14): CLAUDE.md §1.12 Deliberation Gate, T2.4(b)(c1) ---
+  ['.claude/agents/executor.md', /Symptom[\s\S]*Evidence[\s\S]*Root-cause hypothesis[\s\S]*Why this fix addresses the cause[\s\S]*Alternatives rejected/, 'executor.md must keep the ordered 5-field error/change-of-approach report shape (Symptom -> Evidence -> Root-cause hypothesis -> Why this fix addresses the cause -> Alternatives rejected) — CLAUDE.md §1.12\'s producer-side contract depends on this exact order'],
+  // Structural phrases only — deliberately excludes the A8 percentages (cycle-2 item 12): pinning
+  // the numbers would couple a future honest re-measurement (B1) to a validator edit.
+  ['CLAUDE.md', /1\.12 Deliberation Gate[\s\S]*Worker-adapted menu[\s\S]*フックが出なかったことは「問題なし」の意味ではない/, 'CLAUDE.md §1.12 must keep its heading, the worker-adapted menu, and the A8 disclosure\'s closing sentence ("フックが出なかったことは「問題なし」の意味ではない") — dropping any one silently narrows the dispatcher-generic policy back to a hook-only nudge'],
+  // T2.4(c2): the hook header's own 3-part disclosure (fail-open guarantee, threat-model line, A8
+  // sentence) — same structural-phrases-only rule as (c1) above.
+  ['.claude/hooks/deliberation-gate.js', /Fail-open, unconditionally[\s\S]*No payload-derived value[\s\S]*is EVER interpolated[\s\S]*フックが出なかったことは「問題なし」の意味ではない/, 'deliberation-gate.js header must keep its 3-part disclosure (fail-open guarantee, threat-model no-interpolation line, A8 sentence) — losing any one silently drops that guarantee from the one place a reader of the hook itself would see it'],
 ];
 for (const [relPath, must, why] of INVARIANTS) {
   const p = path.join(ROOT, relPath);

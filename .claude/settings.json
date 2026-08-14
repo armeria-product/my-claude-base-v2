@@ -81,6 +81,15 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/journal.js\""
           }
         ]
+      },
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/deliberation-gate.js\""
+          }
+        ]
       }
     ],
     "PreToolUse": [

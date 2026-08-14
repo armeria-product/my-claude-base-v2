@@ -62,6 +62,17 @@ Native model names (`fable`/`opus`/`sonnet`/`haiku`/`inherit`) pass through unch
 Fable usage spiked cost in a single day (2026-08-06), so the authority frontmatter default is now Opus (§2). Fable may be used only while `.claude/.fable-status` holds exactly the word `ON` (trim + case-insensitive; missing = OFF; gitignored and machine-local, same convention as `.relay-status` §1.8). The file is the user's to edit by hand (ruling 2026-08-06): Claude only reads it and reports its state — no slash command, no new state directory, and Claude cannot write it even via the shell (`cmd-write-guard.js` denies it, same protection as `.claude/state`). If Fable is wanted while the switch is OFF, Claude asks the user to edit `.claude/.fable-status` themselves. While the switch is OFF, `block-fable-when-off.js` denies every subagent dispatch whose model name is visible in the dispatch and resolves to Fable in any spelling, authority roles and non-authority roles alike — not only planner/reviewer; see Known limits below for what stays outside its reach.
 **Known limits, always disclosed together wherever this gate is described**: (a) the user's own session model (`/model`) cannot be gated at all — no hook observes it; (b) a dispatch that omits an explicit model and inherits the session's model instead of naming one may be invisible to this hook (unverified). This gate covers subagent dispatches whose model is observable — never state or imply it covers every route to Fable.
 
+### 1.12 Deliberation Gate — Reports From a Delegated Worker
+A delegated worker's error report plus its proposed fix is a **hypothesis, not a diagnosis** — never accept it as ground truth on arrival.
+- **Dispatcher-generic**: binds whoever receives the delegated report — the conductor, or a worker that itself dispatched a sub-subagent (nested delegation binds the same way).
+- **Conductor menu**: ①accept only with root-cause evidence (log / reproduction / diff) ②send back for root-cause analysis ③re-dispatch to `debugger` ④escalate to replan.
+- **Worker-adapted menu** (a worker can neither replan nor consult the user): ①accept with root-cause evidence ②send back / re-dispatch the investigation once ③still unresolved → surface it in its own report's Open items and stop. Returning to the plan is the conductor's move only.
+- Symptom-level fixes (delete / suppress / loosen / catch-and-ignore) need named rejected alternatives.
+- A structurally non-conforming **error or change-of-approach** report is sent back on structure alone, before its content is weighed.
+- Borders: §1.6 = critiques you receive; §6.2 = when you are fixing the bug yourself; §1.12 = reports you receive from someone you delegated to.
+
+> ルールは委任した側すべてを縛る。フックが後押しするのは最上位の同期実行だけ（実測で全委任の約30%が同期、うち約75%が最上位、報告の16%が該当 → 全委任の**およそ4%弱**でしか出ない）。フックが出なかったことは「問題なし」の意味ではない。
+
 ---
 
 ## 2. Delegation Rules
