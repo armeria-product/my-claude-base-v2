@@ -73,6 +73,14 @@ A delegated worker's error report plus its proposed fix is a **hypothesis, not a
 
 > ルールは委任した側すべてを縛る。フックが後押しするのは最上位の同期実行だけ（実測で全委任の約30%が同期、うち約75%が最上位、報告の16%が該当 → 全委任の**およそ4%弱**でしか出ない）。フックが出なかったことは「問題なし」の意味ではない。
 
+### 1.13 Dispatch Design Gate — Prompts You Send to a Delegated Worker
+Design the dispatch before writing its prose — conductor and workers alike, and product code under `dev/` that calls a model:
+- **Outcome first**: state what done looks like as a result, with the reason it matters — not as a step script. Do not script step-by-step thinking for reasoning models; it measurably lowers output quality (2026-08-14 audit of this repo's own dispatch prompts: 65% did this). State goal, reason, constraints — let the model plan.
+- **Return shape is part of the dispatch**: name in the prompt what must come back and in what form (fields / format / required evidence). A dispatch that never states its return shape gets a report shaped by chance (same audit: only 26% stated it, while paths/constraints — where a rule already exists — hit ~100%).
+- **Inputs by path**: pass the paths and constraints the worker needs (§2 scope handoff — never paraphrase scope).
+- **Thinking depth is a knob, not folklore**: choose it deliberately per dispatch — here via the per-dispatch `effort` override (§2); in product code via the backend's reasoning/effort parameter (most backends expose one — verify before declaring it unavailable). Prompt-level depth techniques are the fallback only where no knob exists.
+- Border: §1.13 governs what you send; §1.12 governs how you treat what comes back.
+
 ---
 
 ## 2. Delegation Rules
