@@ -157,12 +157,12 @@ tmp/                 … 使い捨ての作業ファイル（git 追跡外・使
 
 ## 動かして確かめる
 
-- **構成の整合性検査**: `node .claude/scripts/validate.mjs` — フック配線・記録配線・規範文言の消失検知など30件強のチェックと、フックの構文検査（`node --check`）・相対 `require()` の解決確認を行う。`VERDICT: PASS` が正常
+- **構成の整合性検査**: `node .claude/scripts/validate.mjs` — フック配線・記録配線・規範文言の消失検知・面横断の文言一致など多数のチェックと、フックの構文検査（`node --check`）・相対 `require()` の解決確認を行う。`VERDICT: PASS` が正常
 - **フックの全テストを1コマンドで実行**（手動実行。上記の整合性検査には配線されていない）:
   ```bash
   node --test ".claude/hooks/lib/*.test.js" ".claude/scripts/*.test.mjs"
   ```
-  現時点で全437件のテストのうち、pass/fail/skip の内訳はブランチと OS に依存します（`main`/`master` ブランチでは protected-branch タグの4件が、非 win32 環境では non-win32 タグの1件が、それぞれ OS/ブランチ非依存の単純な分岐条件で skip されるため）。加えて非 win32 環境では、`scope-match.test.js` の `normalizeRel detects outside-root paths` が Windows のドライブレター（`C:\`）を前提にした実装のため fail します（既知の不具合。詳細は `tasks/todo.md` の Backlog を参照）。作業ブランチ・win32（このリポジトリの標準環境）では437 pass・0 fail・0 skip（実測、`deliberation-gate.test.js` の21件を含む。いずれも OS/ブランチ条件で skip されない）。作業ブランチ・非win32 では435 pass・1 fail・1 skip（既存の環境差の期待値）。`main`/`master`・非win32 の組み合わせは protected-branch の4件もskipされるため、431 pass・1 fail・5 skip の期待値です。skip 件数の正本は `hook-probes.test.js` の `EXPECTED_SKIP_TAGS`、sample総数とset別件数の正本は同ファイルの独立した固定値です。
+  現時点で全446件のテストのうち、pass/fail/skip の内訳はブランチと OS に依存します（`main`/`master` ブランチでは `hook-probes.test.js` の protected-branch タグの4件が、非 win32 環境では同ファイルの non-win32 タグ2件に加えて `scope-match.test.js` 自身が持つ Windows専用テスト1件（cross-drive パス判定）も、それぞれ OS/ブランチ非依存の単純な分岐条件で skip されるため）。さらに非 win32 環境では、同じ `scope-match.test.js` の `normalizeRel detects outside-root paths` が Windows のドライブレター（`C:\`）を前提にした実装のため fail します（既知の不具合。詳細は `tasks/todo.md` の Backlog を参照）。作業ブランチ・win32（このリポジトリの標準環境）では446 pass・0 fail・0 skip（実測、`deliberation-gate.test.js` の30件を含む。いずれも OS/ブランチ条件で skip されない）。作業ブランチ・非win32 では442 pass・1 fail・3 skip（上記の分岐条件からの導出値・非win32環境では未実測）。`main`/`master`・非win32 の組み合わせは protected-branch の4件もskipされるため、438 pass・1 fail・7 skip の導出値です。skip 件数の正本は `hook-probes.test.js` の `EXPECTED_SKIP_TAGS`（hook-probes 分）と `scope-match.test.js` 自身の skip オプション（Windows専用テスト1件分）、sample総数とset別件数の正本は `hook-probes.test.js` の独立した固定値です。
 - **clover の全テスト**（clover は自己完結のサブプロジェクトなので別コマンド）:
   ```bash
   RELAY_ROUTER_NO_LISTEN=1 RELAY_SHIM_NO_LISTEN=1 node --test clover/test/*.test.mjs
