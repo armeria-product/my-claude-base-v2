@@ -577,10 +577,18 @@ const INVARIANTS = [
   ['.claude/agents/planner.md', /never the same conversation\/instance that authored the plan/, 'planner.md must keep its own copy of the 2026-08-13 Self-Review Mode Eligibility line (freshly spawned instance only, never the authoring instance) — without this pin, deleting the line from planner.md alone (leaving plan SKILL.md untouched) stays undetected'],
   ['.claude/agents/executor.md', /その性質だけが働く題材/, 'executor.md must keep sentence ② of the mutation-check rule ("その性質だけが働く題材で確かめる" — pick a fixture where no other condition could produce the same passing result before the mutated line runs) — pinning only sentence ① leaves this half of the rule free to vanish silently'],
   // --- conductor-deliberation (2026-08-14): CLAUDE.md §1.12 Deliberation Gate, T2.4(b)(c1) ---
-  ['.claude/agents/executor.md', /Symptom[\s\S]*Evidence[\s\S]*Root-cause hypothesis[\s\S]*Why this fix addresses the cause[\s\S]*Alternatives rejected/, 'executor.md must keep the ordered 5-field error/change-of-approach report shape (Symptom -> Evidence -> Root-cause hypothesis -> Why this fix addresses the cause -> Alternatives rejected) — CLAUDE.md §1.12\'s producer-side contract depends on this exact order'],
-  // Structural phrases only — deliberately excludes the A8 percentages (cycle-2 item 12): pinning
-  // the numbers would couple a future honest re-measurement (B1) to a validator edit.
-  ['CLAUDE.md', /1\.12 Deliberation Gate[\s\S]*Worker-adapted menu[\s\S]*フックが出なかったことは「問題なし」の意味ではない/, 'CLAUDE.md §1.12 must keep its heading, the worker-adapted menu, and the A8 disclosure\'s closing sentence ("フックが出なかったことは「問題なし」の意味ではない") — dropping any one silently narrows the dispatcher-generic policy back to a hook-only nudge'],
+  // P1 fix: colon-anchored, not just field-name-anchored. The un-anchored version
+  // (/Symptom[\s\S]*Evidence[\s\S]*.../) had zero detection power over deleting the whole 5th
+  // field line — executor.md's 4th field's own parenthetical repeats the literal string
+  // "Alternatives rejected" ("write N/A + pointer to Alternatives rejected if no fix exists"), so
+  // the old pin's terminal token bound to that pointer instead of the field it was meant to
+  // guard. Anchoring each name to its trailing colon forces a match on the FIELD LABEL, not any
+  // incidental mention of the same words. Residual disclosed, not fixed: this still has zero
+  // power over a report that fabricates all five colon-terminated labels as bare words with no
+  // real content beneath them (e.g. a single line "Symptom: Evidence: Root-cause hypothesis: Why
+  // this fix addresses the cause: Alternatives rejected:") — pinning report SUBSTANCE, not just
+  // structure, is out of scope for a text-regex validator.
+  ['.claude/agents/executor.md', /Symptom:[\s\S]*Evidence:[\s\S]*Root-cause hypothesis:[\s\S]*Why this fix addresses the cause:[\s\S]*Alternatives rejected:/, 'executor.md must keep the ordered 5-field error/change-of-approach report shape (Symptom: -> Evidence: -> Root-cause hypothesis: -> Why this fix addresses the cause: -> Alternatives rejected:) — CLAUDE.md §1.12\'s producer-side contract depends on this exact order'],
   // T2.4(c2): the hook header's own 3-part disclosure (fail-open guarantee, threat-model line, A8
   // sentence) — same structural-phrases-only rule as (c1) above.
   ['.claude/hooks/deliberation-gate.js', /Fail-open, unconditionally[\s\S]*No payload-derived value[\s\S]*is EVER interpolated[\s\S]*フックが出なかったことは「問題なし」の意味ではない/, 'deliberation-gate.js header must keep its 3-part disclosure (fail-open guarantee, threat-model no-interpolation line, A8 sentence) — losing any one silently drops that guarantee from the one place a reader of the hook itself would see it'],
@@ -589,6 +597,96 @@ for (const [relPath, must, why] of INVARIANTS) {
   const p = path.join(ROOT, relPath);
   if (!fs.existsSync(p)) { fail(`invariant: ${relPath} missing — cannot verify "${why}"`); continue; }
   if (!must.test(read(p))) fail(`invariant lost in ${relPath} — ${why} (expected /${must.source}/${must.flags})`);
+}
+
+// ---- 6.1 CLAUDE.md §1.12 Deliberation Gate: per-item pins SCOPED to the section (U1) ----
+// The old single chained-regex pin (c1) anchored on 3 phrases with [\s\S]* between them, spanning
+// the WHOLE FILE — so a 2-line gutted §1.12 (heading + one menu line + the A8 sentence) still
+// matched, and even a FULL deletion of §1.12 with the 3 phrases relocated into a stray comment
+// elsewhere in the file still matched. Extract just the §1.12 block (heading to the next ###
+// heading or the --- separator) and check each load-bearing item against THAT substring only, so
+// gutting or relocating content outside the section is caught.
+{
+  const claudeMdPath = path.join(ROOT, 'CLAUDE.md');
+  if (!fs.existsSync(claudeMdPath)) fail('CLAUDE.md missing — cannot verify §1.12 Deliberation Gate section');
+  else {
+    const m = read(claudeMdPath).match(/### 1\.12 Deliberation Gate[\s\S]*?(?=\n### |\n---)/);
+    if (!m) fail('CLAUDE.md §1.12 Deliberation Gate heading not found (or the section is not terminated before the next ### heading / --- separator) — U1');
+    else {
+      const section = m[0];
+      const items = [
+        [/hypothesis, not a diagnosis/i, 'the hypothesis-not-diagnosis framing'],
+        [/Dispatcher-generic/, 'the dispatcher-generic binding statement'],
+        [/①accept only with root-cause evidence[\s\S]*④escalate to replan/, 'the conductor 4-option menu'],
+        [/Worker-adapted menu[\s\S]*Returning to the plan is the conductor's move only/, 'the worker-adapted 3-option menu'],
+        [/Symptom-level fixes[\s\S]*need named rejected alternatives/, 'the symptom-fix rule'],
+        [/sent back on structure alone, before its content is weighed/, 'the structural send-back rule'],
+        [/フックが出なかったことは「問題なし」の意味ではない/, 'the A8 disclosure sentence'],
+      ];
+      for (const [re, label] of items)
+        if (!re.test(section)) fail(`CLAUDE.md §1.12 is missing ${label} — U1 (the old c1 pin could not tell a live section from a gutted or relocated one)`);
+    }
+  }
+}
+
+// ---- 6.2 deliberation-gate.js INJECTED_TEXT: per-line pins + emission-line shape (P2) ----
+// Two independent gaps closed here. B's probe: gutting INJECTED_TEXT's value to a one-line
+// placeholder passed 21/21 GREEN + validate PASS, because c2 (T2.4(c2), above) pins only the
+// HEADER COMMENT and V12 only diffs the P/S family arrays — nothing pinned this constant's own
+// content. C's probe: a 5-line hollowed hook (the three c2-pinned header phrases plus a bare
+// process.exit(0), nothing else) also passed all four validate checks, because nothing pinned the
+// ACTUAL emission call site. Scoped to the constant's own declaration (not the whole file) so
+// relocating the phrases into a stray comment elsewhere doesn't count.
+{
+  const hookPath = path.join(ROOT, '.claude', 'hooks', 'deliberation-gate.js');
+  if (!fs.existsSync(hookPath)) fail('deliberation-gate.js missing — cannot verify INJECTED_TEXT invariants (P2)');
+  else {
+    const hookText = read(hookPath);
+    const m = hookText.match(/const INJECTED_TEXT =[\s\S]*?;\n/);
+    if (!m) fail('deliberation-gate.js: INJECTED_TEXT constant declaration not found (expected "const INJECTED_TEXT = ...;") — P2');
+    else {
+      const constText = m[0];
+      const lines = [
+        [/①根本原因の証拠（ログ・再現手順・差分）が示されていれば受け入れる/, 'menu item ①'],
+        [/②示されていなければ原因究明をやり直させる/, 'menu item ②'],
+        [/③debugger に投げ直す/, 'menu item ③'],
+        [/④前提そのものが崩れているなら計画に戻す/, 'menu item ④'],
+        [/症状だけを消す修正[\s\S]*却下した代替案とその理由が書かれている場合だけです/, 'the symptom-fix rule line'],
+        [/エラー・方針変更の報告であれば[\s\S]*構造として差し戻してください/, 'the structural send-back line'],
+      ];
+      for (const [re, label] of lines)
+        if (!re.test(constText)) fail(`deliberation-gate.js INJECTED_TEXT is missing ${label} — P2 (a gutted constant previously passed validate because nothing pinned this constant's own content)`);
+    }
+    if (!/additionalContext:\s*INJECTED_TEXT\s*\}/.test(hookText))
+      fail('deliberation-gate.js: the additionalContext: INJECTED_TEXT emission call is missing or no longer a bare reference (template literal / concatenation / hollowed-out hook) — P2 (a hollowed hook with only header comments previously passed all four validate checks)');
+  }
+}
+
+// ---- 6.3 A8 disclosure sentence: cross-face equality (U4) ----
+// The sentence is required verbatim on CLAUDE.md §1.12, README.md, and the hook header (PLAN.md's
+// A8 spec) — each face was individually pinned to CONTAIN it, but nothing checked that the three
+// copies actually AGREE with each other, so they could drift silently on a future re-measurement
+// (B1) if only one face were edited. Strip markdown **bold** (README wraps the tail in it) and the
+// hook's "// " comment-continuation prefix (its copy wraps across two comment lines) before
+// comparing, so those two cosmetic differences don't count as drift.
+{
+  const A8_RE = /ルールは委任した側すべてを縛る。[\s\S]*?フックが出なかったことは「問題なし」の意味ではない/;
+  const norm = (s) => s.replace(/\*\*/g, '').replace(/\n\s*\/\/\s*/g, '').trim();
+  const faces = [
+    ['CLAUDE.md', path.join(ROOT, 'CLAUDE.md')],
+    ['README.md', path.join(ROOT, 'README.md')],
+    ['.claude/hooks/deliberation-gate.js', path.join(ROOT, '.claude', 'hooks', 'deliberation-gate.js')],
+  ];
+  const found = [];
+  for (const [label, p] of faces) {
+    if (!fs.existsSync(p)) { fail(`${label} missing — cannot verify the A8 disclosure sentence (U4)`); continue; }
+    const m = read(p).match(A8_RE);
+    if (!m) { fail(`${label} is missing the A8 disclosure sentence — U4 cross-face check`); continue; }
+    found.push([label, norm(m[0])]);
+  }
+  for (let i = 1; i < found.length; i++)
+    if (found[i][1] !== found[0][1])
+      fail(`A8 disclosure sentence drifted between ${found[0][0]} and ${found[i][0]} — U4 requires the three faces stay byte-identical (modulo markdown **bold** and the hook's comment wrapping)`);
 }
 
 // ---- 7. Secret deny list: settings.json permissions.deny <-> block-secret-read.js patterns ----

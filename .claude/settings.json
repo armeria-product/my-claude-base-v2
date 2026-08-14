@@ -83,7 +83,7 @@
         ]
       },
       {
-        "matcher": "Task|Agent",
+        "matcher": "^(Task|Agent)$",
         "hooks": [
           {
             "type": "command",

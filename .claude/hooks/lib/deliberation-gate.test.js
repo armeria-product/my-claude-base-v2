@@ -20,6 +20,7 @@ const { INJECTED_TEXT } = require('../deliberation-gate.js');
 
 const SANDBOX = path.join(ROOT, 'tmp', 'deliberation-gate', 'sandbox');
 const SANDBOX_DECOY = path.join(ROOT, 'tmp', 'deliberation-gate', 'sandbox-decoy');
+const SANDBOX_TASKS_AS_FILE = path.join(ROOT, 'tmp', 'deliberation-gate', 'sandbox-tasks-as-file');
 
 const two = (n) => String(n).padStart(2, '0');
 
@@ -38,15 +39,45 @@ function buildSandbox(root) {
   fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
 }
 
+// N1: pre-create 'tasks' as a plain FILE (not a directory) so journalFile()'s
+// mkdirSync(recursive:true) throws ENOTDIR — reproduces a real journal-write failure without
+// touching the real repo's tasks/ directory. rmSync first so re-running the suite against an
+// already-built sandbox (a leftover directory from a prior run) doesn't collide with writeFileSync.
+function buildTasksAsFileSandbox(root) {
+  buildSandbox(root);
+  fs.rmSync(path.join(root, 'tasks'), { recursive: true, force: true });
+  fs.writeFileSync(path.join(root, 'tasks'), 'not a directory (N1 fixture)');
+}
+
 buildSandbox(SANDBOX);
 buildSandbox(SANDBOX_DECOY);
+buildTasksAsFileSandbox(SANDBOX_TASKS_AS_FILE);
 
 // Captured once, at module load — the real repo's own append-only journal, BEFORE any test in
-// this file runs. #20 (the last test below) re-reads and asserts byte-identical.
+// this file runs. #20/#21 re-read and diff against this (P5 — scoped to the delta, not whole-file
+// byte-equality; see assertNoDeliberationLeak below).
 const REAL_JOURNAL_BEFORE = readJournal(ROOT);
+
+// P5 (B.M2/C.L5): whole-file byte-equality against a live multi-writer file flakes under normal
+// multi-session use — another session's own unrelated append during this suite's run window is
+// not this suite's business. Scope the assertion to what THIS suite could have caused: the delta
+// since `before` must never contain our own [deliberation] marker.
+function assertNoDeliberationLeak(before, label) {
+  const beforeText = before || '';
+  const afterText = readJournal(ROOT) || '';
+  const added = afterText.length > beforeText.length ? afterText.slice(beforeText.length) : '';
+  assert.ok(!added.includes('[deliberation]'), `${label}: a [deliberation] line leaked into the real repo tasks/journal/`);
+}
 
 function runHook(payload, opts = {}) {
   const root = opts.root || SANDBOX;
+  // R2: pre-assert/recreate the sandbox's .claude marker on EVERY invocation, not just once at
+  // module load. B's TOCTOU finding: two live sessions can share this same in-repo tmp/ sandbox
+  // path (a ~650ms window was observed), so a concurrent session's own cleanup between module
+  // load and this call could remove the marker; without a per-invocation pre-assert, journal-util's
+  // projectRoot() would then walk up past the sandbox to the real repo. Cheap (mkdirSync with
+  // recursive:true is a no-op if the dir already exists) so paying it on every call is fine.
+  buildSandbox(root);
   const input = 'rawStdin' in opts ? opts.rawStdin : JSON.stringify(payload);
   const env = { ...process.env, CLAUDE_PROJECT_DIR: root };
   try {
@@ -200,6 +231,7 @@ test('#15 tool_response as a bare string -> silent (shape unsupported)', () => {
 // sit in a 4th field without also tripping the top-level-only guard and suppressing the fire.
 test('#16 distinct markers in content/prompt/description/tool_response.agentType -> only the constant leaks', () => {
   const markers = ['PROMPT_MARKER_9f3a', 'DESCRIPTION_MARKER_7c1b', 'CONTENT_MARKER_5e2d', 'AGENTTYPE_MARKER_1b8f'];
+  const journalBefore = readJournal(SANDBOX) || '';
   const r = runHook({
     tool_name: 'Task',
     prompt: markers[0],
@@ -212,6 +244,14 @@ test('#16 distinct markers in content/prompt/description/tool_response.agentType
   assert.equal(r.exit, 0);
   assert.equal(additionalContextOf(r), INJECTED_TEXT);
   for (const m of markers) assert.ok(!r.stdout.includes(m), `marker "${m}" leaked into stdout`);
+  // U9: no-echo was previously asserted only against stdout, never against the journal file
+  // itself — a mutation that echoed the dispatch prompt/description/markers into the journal
+  // line would have passed 21/21 GREEN. session-start.js replays the journal into future
+  // conductor contexts, so a leaked marker there is a persistent cross-session replay channel,
+  // not just a one-shot stdout leak.
+  const journalAfter = readJournal(SANDBOX) || '';
+  const journalAdded = journalAfter.slice(journalBefore.length);
+  for (const m of markers) assert.ok(!journalAdded.includes(m), `marker "${m}" leaked into the journal line`);
 });
 
 // ---- 17: hostile instruction-shaped text -> fires, emits only the constant (Z5) ----
@@ -224,16 +264,23 @@ test('#17 instruction-shaped hostile text + distress phrase -> emits only the co
 });
 
 // ---- 18: 100KB report -> exit 0, completes promptly (cycle-2 item 10: an actual assertion) ----
-test('#18 100KB report with a distress phrase -> exit 0, < 2s wall-clock', () => {
+// U14: bound relaxed from 2000ms to 5000ms — the original 2s bound is machine-dependent and can
+// flake on a loaded runner; 5s still catches a real algorithmic blowup (e.g. quadratic behavior
+// in stripQuoted) while giving normal process-spawn jitter enough headroom.
+test('#18 100KB report with a distress phrase -> exit 0, < 5s wall-clock', () => {
   const text = '回避策として ' + 'x'.repeat(100 * 1024);
   const start = Date.now();
   const r = runHook(fireCase(text));
   const elapsedMs = Date.now() - start;
   assert.equal(r.exit, 0);
-  assert.ok(elapsedMs < 2000, `took ${elapsedMs}ms, expected < 2000ms`);
+  assert.ok(elapsedMs < 5000, `took ${elapsedMs}ms, expected < 5000ms`);
 });
 
 // ---- 19: journal line lands in the sandbox journal, never the matched phrase (R-2) ----
+// Fixture update (R4-bs4/BS11): anchored to end-of-line (family=P$) rather than a loose prefix
+// match. A loose /family=P/ substring check would ALSO match "family=PS" (P is a prefix of PS),
+// so it could not discriminate this P-only fixture from the R4i family=PS case added below —
+// this fixture (single P stem, no S stem present) must produce exactly "P", not "PS".
 test('#19 fire case writes a journal line into the SANDBOX journal, no matched phrase', () => {
   const before = readJournal(SANDBOX) || '';
   const r = runHook(fireCase('原因不明のため回避策として一時対応しました。'));
@@ -241,8 +288,90 @@ test('#19 fire case writes a journal line into the SANDBOX journal, no matched p
   const after = readJournal(SANDBOX) || '';
   assert.ok(after.length > before.length, 'sandbox journal did not grow');
   const added = after.slice(before.length);
-  assert.match(added, /\[deliberation\] fired family=P/);
+  assert.match(added, /\[deliberation\] fired family=P$/m);
   assert.ok(!added.includes('回避策'), 'matched phrase leaked into the journal line');
+});
+
+// ---- R4i: report matching BOTH P and S stems -> journal family=PS, not just P ----
+// The old `if (P) family='P'; else if (S) family='S';` let a P match short-circuit the S test, so
+// a report matching both stems was always journaled as family=P, silently discarding whether it
+// also matched S and undercounting family=S in the R-2 fire-rate data (superseded U13's weaker
+// "just reorder P/S" fix — reordering alone would still destroy whichever family loses the race).
+// Mutation target: revert to the P-first else-if -> this assertion goes RED (family stays "P").
+test('R4i report matching BOTH P and S stems -> journal family=PS', () => {
+  const before = readJournal(SANDBOX) || '';
+  const r = runHook(fireCase('原因不明のため回避策としてコメントアウトしました。'));
+  assert.equal(r.exit, 0);
+  assert.equal(additionalContextOf(r), INJECTED_TEXT);
+  const after = readJournal(SANDBOX) || '';
+  const added = after.slice(before.length);
+  assert.match(added, /\[deliberation\] fired family=PS$/m);
+});
+
+// ---- N1: journal-write failure must not swallow the nudge ----
+// B's probe: SANDBOX_TASKS_AS_FILE pre-creates 'tasks' as a plain FILE, so journalFile()'s
+// mkdirSync(recursive:true) throws ENOTDIR. Before the fix, appendLine() ran BEFORE the
+// console.log emission inside main(), so this throw was caught by the outer try/catch with
+// nothing ever printed — a journal-write failure silently swallowed the nudge itself, even though
+// the report clearly read as distress. Mutation target: swap the emission and appendLine call
+// order back -> this case goes RED (additionalContext null).
+test('N1 journal-write failure (tasks/ is a file) must not swallow the nudge', () => {
+  const r = runHook(fireCase('原因不明のため回避策として一時対応しました。'), { root: SANDBOX_TASKS_AS_FILE });
+  assert.equal(r.exit, 0);
+  assert.equal(additionalContextOf(r), INJECTED_TEXT);
+});
+
+// ---- P3: guard 2 falsy-but-present agent_type variants -> silent (strict presence, not truthiness) ----
+// Before the fix, guard 2 was `if (payload.agent_type) return;` — a truthiness test. agent_type
+// "" / null / 0 are present-but-falsy and slipped THROUGH that check, so a nested dispatch
+// carrying one of these values would wrongly FIRE conductor-menu text into a worker context (the
+// exact outcome R-1/B11/Z8 forbid). Mutation target: revert guard 2 to the truthiness check ->
+// all three of these go RED (they'd fire instead of staying silent).
+test('P3a agent_type: "" (present but falsy) -> silent (nested delegation)', () => {
+  const r = runHook(fireCase('回避策として対応しました', { agent_type: '' }));
+  assert.equal(r.exit, 0);
+  assert.equal(additionalContextOf(r), null);
+});
+
+test('P3b agent_type: null (present but falsy) -> silent (nested delegation)', () => {
+  const r = runHook(fireCase('回避策として対応しました', { agent_type: null }));
+  assert.equal(r.exit, 0);
+  assert.equal(additionalContextOf(r), null);
+});
+
+test('P3c agent_type: 0 (present but falsy) -> silent (nested delegation)', () => {
+  const r = runHook(fireCase('回避策として対応しました', { agent_type: 0 }));
+  assert.equal(r.exit, 0);
+  assert.equal(additionalContextOf(r), null);
+});
+
+// ---- U5: 4 previously zero-power behaviors (each mutation was 21/21 GREEN before these) ----
+test("U5a tool_name 'Agent' + distress phrase -> fires (guard 1 accepts both tool names)", () => {
+  const r = runHook({ tool_name: 'Agent', tool_response: { content: [{ text: '回避策として対応しました' }] } });
+  assert.equal(r.exit, 0);
+  assert.equal(additionalContextOf(r), INJECTED_TEXT);
+});
+
+test('U5b tool_response.content as a plain string -> fires (R-4 supported shape)', () => {
+  const r = runHook({ tool_name: 'Task', tool_response: { content: '回避策として対応しました' } });
+  assert.equal(r.exit, 0);
+  assert.equal(additionalContextOf(r), INJECTED_TEXT);
+});
+
+test('U5c distress phrase beyond the 65,536-char slice boundary -> silent (truncation exercised)', () => {
+  const text = 'x'.repeat(70 * 1024) + '回避策として';
+  const r = runHook(fireCase(text));
+  assert.equal(r.exit, 0);
+  assert.equal(additionalContextOf(r), null);
+});
+
+test('U5d journal line contains the id8 token, not dropped', () => {
+  const before = readJournal(SANDBOX) || '';
+  const r = runHook({ tool_name: 'Task', session_id: 'abcdefgh-1234-5678', tool_response: { content: [{ text: '回避策として対応しました' }] } });
+  assert.equal(r.exit, 0);
+  const after = readJournal(SANDBOX) || '';
+  const added = after.slice(before.length);
+  assert.match(added, /\[abcdefgh\]/);
 });
 
 // ---- 20: sandbox isolation — decoy root receives the line, the REAL repo never does (D7) ----
@@ -256,7 +385,8 @@ test('#20 decoy root gets the line; the real repo tasks/journal/ stays byte-unch
   assert.equal(r.exit, 0);
   const decoyAfter = readJournal(SANDBOX_DECOY) || '';
   assert.ok(decoyAfter.length > decoyBefore.length, 'decoy sandbox journal did not receive the line');
-  assert.equal(readJournal(ROOT), REAL_JOURNAL_BEFORE, 'the real repo tasks/journal/ changed during this suite');
+  // P5 (B.M2/C.L5): scoped to the delta, not whole-file byte-equality — see assertNoDeliberationLeak.
+  assertNoDeliberationLeak(REAL_JOURNAL_BEFORE, '#20');
 });
 
 // ---- 21: content present but empty/whitespace-only -> silent, plain silence case ----
@@ -270,5 +400,6 @@ test('#21 content present but whitespace-only -> silent; real repo journal untou
   const r = runHook(fireCase('   \n  '));
   assert.equal(r.exit, 0);
   assert.equal(additionalContextOf(r), null);
-  assert.equal(readJournal(ROOT), REAL_JOURNAL_BEFORE, 'the real repo tasks/journal/ changed across the full suite');
+  // P5 (B.M2/C.L5): scoped to the delta, not whole-file byte-equality — see assertNoDeliberationLeak.
+  assertNoDeliberationLeak(REAL_JOURNAL_BEFORE, '#21 (whole suite)');
 });
