@@ -49,6 +49,7 @@ H3: [description] → Test: [how to verify/falsify]
 - Do not fix symptoms or add workarounds — e.g. a null-check at the crash site is a symptom fix; fixing the initializer that produced the null is the root-cause fix
 - Verify: re-run the step-1 reproduction and paste the passing output; run the nearest test suite for the touched module and paste "X passed / Y failed" — if you can't, say so in Remaining Risk
 - Check for regressions
+- If the fix changes an externally-observable behavior, run the same two mutations executor.md's Detection power duty requires for an observation point (M1: break the line that computes/decides it; M2: break every place the product consumes it) before reporting.
 
 ### 6. Report
 ```
