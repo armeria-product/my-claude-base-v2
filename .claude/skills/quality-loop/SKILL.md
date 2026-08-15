@@ -36,6 +36,14 @@ of CLAUDE.md §1.3 Writer/Reviewer Separation.
         ↓
 [2] Authority reviews → verdict: APPROVE / REQUEST_CHANGES / BLOCK
       - Findings must include severity (CRITICAL/HIGH/MEDIUM/LOW) + file:line + rationale
+      - **M2 evidence is a precondition of APPROVE at any cycle, not only on re-review**: when the
+        deliverable touches the compute/decide side or any consumption site of an observation
+        point (mutation-observation-points), APPROVE requires M2 evidence (every consumption site
+        mutated, RED confirmed) already present — from the worker's report or a live probe (the
+        cycle-1 red-team seat's probe counts) — even on a cycle-1 APPROVE that never reaches step
+        [4]'s gate below. A `- none` in the plan's Observation Points section does not exempt
+        this: if the worker's report derived points anyway per its derive-anyway duty, M2 evidence
+        is still required
       - BLOCK is treated the same as REQUEST_CHANGES plus immediate user escalation, under any
         target, regardless of cycle number (SOT: reviewer.md Rules (all targets) "BLOCK severity")
       - The Authority does not see the worker's self-defense (independent context)
@@ -94,6 +102,12 @@ of the same slug, for the same worker role, across authority-review cycles and P
 occurrence** is the CLAUDE.md §4 recurring-review-category trigger — treat it as a role-definition
 gap (fix the agent file / skill / validator pin), not another one-off implementation fix, and record
 the lesson + propose the definition fix to the user rather than looping silently on the instance.
+
+**Slug-merge disclosure (mutation-observation-points Phase 3)**: `test-power` now covers two
+distinct defect classes — a test with no detection power (the original meaning) and an undefended
+observation-point consumption site (folded in here rather than adding a 7th slug, per Rejected
+Alternatives). When the 2nd-occurrence trigger fires on `test-power`, read the finding text itself
+before proposing a definition fix — the two occurrences may not share a root cause.
 
 ## Degradation & Exceptions
 

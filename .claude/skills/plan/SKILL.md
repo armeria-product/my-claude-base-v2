@@ -193,14 +193,19 @@ marked 撤回済み (don't delete it) and follow it with the current position an
 record of record; deleting it loses why the option was rejected and the argument returns.
 
 `### Observation Points` lists, one line per point, an externally-checkable behavior the plan
-requires — required starting with the 2026-08-15 `mutation-observation-points` plan (Phase 1); a
-plan with genuinely none writes `- none — <reason>` rather than omitting the section. When a plan
-predates this requirement and carries no such section, derive the roster at implementation time
-from what the plan's own text requires and record it in the report — the section's absence never
-waives the requirement (CR-B); a `dev/**` plan written before this date and never revised falls
-under executor.md's "no-plan casual work" rule instead. When `### Observation Points` and
-`### Verification Strategy` disagree about what must be checked, `### Observation Points` takes
-precedence — it is the roster of required behaviors, Verification Strategy is how to prove them.
+requires — required for any plan approved on or after 2026-08-15 (the `mutation-observation-points`
+plan itself, Phase 1); a plan with genuinely none writes `- none — <reason>` rather than omitting
+the section — but this is not a terminal claim: the same derive-anyway rule below applies to it too
+(executor.md's derive-anyway clause is the single authority; `- none` is a starting claim, not a
+free pass). When a plan predates this requirement and carries no such section, derive the roster at implementation time
+from what the plan's own text requires and record it in the report — the
+section's absence never waives the requirement (CR-B), and neither does a `- none` line. This also
+covers a `dev/**` plan written before this date and never revised: it still has a plan, so the
+derive-from-text rule above applies to it directly — it is **not** routed to executor.md's "no-plan casual work" rule
+(that rule governs work with no plan at all, a narrower case). When
+`### Observation Points` and `### Verification Strategy` disagree about what must be checked,
+`### Observation Points` takes precedence — it is the roster of required behaviors, Verification
+Strategy is how to prove them.
 
 Additionally output `{base}/scope.json` — the machine-readable contract the approve-lock hook transcribes into the scope lock (**required — the heavy path is incomplete without it**):
 
