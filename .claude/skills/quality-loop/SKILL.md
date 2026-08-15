@@ -68,8 +68,12 @@ of CLAUDE.md §1.3 Writer/Reviewer Separation.
         ↓
 [4] Re-review (→ [2]). If still not APPROVE on the 3rd cycle, **stop and escalate to the user**
     (CLAUDE.md §1.5: same approach failing 3 times = replan from a different angle)
-      - If the fix touched a test or an oracle (scorer/validator/gate), the re-review requires
-        mutation evidence: break the guarded answer in one spot → confirm RED, restore → confirm PASS
+      - If the fix touched a test or an oracle (scorer/validator/gate), **or touched the
+        compute/decide side or any consumption site of an observation point**
+        (mutation-observation-points), the re-review requires mutation evidence: break the
+        guarded answer in one spot → confirm RED, restore → confirm PASS. For an observation
+        point specifically, this evidence must include **M2** (every consumption site), not
+        M1 alone
       - When a probe cannot be run (no worktree available), mark the affected claim explicitly
         `unverified` and require the authority to rule explicitly on the residual risk in the
         verdict — a silent APPROVE is not allowed
@@ -113,7 +117,7 @@ For **plan/design/architecture authority reviews** (planner self-review, and `re
 On cycle 1 of a co-review-eligible authority review, a **second instance of the same tier** joins the frontier authority regardless of the relay gate — this seat is standing, not an addition contingent on relay state. Anchoring on one's own read (a single reviewer that both scores and defends its own score) and quietly splitting the difference on a disagreement are both easier to fall into when one instance carries both a spec-conformance read and an adversarial one; separating them into two independent contexts forces the adversarial pass to actually run. Each instance gets the same review prompt plus one added line for its lens:
 
 - **Spec-conformance lens** (the frontier authority, verdict-holder): "Check the deliverable against the wording of every acceptance criterion; a 'known limitation' that contradicts an acceptance criterion is a finding, not a caveat."
-- **Red-team lens** (the second seat, no verdict): "Assume the deliverable is defective and its tests are blind. Your only goal is to find a way to break the claimed behavior while every existing test stays green — mutations, race windows, oracle neutralization. Report findings only — do not issue a verdict; write `Verdict: N/A (red-team seat)`."
+- **Red-team lens** (the second seat, no verdict): "Assume the deliverable is defective and its tests are blind. Your only goal is to find a way to break the claimed behavior while every existing test stays green — mutations, race windows, oracle neutralization, and whether the plan's required behavior can be defeated by deleting a consumption site (a call, an envelope/response assembly, or the branch that acts on it) while every unit test stays green. Report findings only — do not issue a verdict; write `Verdict: N/A (red-team seat)`."
 - **Red-team lens, plan/design/architecture variant**: for a plan/design/architecture deliverable, the added line instead reads: "Assume the plan breaks in execution. Hunt for inputs, orderings, and constraints that defeat the steps, and for acceptance criteria that cannot be verified. Report findings only — do not issue a verdict; write `Verdict: N/A (red-team seat)`."
 
 ### Lens Catalog (optional seats — prepared, not standing)

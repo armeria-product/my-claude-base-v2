@@ -1020,6 +1020,144 @@ for (const [relPath, must, why] of INVARIANTS) {
   }
 }
 
+// ---- 14. Observation Points roster wiring (mutation-observation-points plan, Phase 1) ----------
+// The plan requires a "### Observation Points" roster in every heavy-path PLAN.md (plan/SKILL.md's
+// template) and a standing check that a real plan actually carries it (planner.md's Self-Review
+// Completeness dimension) — a template with the heading alone does nothing if nobody ever looks
+// for the heading in a real plan, and vice versa. Both pins use the section-scoped extraction
+// method introduced by 6.1 above (extract just the relevant section, not the whole file) so that
+// gutting or relocating content elsewhere in either file is caught, not just the phrase's mere
+// presence somewhere in a large file.
+{
+  const planSkillPath = path.join(ROOT, '.claude', 'skills', 'plan', 'SKILL.md');
+  if (!fs.existsSync(planSkillPath)) fail('.claude/skills/plan/SKILL.md missing — cannot verify Observation Points wiring');
+  else {
+    // Anchored on the literal next real heading ("## Model / Agents"), not a generic "\n## "
+    // lookahead — the Heavy Path section's own PLAN.md/research.md templates contain fenced
+    // example text that itself starts with "## " (e.g. "## Plan: {feature}", "## Now"), so a
+    // generic heading-level lookahead truncates the match at the first such line inside the code
+    // fence, well before the real end of the section.
+    const m = read(planSkillPath).match(/## Heavy Path — Research[\s\S]*?\n## Model \/ Agents/);
+    if (!m) fail('.claude/skills/plan/SKILL.md: "## Heavy Path" section not found (or unterminated before the "## Model / Agents" heading) — cannot verify Observation Points wiring');
+    else {
+      const section = m[0];
+      const items = [
+        // Anchored to the template's own line sequence, not a bare /### Observation Points/ —
+        // the explanatory paragraph below the template also quotes "### Observation Points" in
+        // backticks, so a bare pattern is satisfied by that prose alone even with the template
+        // heading itself deleted (confirmed by mutation probe: deleting the template heading left
+        // this item GREEN because of the prose reference).
+        [/### Rejected Alternatives\n- \[alternative\]: \[reason for rejection\]\n### Observation Points/, 'the "### Observation Points" heading in the PLAN.md template (right after Rejected Alternatives)'],
+        [/required starting with the 2026-08-15 `mutation-observation-points` plan/, 'the since-when-required sentence (CR-B)'],
+        [/derive the roster at implementation time/, 'the CR-B derive-from-requirements fallback for plans predating the section'],
+        [/no-plan casual work/, 'the CR-B fallback routing pre-existing dev plans to the "no-plan casual work" rule'],
+        [/`### Observation Points` takes\s+precedence/, 'the priority rule (Observation Points outranks Verification Strategy on conflict)'],
+        [/both the M1 and M2 results \(SOT: `executor\.md` Detection power\)/, 'the Phase 3 gate line requiring M1/M2 results per implemented observation point'],
+      ];
+      for (const [re, label] of items)
+        if (!re.test(section)) fail(`.claude/skills/plan/SKILL.md "## Heavy Path" section is missing ${label} — mutation-observation-points Phase 1`);
+    }
+  }
+
+  const plannerPath = path.join(ROOT, '.claude', 'agents', 'planner.md');
+  if (!fs.existsSync(plannerPath)) fail('.claude/agents/planner.md missing — cannot verify Observation Points wiring');
+  else {
+    const plannerText = read(plannerPath);
+    // Same code-fence caveat as the plan/SKILL.md extraction above: the "### 5. Output Format"
+    // section's own light-plan example (todo.md snippet) contains literal "## Now" / "## Backlog"
+    // lines inside a fence, so a generic "\n## " lookahead truncates before reaching the §5B
+    // template further down. Anchor on the literal next real heading ("## Rules") instead.
+    const templateSection = plannerText.match(/### 5\. Output Format[\s\S]*?\n## Rules/);
+    if (!templateSection) fail('.claude/agents/planner.md: "### 5. Output Format" section not found (or unterminated before the "## Rules" heading) — cannot verify the PLAN.md template list');
+    else if (!/### Observation Points/.test(templateSection[0]))
+      fail('.claude/agents/planner.md "### 5. Output Format" section is missing "### Observation Points" in the §5B PLAN.md template list — mutation-observation-points Phase 1');
+
+    const completenessSection = plannerText.match(/#### 2\. Completeness[\s\S]*?(?=\n#### |$)/);
+    if (!completenessSection) fail('.claude/agents/planner.md: "#### 2. Completeness" section not found (or unterminated before the next "#### " heading) — cannot verify the Self-Review Completeness check');
+    else if (!/Does the plan have a `### Observation Points` section/.test(completenessSection[0]))
+      fail('.claude/agents/planner.md "#### 2. Completeness" section is missing the Observation Points check — mutation-observation-points Phase 1 (this is the only standing check that a real plan, not just the template, carries the roster)');
+  }
+}
+
+// ---- 15. Observation Points production duty (mutation-observation-points plan, Phase 2) --------
+// Phase 1 pinned the ROSTER (a plan carries "### Observation Points"). This phase pins the PRODUCTION
+// duty that actually iterates that roster — executor.md's Detection power item 1(b) — so a rewrite
+// that quietly drops the load-bearing sub-rules (M2 must cover every consumption site, not one;
+// green-on-M2 is a finding, not a pass; the report must name file:line + the deleted line + the check
+// name) still passes validate. Section-scoped (6.1 method): extract item 1 only (between its own
+// "1. **Detection power**:" heading and the next "2. **Claim scope**:" heading), not the whole file —
+// item 1 is a large block and a generic whole-file pin would tolerate relocating these sub-rules
+// elsewhere, or duplicating the heading while gutting the body underneath it.
+{
+  const executorPath = path.join(ROOT, '.claude', 'agents', 'executor.md');
+  if (!fs.existsSync(executorPath)) fail('.claude/agents/executor.md missing — cannot verify Observation Points production duty (Phase 2)');
+  else {
+    const m = read(executorPath).match(/1\.\s+\*\*Detection power\*\*:[\s\S]*?(?=\n2\.\s+\*\*Claim scope\*\*:)/);
+    if (!m) fail('.claude/agents/executor.md: item 1 "**Detection power**" section not found (or unterminated before "2. **Claim scope**:") — mutation-observation-points Phase 2');
+    else {
+      const section = m[0];
+      const items = [
+        [/every consumption site, not one/, 'the M2 all-consumption-sites rule (testing one call site and inferring the rest is not enough)'],
+        [/GREEN on an M2 mutation is not a pass — it's a finding/, 'the green-on-M2-is-a-finding rule (an undefended consumption site is a finding, never reported as "all green")'],
+        [/name the `file:line` and the literal text of the line you deleted, and the name of the check that went RED/, 'the M2 report-format rule (file:line + literal deleted line + the check name, per mutation)'],
+      ];
+      for (const [re, label] of items)
+        if (!re.test(section)) fail(`.claude/agents/executor.md item 1 "**Detection power**" is missing ${label} — mutation-observation-points Phase 2`);
+    }
+  }
+}
+
+// ---- 16. Observation Points review duty wiring (mutation-observation-points plan, Phase 3) ------
+// Phase 1 pinned the roster (plan carries "### Observation Points"); Phase 2 pinned the production
+// duty (executor.md's M1/M2). This phase pins the REVIEW-SIDE duty that catches a worker who skips
+// or under-covers M2: reviewer.md must derive the roster itself (never trust the worker's report)
+// and must carry the observation-wiring checklist line, and quality-loop's re-review mutation-
+// evidence gate + red-team lens must both name the consumption side explicitly — a rewrite that
+// silently drops any one of these four leaves the M2 duty produced in Phase 2 with nobody checking
+// it landed. Section-scoped (6.1 method) to each item's own heading-to-next-heading span, so
+// relocating or gutting content elsewhere in a large file is caught, not just phrase presence
+// anywhere in the file.
+{
+  const reviewerPath = path.join(ROOT, '.claude', 'agents', 'reviewer.md');
+  if (!fs.existsSync(reviewerPath)) fail('.claude/agents/reviewer.md missing — cannot verify Observation Points review duty (Phase 3)');
+  else {
+    const reviewerText = read(reviewerPath);
+
+    const advSection = reviewerText.match(/### Adversarial Verification \(falsification duty\)[\s\S]*?(?=\n### Severity Levels)/);
+    if (!advSection) fail('.claude/agents/reviewer.md: "### Adversarial Verification (falsification duty)" section not found (or unterminated before "### Severity Levels") — mutation-observation-points Phase 3');
+    else if (!/derive the observation-point roster[\s\S]*?never take the worker's\s+report roster at face value/.test(advSection[0]))
+      fail('.claude/agents/reviewer.md "### Adversarial Verification" is missing the consumption-side mutation duty (roster derived from the plan itself, not the worker\'s report) — mutation-observation-points Phase 3');
+
+    const defectSection = reviewerText.match(/### Defect-Class Checklist[\s\S]*?(?=\n### Probe Log)/);
+    if (!defectSection) fail('.claude/agents/reviewer.md: "### Defect-Class Checklist" section not found (or unterminated before "### Probe Log") — mutation-observation-points Phase 3');
+    else if (!/observation wiring:.*consumption side is deleted/.test(defectSection[0]))
+      fail('.claude/agents/reviewer.md "### Defect-Class Checklist" is missing the "observation wiring" line — mutation-observation-points Phase 3');
+  }
+
+  const qlPath = path.join(ROOT, '.claude', 'skills', 'quality-loop', 'SKILL.md');
+  if (!fs.existsSync(qlPath)) fail('.claude/skills/quality-loop/SKILL.md missing — cannot verify Observation Points review duty (Phase 3)');
+  else {
+    const qlText = read(qlPath);
+
+    const loopSection = qlText.match(/## Loop Contract \(max 3 cycles\)[\s\S]*?(?=\n## Stall handling)/);
+    if (!loopSection) fail('.claude/skills/quality-loop/SKILL.md: "## Loop Contract" section not found (or unterminated before "## Stall handling") — mutation-observation-points Phase 3');
+    else if (!/compute\/decide side or any consumption site of an observation point[\s\S]*?must include \*\*M2\*\* \(every consumption site\), not\s*\n?\s*M1 alone/.test(loopSection[0]))
+      fail('.claude/skills/quality-loop/SKILL.md "## Loop Contract" re-review mutation-evidence gate no longer names observation points (compute/decide side or consumption site) and requires M2 — mutation-observation-points Phase 3');
+
+    const redTeamSection = qlText.match(/### Red-Team Second Seat \(standing, relay-independent\)[\s\S]*?(?=\n### Lens Catalog)/);
+    if (!redTeamSection) fail('.claude/skills/quality-loop/SKILL.md: "### Red-Team Second Seat" section not found (or unterminated before "### Lens Catalog") — mutation-observation-points Phase 3');
+    else if (!/deleting a consumption site \(a call, an envelope\/response assembly, or the branch that acts on it\) while every unit test stays green/.test(redTeamSection[0]))
+      fail('.claude/skills/quality-loop/SKILL.md "### Red-Team Second Seat" lens text no longer names consumption-site deletion — mutation-observation-points Phase 3');
+
+    // Closed 6-word category set (:86-92 region) must stay byte-identical — Phase 3 explicitly
+    // folds the new "observation wiring" finding into the existing `test-power` slug rather than
+    // adding a new category word (plan Rejected Alternatives — a new word would split the
+    // recurring-category tally into a separate slot).
+    if (!/test-power \/ overclaim \/ match-direction \/ unverified-claim \/ scope \/ other/.test(qlText))
+      fail('.claude/skills/quality-loop/SKILL.md no longer carries the closed 6-word category set verbatim — mutation-observation-points Phase 3 requires this set stay untouched (observation wiring folds into `test-power`, not a new word)');
+  }
+}
+
 // ---- Report ----
 console.log('Harness Validation (v2)');
 console.log(`  agents: ${agentNames.size} | skills: ${fs.readdirSync(skillsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).length} | hooks registered: ${registered.size}`);

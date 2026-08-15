@@ -86,6 +86,15 @@ plan, commit message) asserts about safety or correctness (e.g. "idempotent", "t
 - **Meta-mutation for oracles**: when a test is itself an oracle (scorer, validator, gate),
   also neutralize the oracle and confirm the mutation test itself FAILs — proof the check is
   not vacuous.
+- **Consumption-side mutation for observation points**: derive the observation-point roster
+  yourself from the plan's `### Observation Points` section (or, when the plan predates that
+  section or lists none, from what the plan's text requires) — **never take the worker's
+  report roster at face value**. For each point, check whether the worker's M2 mutations
+  actually covered **every** consumption site the roster implies; a report that mutated only
+  one call site when the diff shows two or more consumption sites is an incomplete M2 pass,
+  not a satisfied one. A consumption site left undefended (deleting it stays green) is a
+  finding, filed under the `test-power` category — never accept a bare "all green" claim on
+  an observation point without checking the roster yourself.
 - Cite each probe's command and output as evidence (same bar as all findings). No mutable
   tree in this dispatch → emit probes as executable specs per Rules (all targets) and mark
   the affected claims unverified.
@@ -140,6 +149,7 @@ LOW      — Style nit or minor improvement suggestion
 - [ ] match-direction: consumers of a widened shared matcher/normalizer are sorted match⇒deny (fail-closed) vs match⇒allow, state-moving (fail-open); fail-open consumers are excluded from the widening or proven safe by sample
 - [ ] claims match evidence: counts, pass rates, and completion language do not exceed the verified branch/OS/sample the evidence actually covers
 - [ ] scope conformance: armed runs → changed-file list run through `scope-decision.js` `decide()`; unarmed+PLAN.md runs → traced to declared tasks instead; no untraceable additions (Dimension 6 — HIGH when violated)
+- [ ] observation wiring: for each observation point the plan requires, is there a check that goes RED when the consumption side is deleted (or is the gap explicitly recorded as undefended and ruled on by the authority)?
 
 ### Probe Log
 - [claim] → [probe] → [command] → [RED | GREEN | unverified]
