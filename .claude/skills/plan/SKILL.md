@@ -173,6 +173,8 @@ Output `{base}/PLAN.md`:
 - [assumption 1]
 ### Rejected Alternatives
 - [alternative]: [reason for rejection]
+### Observation Points
+- [point]: the behavior the plan requires, and the check that must go RED if it breaks (or a single line `- none — <reason>` when the plan genuinely has none)
 ### Phases
 #### Phase 1: [name]
 - tasks / test gate / dependencies
@@ -189,6 +191,16 @@ overturns a decision already written in PLAN.md's body, correct the **body parag
 turn, not only the `### Objections & Rulings` ledger — demote the superseded text to a quote block
 marked 撤回済み (don't delete it) and follow it with the current position and a pointer to the
 record of record; deleting it loses why the option was rejected and the argument returns.
+
+`### Observation Points` lists, one line per point, an externally-checkable behavior the plan
+requires — required starting with the 2026-08-15 `mutation-observation-points` plan (Phase 1); a
+plan with genuinely none writes `- none — <reason>` rather than omitting the section. When a plan
+predates this requirement and carries no such section, derive the roster at implementation time
+from what the plan's own text requires and record it in the report — the section's absence never
+waives the requirement (CR-B); a `dev/**` plan written before this date and never revised falls
+under executor.md's "no-plan casual work" rule instead. When `### Observation Points` and
+`### Verification Strategy` disagree about what must be checked, `### Observation Points` takes
+precedence — it is the roster of required behaviors, Verification Strategy is how to prove them.
 
 Additionally output `{base}/scope.json` — the machine-readable contract the approve-lock hook transcribes into the scope lock (**required — the heavy path is incomplete without it**):
 
@@ -220,7 +232,7 @@ Phase 3 starts **only after** the approve-lock hook confirms the lock (it inject
 ### Phase 3 — Implement
 For implementation, **use the harness skill's pipeline as the execution engine** (the SOT for the pipeline definition is harness; plan focuses on "deciding" and does not restate the pipeline here). Choose the appropriate type per phase:
 1. Feature implementation → `harness feature` / bug fix → `harness bugfix` / refactor → `harness refactor`. Since planner self-review is done in Phase 2, each phase uses **the executor onward** of the harness pipeline (implementation through verification) as the execution engine. Every dispatch prompt passes the **paths** of `{base}/PLAN.md` and `{base}/scope.json` — the worker reads them itself; never paraphrase the scope into the prompt (CLAUDE.md §2 Scope handoff — paraphrase is how unapproved implementation creeps in)
-2. Each phase requires passing the test gate. Failure → debug and retry (max 2 times) → if it still fails, stop and report
+2. Each phase requires passing the test gate — which includes, for every observation point that phase implements, both the M1 and M2 results (SOT: `executor.md` Detection power). Failure → debug and retry (max 2 times) → if it still fails, stop and report
 3. Before starting a phase designated as a deferral destination, inventory it: list what accumulated there and eject anything outside that phase's original one-line definition — a deferral record says only "→ phase X", so the drift stays invisible until the phase is opened
 4. After all phases complete: **reviewer** (target: code, full-diff review) → address findings → **verifier** (final E2E verification)
 

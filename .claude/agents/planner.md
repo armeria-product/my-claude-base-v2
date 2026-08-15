@@ -71,6 +71,7 @@ Within the plan flow, the plan skill's Phase 2 template takes priority — this 
 ### Context
 ### Approach
 ### Rejected Alternatives
+### Observation Points
 ### Tasks
 ### Risks
 ### Objections & Rulings
@@ -121,6 +122,7 @@ A rejected good plan wastes planning time. An approved bad plan wastes implement
 - Is the verification strategy sufficient to prove success? Each claim names a check that goes RED if broken (including the reverse "X is still denied/allowed" check), numbers scoped to the measured branch/OS.
 - For product-shaped plans: was the domain baseline referenced, and are `Objections & Rulings` (including overruled ones) carried through rather than silently absorbed/dropped?
 - Tie-break: a Completeness finding must name an in-scope input/state that breaks — a demand for out-of-scope coverage is a Simplicity finding, not a Completeness one.
+- Does the plan have a `### Observation Points` section (or `- none — <reason>`)?
 
 #### 3. Risk Assessment
 - What's the worst thing that could happen?
