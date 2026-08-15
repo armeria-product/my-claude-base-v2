@@ -493,11 +493,11 @@ footer.sot code{ font-size:.92em; }
     <ul>
       <li>frontmatter の形式（<code>model</code> / <code>description</code> / <code>tools</code> / 必要なら <code>effort</code>）を既存 agent と揃える。</li>
       <li><code>model:</code> はnative alias（<code>fable</code> / <code>opus</code> / <code>sonnet</code> / <code>haiku</code> / <code>inherit</code>）、または clover の外部モデル id（<code>claude-&lt;alias&gt;</code>。<code>&lt;alias&gt;</code> は <code>clover/models.json</code> に実在するもの）のみを書く。実在の Claude モデル ID を直接固定するのは禁止 ―― バージョンが上がるたびに書き換えが要る壊れ方をするため。</li>
-      <li>planner / reviewer は <code>model: opus</code> と <code>effort: max</code> を保つ。権威席の許可集合はnative <code>fable | opus</code>のみ。<code>.claude/.fable-status</code>が<code>ON</code>のとき（CLAUDE.md §1.11）だけ呼び出しに<code>model: fable</code>を明示でき（明示入力がfrontmatterより優先）、混在・無言fallback・sonnet/haiku/inherit/unknown/外部idへの降格は禁止。この判定は起動時に <code>block-fable-when-off.js</code> フックが強制するが、見えるのは起動先モデルが分かるサブエージェント起動だけ ―― あなた自身のセッションのモデル選択（<code>/model</code>）は対象外で、モデル名を指定しない起動がセッションのモデルをそのまま引き継いだ場合も見えないことがある。</li>
+      <li>planner / reviewer は <code>model: opus</code> と役割別の effort ピン（planner <code>max</code> / reviewer <code>xhigh</code>）を保つ。権威席の許可集合はnative <code>fable | opus</code>のみ。<code>.claude/.fable-status</code>が<code>ON</code>のとき（CLAUDE.md §1.11）だけ呼び出しに<code>model: fable</code>を明示でき（明示入力がfrontmatterより優先）、混在・無言fallback・sonnet/haiku/inherit/unknown/外部idへの降格は禁止。この判定は起動時に <code>block-fable-when-off.js</code> フックが強制するが、見えるのは起動先モデルが分かるサブエージェント起動だけ ―― あなた自身のセッションのモデル選択（<code>/model</code>）は対象外で、モデル名を指定しない起動がセッションのモデルをそのまま引き継いだ場合も見えないことがある。</li>
       <li>clover のモデル id を書いた agent は、clover 経由で起動したセッションでしか動かない。特定の呼び出しだけ一時的に外部モデルへ振りたい場合は、frontmatter 固定よりも relay skill の <code>RELAY-MODEL:</code> マーカー（呼び出しごとに指定）の方が、素の起動でも壊れず可搬性が高い。ただしマーカー便には<code>relay-required-agent.js</code>による追加条件があり、dispatch の <code>description</code> に指定した alias の文字列を含めないと、relay の ON/OFF に関わらず拒否される（利用者にも機械ジャーナルにも見えるのは description だけのため）。frontmatter 固定の route（前者）はこの条件の対象外。</li>
       <li>読み取り専用の agent（reviewer / verifier / explorer）には、Write / Edit / NotebookEdit のような書き込み系ツールを一切持たせない。</li>
       <li>読み取り専用 agent の Bash は「読み取り・テスト実行専用」に限定する。唯一の例外は reviewer の敵対的変異検証（adversarial mutation probe）で、明示的に許可された使い捨ての worktree の中でだけ書き込みが許される（本体のツリーには触れない）。</li>
-      <li>planner と reviewer は <code>effort: max</code> の frontmatter 固定が必須。欠けていると <code>validate.mjs</code> が FAIL にする。</li>
+      <li>planner は <code>effort: max</code>、reviewer は <code>effort: xhigh</code> の frontmatter 固定が必須。ピンと違う値は <code>validate.mjs</code> が FAIL にする。</li>
       <li>agent 定義の変更は全プロジェクトの挙動に影響するため、変更範囲をユーザーに確認してから進める。</li>
       <li>変更後は簡単なタスクで実際に動かし、壊れていないことを確かめる。</li>
     </ul>
@@ -550,7 +550,7 @@ footer.sot code{ font-size:.92em; }
           <tr><th>チェック内容</th><th>検出時</th></tr>
         </thead>
         <tbody>
-          <tr><td>agent の frontmatter（native alias / clover id の妥当性、読み取り専用 agent への書き込みツール混入、planner・reviewer の <code>model: opus</code> / <code>effort: max</code> 欠落）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
+          <tr><td>agent の frontmatter（native alias / clover id の妥当性、読み取り専用 agent への書き込みツール混入、planner・reviewer の <code>model: opus</code> / 役割別 effort ピン（planner <code>max</code> / reviewer <code>xhigh</code>）の不一致）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>skill の frontmatter（<code>name:</code> とディレクトリ名の一致、<code>description</code> 必須、<code>subagent_type:</code> が実在 agent を参照しているか）</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>hooks 登録 ―― <code>settings.json</code> に書かれた hook ファイルの実在確認。<code>block-*.js</code> のような安全装置が未登録のとき</td><td><span class="badge badge--blocked">FAIL</span></td></tr>
           <tr><td>hooks 登録 ―― <code>block-*.js</code> 以外の hook ファイルが <code>settings.json</code> に未登録のとき</td><td><span class="badge badge--warn">WARN</span></td></tr>

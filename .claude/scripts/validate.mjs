@@ -25,11 +25,13 @@ const warn = (m) => warns.push(m);
 const MODEL_ALIASES = new Set(['fable', 'opus', 'sonnet', 'haiku', 'inherit']);
 const READ_ONLY_AGENTS = new Set(['reviewer', 'verifier', 'explorer']);
 // CLAUDE.md §2: planner/reviewer default to native Opus, permit only native Fable or Opus in an
-// authority dispatch, and pin effort:max. Fable is permitted only while the CLAUDE.md §1.11 gate
+// authority dispatch, and pin a per-role effort (planner max; reviewer xhigh — user ruling
+// 2026-08-16: the co-review loop runs 2 seats × up to 3 cycles, so the review seat steps down one
+// notch while planning keeps max). Fable is permitted only while the CLAUDE.md §1.11 gate
 // (.claude/.fable-status = ON) is open, enforced for all dispatches by block-fable-when-off.js —
 // never a silent/lower-tier fallback, and a failed Opus dispatch is reported and stopped, not
 // silently retried on Fable.
-const EFFORT_MAX_AGENTS = new Set(['planner', 'reviewer']);
+const AUTHORITY_EFFORT = new Map([['planner', 'max'], ['reviewer', 'xhigh']]);
 const AUTHORITY_MODELS = new Set(['fable', 'opus']);
 const AUTHORITY_DEFAULT_MODEL = 'opus';
 // agents-revision plan Phase 2 + Batch H L11 (2026-08-06 Q1 ruling, option a): shared clause (A)
@@ -93,16 +95,16 @@ for (const f of fs.readdirSync(agentsDir).filter((x) => x.endsWith('.md'))) {
     if (!fm.tools) fail(`agent ${fm.name}: read-only agent must declare a tools allowlist`);
     else if (/\b(Edit|Write|NotebookEdit)\b/.test(fm.tools)) fail(`agent ${fm.name}: read-only agent has write tool in allowlist (${fm.tools})`);
   }
-  if (EFFORT_MAX_AGENTS.has(fm.name) && fm.effort !== 'max')
-    fail(`agent ${fm.name}: missing "effort: max" in frontmatter (CLAUDE.md §2 requires this pin to guarantee max-depth reasoning for the final quality gate)`);
-  if (EFFORT_MAX_AGENTS.has(fm.name) && !AUTHORITY_MODELS.has(fm.model))
+  if (AUTHORITY_EFFORT.has(fm.name) && fm.effort !== AUTHORITY_EFFORT.get(fm.name))
+    fail(`agent ${fm.name}: frontmatter must pin "effort: ${AUTHORITY_EFFORT.get(fm.name)}" (CLAUDE.md §2 per-role effort pin for the authority tier)`);
+  if (AUTHORITY_EFFORT.has(fm.name) && !AUTHORITY_MODELS.has(fm.model))
     fail(`agent ${fm.name}: model "${fm.model}" is not in the authority allowlist (${[...AUTHORITY_MODELS].join(' | ')})`);
-  if (EFFORT_MAX_AGENTS.has(fm.name) && fm.model !== AUTHORITY_DEFAULT_MODEL)
+  if (AUTHORITY_EFFORT.has(fm.name) && fm.model !== AUTHORITY_DEFAULT_MODEL)
     fail(`agent ${fm.name}: frontmatter default must be "${AUTHORITY_DEFAULT_MODEL}" — Fable is allowed only while the CLAUDE.md §1.11 gate (.claude/.fable-status = ON) is open`);
   // Reverse effort check: effort: is reserved for the authority tier (CLAUDE.md §2) — an
   // effort key on any other agent is either drift or an unauthorized tier upgrade.
-  if (!EFFORT_MAX_AGENTS.has(fm.name) && fm.effort)
-    fail(`agent ${fm.name}: has "effort: ${fm.effort}" in frontmatter but is not an authority agent (${[...EFFORT_MAX_AGENTS].join('/')}) — effort pinning is reserved for the authority tier`);
+  if (!AUTHORITY_EFFORT.has(fm.name) && fm.effort)
+    fail(`agent ${fm.name}: has "effort: ${fm.effort}" in frontmatter but is not an authority agent (${[...AUTHORITY_EFFORT.keys()].join('/')}) — effort pinning is reserved for the authority tier`);
   // Fleet loop (a): the read-only Bash constraint sentence must stay verbatim in every
   // read-only agent's own body (a path-scoped rule only loads while editing agent files, so
   // the per-agent restatement is what the model actually sees at dispatch time).
