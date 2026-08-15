@@ -1105,6 +1105,17 @@ for (const [relPath, must, why] of INVARIANTS) {
   }
 }
 
+// T4.4 tightening pass (A1): the negative-invariant neutering-marker check below (and its 6 other
+// site copies in §16/§17) was case-sensitive, English-only — red-team probes proved plain
+// lowercase "withdrawn", sentence-case "Repealed"/"Retired", and the repo's own house marker
+// 撤回済み (used elsewhere in this codebase for the same "marked inert, kept for history" meaning,
+// e.g. plan/SKILL.md's Objections & Rulings convention) all slipped past undetected. Shared as one
+// constant so all 7 sites stay in sync. \b only wraps the ASCII alternatives — \b relies on \w
+// (ASCII word) characters, so it does not reliably delimit 撤回済み in ordinary Japanese text
+// (neither neighbor is a \w character); 撤回済み is therefore a bare alternative outside the \b
+// group instead of forcing an ASCII-style boundary onto CJK text.
+const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤回済み/i;
+
 // ---- 15. Observation Points production duty (mutation-observation-points plan, Phase 2) --------
 // Phase 1 pinned the ROSTER (a plan carries "### Observation Points"). This phase pins the PRODUCTION
 // duty that actually iterates that roster — executor.md's Detection power item 1(b) — closing the
@@ -1159,8 +1170,8 @@ for (const [relPath, must, why] of INVARIANTS) {
       // building citation-exemption machinery for words this duty text has no legitimate reason to
       // use. Known, disclosed gap: a quoted-repeal or free-form rephrase that avoids these 4 literal
       // words entirely is not caught (see rules/agents.md's Pin threat model bullet).
-      if (/\b(WITHDRAWN|repealed|retired|not-operative)\b/.test(section))
-        fail(`.claude/agents/executor.md item 1 "**Detection power**" contains a neutering marker (WITHDRAWN/repealed/retired/not-operative) inside the pinned duty span — mutation-observation-points T4.4 fix pass (C1 negative invariant)`);
+      if (NEUTER_MARKER_RE.test(section))
+        fail(`.claude/agents/executor.md item 1 "**Detection power**" contains a neutering marker (withdrawn/repealed/retired/not-operative/撤回済み, case-insensitive) inside the pinned duty span — mutation-observation-points T4.4 tightening pass (A1; was C1 negative invariant)`);
     }
   }
 }
@@ -1207,8 +1218,8 @@ for (const [relPath, must, why] of INVARIANTS) {
       const advAnchorCount = (reviewerText.match(/### Adversarial Verification \(falsification duty\)/g) || []).length;
       if (advAnchorCount !== 1)
         fail(`.claude/agents/reviewer.md: expected exactly 1 occurrence of the "### Adversarial Verification (falsification duty)" anchor, found ${advAnchorCount} — a decoy heading could hijack which span gets checked (mutation-observation-points T4.4 fix, C1)`);
-      if (/\b(WITHDRAWN|repealed|retired|not-operative)\b/.test(advSection[0]))
-        fail('.claude/agents/reviewer.md "### Adversarial Verification" contains a neutering marker (WITHDRAWN/repealed/retired/not-operative) inside the pinned duty span — mutation-observation-points T4.4 fix pass (C1 negative invariant)');
+      if (NEUTER_MARKER_RE.test(advSection[0]))
+        fail('.claude/agents/reviewer.md "### Adversarial Verification" contains a neutering marker (withdrawn/repealed/retired/not-operative/撤回済み, case-insensitive) inside the pinned duty span — mutation-observation-points T4.4 tightening pass (A1; was C1 negative invariant)');
     }
 
     const defectSection = reviewerText.match(/### Defect-Class Checklist[\s\S]*?(?=\n### Probe Log)/);
@@ -1223,8 +1234,8 @@ for (const [relPath, must, why] of INVARIANTS) {
       const defectAnchorCount = (reviewerText.match(/### Defect-Class Checklist/g) || []).length;
       if (defectAnchorCount !== 1)
         fail(`.claude/agents/reviewer.md: expected exactly 1 occurrence of the "### Defect-Class Checklist" anchor, found ${defectAnchorCount} — a decoy heading could hijack which span gets checked (mutation-observation-points T4.4 fix, C1)`);
-      if (/\b(WITHDRAWN|repealed|retired|not-operative)\b/.test(defectSection[0]))
-        fail('.claude/agents/reviewer.md "### Defect-Class Checklist" contains a neutering marker (WITHDRAWN/repealed/retired/not-operative) inside the pinned duty span — mutation-observation-points T4.4 fix pass (C1 negative invariant)');
+      if (NEUTER_MARKER_RE.test(defectSection[0]))
+        fail('.claude/agents/reviewer.md "### Defect-Class Checklist" contains a neutering marker (withdrawn/repealed/retired/not-operative/撤回済み, case-insensitive) inside the pinned duty span — mutation-observation-points T4.4 tightening pass (A1; was C1 negative invariant)');
     }
 
     // T4.4 fix (B2): the Finding line format sentence is the SOT copy of the closed 6-word category
@@ -1234,6 +1245,19 @@ for (const [relPath, must, why] of INVARIANTS) {
     // sentence and quotes the list elsewhere is a known, disclosed gap — same class as C1).
     if (!/category is one of 6 stable slugs: `test-power \/ overclaim \/ match-direction \/ unverified-claim \/ scope \/ other`\./.test(reviewerText))
       fail('.claude/agents/reviewer.md is missing the closed-set category-slug sentence ("category is one of 6 stable slugs: `test-power / overclaim / match-direction / unverified-claim / scope / other`.") anchored to its exact framing and trailing punctuation — mutation-observation-points T4.4 fix pass (B2)');
+
+    // T4.4 tightening pass (A4): reviewer.md's `target: fusion` Rules carry a THIRD, previously
+    // unpinned copy of the same closed 6-word slug set (different formatting from the other two
+    // pinned copies — no spaces around the slashes, inside a plain parenthetical rather than
+    // backticks) — a rewrite could gut this fusion-target copy while the two already-pinned copies
+    // (this section's sentence above, and quality-loop's own copy below) stayed byte-identical.
+    // Anchored on the trailing ")" so a 7th slug appended INSIDE this parenthetical goes RED.
+    // Known, disclosed gap (same class as B2/C1, not something this pin is expected to close): a
+    // 7th slug added in an ADJACENT sentence — anywhere outside this exact parenthetical — is not
+    // caught by this anchor and stays a DISCLOSE-only accepted gap (see rules/agents.md Pin threat
+    // model).
+    if (!/category slug \(test-power\/overclaim\/match-direction\/unverified-claim\/scope\/other\)/.test(reviewerText))
+      fail('.claude/agents/reviewer.md is missing the fusion-target third copy of the closed 6-word category-slug set at its "category slug (test-power/overclaim/...)" line (target: fusion Rules) — mutation-observation-points T4.4 tightening pass (A4)');
   }
 
   const qlPath = path.join(ROOT, '.claude', 'skills', 'quality-loop', 'SKILL.md');
@@ -1254,8 +1278,8 @@ for (const [relPath, must, why] of INVARIANTS) {
       const loopAnchorCount = (qlText.match(/## Loop Contract \(max 3 cycles\)/g) || []).length;
       if (loopAnchorCount !== 1)
         fail(`.claude/skills/quality-loop/SKILL.md: expected exactly 1 occurrence of the "## Loop Contract (max 3 cycles)" anchor, found ${loopAnchorCount} — a decoy heading could hijack which span gets checked (mutation-observation-points T4.4 fix, C1)`);
-      if (/\b(WITHDRAWN|repealed|retired|not-operative)\b/.test(loopSection[0]))
-        fail('.claude/skills/quality-loop/SKILL.md "## Loop Contract" contains a neutering marker (WITHDRAWN/repealed/retired/not-operative) inside the pinned duty span — mutation-observation-points T4.4 fix pass (C1 negative invariant)');
+      if (NEUTER_MARKER_RE.test(loopSection[0]))
+        fail('.claude/skills/quality-loop/SKILL.md "## Loop Contract" contains a neutering marker (withdrawn/repealed/retired/not-operative/撤回済み, case-insensitive) inside the pinned duty span — mutation-observation-points T4.4 tightening pass (A1; was C1 negative invariant)');
     }
 
     const redTeamSection = qlText.match(/### Red-Team Second Seat \(standing, relay-independent\)[\s\S]*?(?=\n### Lens Catalog)/);
@@ -1267,8 +1291,8 @@ for (const [relPath, must, why] of INVARIANTS) {
       const redTeamAnchorCount = (qlText.match(/### Red-Team Second Seat \(standing, relay-independent\)/g) || []).length;
       if (redTeamAnchorCount !== 1)
         fail(`.claude/skills/quality-loop/SKILL.md: expected exactly 1 occurrence of the "### Red-Team Second Seat (standing, relay-independent)" anchor, found ${redTeamAnchorCount} — a decoy heading could hijack which span gets checked (mutation-observation-points T4.4 fix, C1)`);
-      if (/\b(WITHDRAWN|repealed|retired|not-operative)\b/.test(redTeamSection[0]))
-        fail('.claude/skills/quality-loop/SKILL.md "### Red-Team Second Seat" contains a neutering marker (WITHDRAWN/repealed/retired/not-operative) inside the pinned duty span — mutation-observation-points T4.4 fix pass (C1 negative invariant)');
+      if (NEUTER_MARKER_RE.test(redTeamSection[0]))
+        fail('.claude/skills/quality-loop/SKILL.md "### Red-Team Second Seat" contains a neutering marker (withdrawn/repealed/retired/not-operative/撤回済み, case-insensitive) inside the pinned duty span — mutation-observation-points T4.4 tightening pass (A1; was C1 negative invariant)');
     }
 
     // Closed 6-word category set (:86-92 region) must stay byte-identical — Phase 3 explicitly
@@ -1292,9 +1316,12 @@ for (const [relPath, must, why] of INVARIANTS) {
 // live outside the three files sections 14-16 already read: harness/SKILL.md's bugfix step 4 +
 // Quality Gate line (O5 M1+M2), debugger.md's pointer line (O5), and rules/agents.md's executor
 // standing-probe M2 expectation (O1②) — every one of these could be deleted with validate still
-// reporting PASS. Section-scoped (6.1 method) where the file has a natural section boundary;
-// debugger.md's pointer is a single Fix-step bullet with no enclosing section, so it is checked
-// against the file text directly (existsSync+fail guard still applies — no silent skip).
+// reporting PASS. Section-scoped (6.1 method) where the file has a natural section boundary.
+// T4.4 tightening pass (A3) correction: the debugger.md pointer is NOT "a single Fix-step bullet
+// with no enclosing section" as this comment previously claimed — debugger.md has "### 5. Fix" /
+// "### 6. Report" headings, and the pointer bullet sits inside that span. The pin below is now
+// scoped to that span (red-team probe P8 had re-hosted the bullet into an unrelated appendix and
+// stayed GREEN against the old whole-file-text check).
 {
   const harnessSkillPath = path.join(ROOT, '.claude', 'skills', 'harness', 'SKILL.md');
   if (!fs.existsSync(harnessSkillPath)) fail('.claude/skills/harness/SKILL.md missing — cannot verify Observation Points bugfix-path wiring (K1 pin 1 / O5)');
@@ -1303,19 +1330,53 @@ for (const [relPath, must, why] of INVARIANTS) {
 
     const bugfixSection = harnessText.match(/### bugfix[\s\S]*?(?=\n### refactor)/);
     if (!bugfixSection) fail('.claude/skills/harness/SKILL.md: "### bugfix" section not found (or unterminated before "### refactor") — cannot verify the regression-test step\'s observation-point pointer (K1 pin 1 / O5)');
-    else if (!/run it as an observation point too — M1\/M2 per executor\.md's Detection power duty/.test(bugfixSection[0]))
-      fail('.claude/skills/harness/SKILL.md "### bugfix" step 4 is missing the observation-point M1/M2 pointer — mutation-observation-points T4.4 fix pass (K1 pin 1 / O5)');
+    else {
+      if (!/run it as an observation point too — M1\/M2 per executor\.md's Detection power duty/.test(bugfixSection[0]))
+        fail('.claude/skills/harness/SKILL.md "### bugfix" step 4 is missing the observation-point M1/M2 pointer — mutation-observation-points T4.4 fix pass (K1 pin 1 / O5)');
+
+      // T4.4 tightening pass (A2): count===1 decoy-anchor hardening + the negative-invariant
+      // neutering-marker guard, same rationale/mechanism as sections 14-16 (red-team P6 proved a
+      // decoy re-host of the pinned sentence into an earlier "### bugfix"-headed span works here
+      // exactly as it did in the sections already hardened for C1).
+      const bugfixAnchorCount = (harnessText.match(/### bugfix/g) || []).length;
+      if (bugfixAnchorCount !== 1)
+        fail(`.claude/skills/harness/SKILL.md: expected exactly 1 occurrence of the "### bugfix" anchor, found ${bugfixAnchorCount} — a decoy heading could hijack which span gets checked (mutation-observation-points T4.4 tightening pass, A2)`);
+      if (NEUTER_MARKER_RE.test(bugfixSection[0]))
+        fail('.claude/skills/harness/SKILL.md "### bugfix" section contains a neutering marker (withdrawn/repealed/retired/not-operative/撤回済み, case-insensitive) inside the pinned duty span — mutation-observation-points T4.4 tightening pass (A2)');
+    }
 
     const qualityGateSection = harnessText.match(/## Quality Gate[\s\S]*$/);
     if (!qualityGateSection) fail('.claude/skills/harness/SKILL.md: "## Quality Gate" section not found — cannot verify the bugfix regression-test observation-point line (K1 pin 1 / O5)');
-    else if (!/the regression-test step \(4\) additionally covers any observation point the fix touches \(M1\/M2, executor\.md Detection power\)/.test(qualityGateSection[0]))
-      fail('.claude/skills/harness/SKILL.md "## Quality Gate" is missing the bugfix regression-test observation-point line — mutation-observation-points T4.4 fix pass (K1 pin 1 / O5)');
+    else {
+      if (!/the regression-test step \(4\) additionally covers any observation point the fix touches \(M1\/M2, executor\.md Detection power\)/.test(qualityGateSection[0]))
+        fail('.claude/skills/harness/SKILL.md "## Quality Gate" is missing the bugfix regression-test observation-point line — mutation-observation-points T4.4 fix pass (K1 pin 1 / O5)');
+
+      // T4.4 tightening pass (A2): same count===1 + negative-invariant hardening as bugfixSection
+      // above. Unlike every other span in this family, this extraction runs to end-of-file
+      // ([\s\S]*$, no real terminator heading) — but the count===1 check below counts occurrences
+      // of the ANCHOR TEXT across the whole file, which is independent of how the span itself is
+      // bounded, so the EOF shape does not block a clean count===1 (verified: "## Quality Gate"
+      // occurs exactly once in the file today) — no retargeting to a narrower terminator was
+      // needed.
+      const qualityGateAnchorCount = (harnessText.match(/## Quality Gate/g) || []).length;
+      if (qualityGateAnchorCount !== 1)
+        fail(`.claude/skills/harness/SKILL.md: expected exactly 1 occurrence of the "## Quality Gate" anchor, found ${qualityGateAnchorCount} — a decoy heading could hijack which span gets checked (mutation-observation-points T4.4 tightening pass, A2)`);
+      if (NEUTER_MARKER_RE.test(qualityGateSection[0]))
+        fail('.claude/skills/harness/SKILL.md "## Quality Gate" section contains a neutering marker (withdrawn/repealed/retired/not-operative/撤回済み, case-insensitive) inside the pinned duty span — mutation-observation-points T4.4 tightening pass (A2)');
+    }
   }
 
   const debuggerPath = path.join(ROOT, '.claude', 'agents', 'debugger.md');
   if (!fs.existsSync(debuggerPath)) fail('.claude/agents/debugger.md missing — cannot verify Observation Points wiring (K1 pin 2 / O5)');
-  else if (!/run the same two mutations executor\.md's Detection power duty requires for an observation point \(M1: break the line that computes\/decides it; M2: break every place the product consumes it\) before reporting/.test(read(debuggerPath)))
-    fail('.claude/agents/debugger.md is missing the observation-point M1/M2 pointer in its Fix step — mutation-observation-points T4.4 fix pass (K1 pin 2 / O5)');
+  else {
+    const debuggerText = read(debuggerPath);
+    // T4.4 tightening pass (A3): scoped to the "### 5. Fix" span (bounded by "### 6. Report")
+    // instead of a whole-file-text test — see the header comment above this block.
+    const fixSection = debuggerText.match(/### 5\. Fix[\s\S]*?(?=\n### 6\. Report)/);
+    if (!fixSection) fail('.claude/agents/debugger.md: "### 5. Fix" section not found (or unterminated before "### 6. Report") — cannot verify the observation-point M1/M2 pointer (K1 pin 2 / O5)');
+    else if (!/run the same two mutations executor\.md's Detection power duty requires for an observation point \(M1: break the line that computes\/decides it; M2: break every place the product consumes it\) before reporting/.test(fixSection[0]))
+      fail('.claude/agents/debugger.md "### 5. Fix" is missing the observation-point M1/M2 pointer — mutation-observation-points T4.4 fix pass (K1 pin 2 / O5)');
+  }
 
   const agentsRulePath = path.join(ROOT, '.claude', 'rules', 'agents.md');
   if (!fs.existsSync(agentsRulePath)) fail('.claude/rules/agents.md missing — cannot verify Observation Points wiring (K1 pin 3 / O1②)');
