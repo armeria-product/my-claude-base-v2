@@ -1048,14 +1048,34 @@ for (const [relPath, must, why] of INVARIANTS) {
         // heading itself deleted (confirmed by mutation probe: deleting the template heading left
         // this item GREEN because of the prose reference).
         [/### Rejected Alternatives\n- \[alternative\]: \[reason for rejection\]\n### Observation Points/, 'the "### Observation Points" heading in the PLAN.md template (right after Rejected Alternatives)'],
-        [/required starting with the 2026-08-15 `mutation-observation-points` plan/, 'the since-when-required sentence (CR-B)'],
+        // T4.4 fix (A6): reworded from "the 2026-08-15 `mutation-observation-points` plan" (ambiguous
+        // against this plan's own 08-14-dated artifacts) to an approval-date framing.
+        [/required for any plan approved on or after 2026-08-15/, 'the since-when-required sentence (CR-B, reworded T4.4/A6 to an approval-date framing)'],
         [/derive the roster at implementation time/, 'the CR-B derive-from-requirements fallback for plans predating the section'],
-        [/no-plan casual work/, 'the CR-B fallback routing pre-existing dev plans to the "no-plan casual work" rule'],
+        // T4.4 fix (K4): the old pin only checked the phrase "no-plan casual work" was PRESENT
+        // somewhere, which passed identically whether a dev/** pre-dated plan was correctly routed
+        // to the derive-from-text rule or incorrectly routed to executor.md's no-plan rule (a real
+        // plan is not "no plan"). Anchored on the corrected sentence itself so a regression back to
+        // the old mis-routing text — which does not contain this phrase — goes RED.
+        [/is \*\*not\*\* routed to executor\.md's "no-plan casual work" rule/, 'the K4 jurisdiction-alignment fix (a dev/** pre-dated plan still has a plan, so it uses the derive-from-text rule directly, not executor.md\'s no-plan casual-work rule) — mutation-observation-points T4.4 fix pass'],
         [/`### Observation Points` takes\s+precedence/, 'the priority rule (Observation Points outranks Verification Strategy on conflict)'],
         [/both the M1 and M2 results \(SOT: `executor\.md` Detection power\)/, 'the Phase 3 gate line requiring M1/M2 results per implemented observation point'],
+        // T4.4 fix (K1 pin 5 / B seat "heading pinned, content not"): the heading item above only
+        // proved "### Observation Points" appears after Rejected Alternatives — deleting the
+        // template's own content line (what a plan author actually copies) left this undetected.
+        [/- \[point\]: the behavior the plan requires, and the check that must go RED if it breaks/, 'the PLAN.md template\'s Observation Points content line (one point per line, with the check that must go RED) — mutation-observation-points T4.4 fix pass (K1)'],
+        // T4.4 fix (B4): "`- none`" must not read as a terminal free pass.
+        [/derive-anyway clause is the single authority/, 'the B4 fix stating executor.md\'s derive-anyway clause is the single authority on whether `- none` is a re-derivable claim, not a terminal one — mutation-observation-points T4.4 fix pass'],
       ];
       for (const [re, label] of items)
         if (!re.test(section)) fail(`.claude/skills/plan/SKILL.md "## Heavy Path" section is missing ${label} — mutation-observation-points Phase 1`);
+
+      // T4.4 fix (C1 MUST-fix, #16-class hardening applied here too): a decoy heading duplicating
+      // the section's own start anchor earlier in the file would hijack which span match() extracts.
+      // Assert the anchor is unique in the whole file, not just present.
+      const heavyPathStartCount = (read(planSkillPath).match(/## Heavy Path — Research/g) || []).length;
+      if (heavyPathStartCount !== 1)
+        fail(`.claude/skills/plan/SKILL.md: expected exactly 1 occurrence of the "## Heavy Path — Research" anchor, found ${heavyPathStartCount} — a decoy heading could hijack which span gets checked (mutation-observation-points T4.4 fix, C1)`);
     }
   }
 
@@ -1074,20 +1094,29 @@ for (const [relPath, must, why] of INVARIANTS) {
 
     const completenessSection = plannerText.match(/#### 2\. Completeness[\s\S]*?(?=\n#### |$)/);
     if (!completenessSection) fail('.claude/agents/planner.md: "#### 2. Completeness" section not found (or unterminated before the next "#### " heading) — cannot verify the Self-Review Completeness check');
-    else if (!/Does the plan have a `### Observation Points` section/.test(completenessSection[0]))
-      fail('.claude/agents/planner.md "#### 2. Completeness" section is missing the Observation Points check — mutation-observation-points Phase 1 (this is the only standing check that a real plan, not just the template, carries the roster)');
+    else {
+      if (!/Does the plan have a `### Observation Points` section/.test(completenessSection[0]))
+        fail('.claude/agents/planner.md "#### 2. Completeness" section is missing the Observation Points check — mutation-observation-points Phase 1 (this is the only standing check that a real plan, not just the template, carries the roster)');
+      // T4.4 fix (B4): planner must defer `- none` adjudication explicitly, not silently do a
+      // presence-only check with no acknowledgment of the limit.
+      if (!/planner does not adjudicate whether a `- none` claim is actually correct/.test(completenessSection[0]))
+        fail('.claude/agents/planner.md "#### 2. Completeness" is missing the B4 defer-explicitly sentence (planner does not adjudicate whether `- none` is correct) — mutation-observation-points T4.4 fix pass');
+    }
   }
 }
 
 // ---- 15. Observation Points production duty (mutation-observation-points plan, Phase 2) --------
 // Phase 1 pinned the ROSTER (a plan carries "### Observation Points"). This phase pins the PRODUCTION
-// duty that actually iterates that roster — executor.md's Detection power item 1(b) — so a rewrite
-// that quietly drops the load-bearing sub-rules (M2 must cover every consumption site, not one;
-// green-on-M2 is a finding, not a pass; the report must name file:line + the deleted line + the check
-// name) still passes validate. Section-scoped (6.1 method): extract item 1 only (between its own
-// "1. **Detection power**:" heading and the next "2. **Claim scope**:" heading), not the whole file —
-// item 1 is a large block and a generic whole-file pin would tolerate relocating these sub-rules
-// elsewhere, or duplicating the heading while gutting the body underneath it.
+// duty that actually iterates that roster — executor.md's Detection power item 1(b) — closing the
+// gap where a rewrite that quietly drops the load-bearing sub-rules (M2 must cover every consumption
+// site, not one; green-on-M2 is a finding, not a pass; the report must name file:line + the deleted
+// line + the check name) would otherwise still pass validate undetected. (T4.4 fix, B9: the previous
+// wording of this sentence read as if it were describing the current, post-fix state — "still passes
+// validate" with no "would" — the opposite of what this section does; corrected to state the gap this
+// section closes, not one that remains open.) Section-scoped (6.1 method): extract item 1 only
+// (between its own "1. **Detection power**:" heading and the next "2. **Claim scope**:" heading), not
+// the whole file — item 1 is a large block and a generic whole-file pin would tolerate relocating
+// these sub-rules elsewhere, or duplicating the heading while gutting the body underneath it.
 {
   const executorPath = path.join(ROOT, '.claude', 'agents', 'executor.md');
   if (!fs.existsSync(executorPath)) fail('.claude/agents/executor.md missing — cannot verify Observation Points production duty (Phase 2)');
@@ -1100,9 +1129,38 @@ for (const [relPath, must, why] of INVARIANTS) {
         [/every consumption site, not one/, 'the M2 all-consumption-sites rule (testing one call site and inferring the rest is not enough)'],
         [/GREEN on an M2 mutation is not a pass — it's a finding/, 'the green-on-M2-is-a-finding rule (an undefended consumption site is a finding, never reported as "all green")'],
         [/name the `file:line` and the literal text of the line you deleted, and the name of the check that went RED/, 'the M2 report-format rule (file:line + literal deleted line + the check name, per mutation)'],
+        // T4.4 fix (K1 pin 4 / O6): the casual-work connector sentence — deleting it left executor's
+        // no-plan-work duty undetectable while the three M2 items above stayed intact.
+        [/casual work with no plan targets whatever observable behavior the change itself newly created or altered/, 'the O6 casual-work connector (the observation-point duty applies with no plan too) — mutation-observation-points T4.4 fix pass (K1)'],
+        // T4.4 fix (B5): the >12-point class-representative escape must define "class", require every
+        // class represented (a floor, not just "pick one"), and require recorded membership.
+        [/with no class skipped/, 'the B5 class-floor rule (every class must have a representative, not just a chosen subset) — mutation-observation-points T4.4 fix pass'],
+        // T4.4 fix (B6): a fold claim must be recorded, not just a smaller mutation count.
+        [/record which sites were folded plus why they're equivalent/, 'the B6 fold-claim recording rule — mutation-observation-points T4.4 fix pass'],
+        // T4.4 fix (B8): an exclusion claim is not self-certifying without a recorded reason.
+        [/Record every exclusion with a one-line reason naming which of the two categories it falls under/, 'the B8 exclusion-recording rule — mutation-observation-points T4.4 fix pass'],
       ];
       for (const [re, label] of items)
         if (!re.test(section)) fail(`.claude/agents/executor.md item 1 "**Detection power**" is missing ${label} — mutation-observation-points Phase 2`);
+
+      // T4.4 fix (C1 MUST-fix): "#15 first-match anchor must assert count===1" — a decoy
+      // "1. **Detection power**:" occurrence inserted earlier in the file would hijack match()'s
+      // extraction start point. Assert the anchor phrase is unique in the whole file.
+      const detectionPowerAnchorCount = (read(executorPath).match(/1\.\s+\*\*Detection power\*\*:/g) || []).length;
+      if (detectionPowerAnchorCount !== 1)
+        fail(`.claude/agents/executor.md: expected exactly 1 occurrence of the "1. **Detection power**:" anchor, found ${detectionPowerAnchorCount} — a decoy/duplicate anchor could hijack which span gets checked (mutation-observation-points T4.4 fix, C1)`);
+
+      // T4.4 fix (C1 MUST-fix): ONE negative invariant against the cheapest quoted-repeal-class
+      // attack — marking this duty span inert with a neutering marker while the pinned phrases
+      // above stay byte-identical elsewhere. Scoped to THIS extracted span only (not the whole
+      // file) — rules/agents.md's T4.4 threat-model disclosure legitimately uses these same words,
+      // and scoping this check to the duty span itself (rather than a repo-wide scan) is the T2
+      // exemption decision: keep the disclosure prose outside every scanned span instead of
+      // building citation-exemption machinery for words this duty text has no legitimate reason to
+      // use. Known, disclosed gap: a quoted-repeal or free-form rephrase that avoids these 4 literal
+      // words entirely is not caught (see rules/agents.md's Pin threat model bullet).
+      if (/\b(WITHDRAWN|repealed|retired|not-operative)\b/.test(section))
+        fail(`.claude/agents/executor.md item 1 "**Detection power**" contains a neutering marker (WITHDRAWN/repealed/retired/not-operative) inside the pinned duty span — mutation-observation-points T4.4 fix pass (C1 negative invariant)`);
     }
   }
 }
@@ -1125,13 +1183,57 @@ for (const [relPath, must, why] of INVARIANTS) {
 
     const advSection = reviewerText.match(/### Adversarial Verification \(falsification duty\)[\s\S]*?(?=\n### Severity Levels)/);
     if (!advSection) fail('.claude/agents/reviewer.md: "### Adversarial Verification (falsification duty)" section not found (or unterminated before "### Severity Levels") — mutation-observation-points Phase 3');
-    else if (!/derive the observation-point roster[\s\S]*?never take the worker's\s+report roster at face value/.test(advSection[0]))
-      fail('.claude/agents/reviewer.md "### Adversarial Verification" is missing the consumption-side mutation duty (roster derived from the plan itself, not the worker\'s report) — mutation-observation-points Phase 3');
+    else {
+      if (!/derive the observation-point roster[\s\S]*?never take the worker's\s+report roster at face value/.test(advSection[0]))
+        fail('.claude/agents/reviewer.md "### Adversarial Verification" is missing the consumption-side mutation duty (roster derived from the plan itself, not the worker\'s report) — mutation-observation-points Phase 3');
+      const advItems = [
+        // T4.4 fix (K4): reviewer's roster-derivation duty must reach every path executor's does,
+        // including no-plan casual work — previously it only covered "the plan" (present or
+        // predating the section), leaving zero reviewer jurisdiction on a fully plan-less change.
+        [/jurisdiction executor\.md's casual-work duty covers/, 'the K4 jurisdiction-alignment clause (reviewer\'s roster derivation also covers no-plan casual work, matching executor.md) — mutation-observation-points T4.4 fix pass'],
+        // T4.4 fix (K1 pin 6 / O7): this sentence is the actual test-power filing rule for an
+        // undefended consumption site — the section-presence check above does not reach it.
+        [/finding, filed under the `test-power` category — never accept a bare "all green" claim/, 'the O7 test-power filing rule for an undefended consumption site — mutation-observation-points T4.4 fix pass (K1)'],
+        // T4.4 fix (B6): reviewer must verify a claimed fold rather than accept a smaller mutation
+        // count at face value.
+        [/which you then verify yourself before accepting it/, 'the B6 fold cross-check rule — mutation-observation-points T4.4 fix pass'],
+        // T4.4 fix (B8): a worker's exclusion claim is not self-certifying.
+        [/self-certifying either/, 'the B8 exclusion counter-rule (a worker\'s exclusion claim is checked, not trusted) — mutation-observation-points T4.4 fix pass'],
+      ];
+      for (const [re, label] of advItems)
+        if (!re.test(advSection[0])) fail(`.claude/agents/reviewer.md "### Adversarial Verification" is missing ${label}`);
+
+      // T4.4 fix (C1 MUST-fix): count===1 anchor + negative invariant, same rationale as section 15.
+      const advAnchorCount = (reviewerText.match(/### Adversarial Verification \(falsification duty\)/g) || []).length;
+      if (advAnchorCount !== 1)
+        fail(`.claude/agents/reviewer.md: expected exactly 1 occurrence of the "### Adversarial Verification (falsification duty)" anchor, found ${advAnchorCount} — a decoy heading could hijack which span gets checked (mutation-observation-points T4.4 fix, C1)`);
+      if (/\b(WITHDRAWN|repealed|retired|not-operative)\b/.test(advSection[0]))
+        fail('.claude/agents/reviewer.md "### Adversarial Verification" contains a neutering marker (WITHDRAWN/repealed/retired/not-operative) inside the pinned duty span — mutation-observation-points T4.4 fix pass (C1 negative invariant)');
+    }
 
     const defectSection = reviewerText.match(/### Defect-Class Checklist[\s\S]*?(?=\n### Probe Log)/);
     if (!defectSection) fail('.claude/agents/reviewer.md: "### Defect-Class Checklist" section not found (or unterminated before "### Probe Log") — mutation-observation-points Phase 3');
-    else if (!/observation wiring:.*consumption side is deleted/.test(defectSection[0]))
-      fail('.claude/agents/reviewer.md "### Defect-Class Checklist" is missing the "observation wiring" line — mutation-observation-points Phase 3');
+    else {
+      if (!/observation wiring:.*consumption side is deleted/.test(defectSection[0]))
+        fail('.claude/agents/reviewer.md "### Defect-Class Checklist" is missing the "observation wiring" line — mutation-observation-points Phase 3');
+      // T4.4 fix (B5): the checklist's landing slot for the class-representative escape.
+      if (!/does the report list every class's membership with no class skipped/.test(defectSection[0]))
+        fail('.claude/agents/reviewer.md "### Defect-Class Checklist" is missing the B5 class-floor check line — mutation-observation-points T4.4 fix pass');
+
+      const defectAnchorCount = (reviewerText.match(/### Defect-Class Checklist/g) || []).length;
+      if (defectAnchorCount !== 1)
+        fail(`.claude/agents/reviewer.md: expected exactly 1 occurrence of the "### Defect-Class Checklist" anchor, found ${defectAnchorCount} — a decoy heading could hijack which span gets checked (mutation-observation-points T4.4 fix, C1)`);
+      if (/\b(WITHDRAWN|repealed|retired|not-operative)\b/.test(defectSection[0]))
+        fail('.claude/agents/reviewer.md "### Defect-Class Checklist" contains a neutering marker (WITHDRAWN/repealed/retired/not-operative) inside the pinned duty span — mutation-observation-points T4.4 fix pass (C1 negative invariant)');
+    }
+
+    // T4.4 fix (B2): the Finding line format sentence is the SOT copy of the closed 6-word category
+    // set outside quality-loop/SKILL.md — previously unpinned entirely. Anchored on the trailing
+    // backtick+period so appending a 7th slug inside the quotes, or replacing the framing sentence
+    // while leaving the quoted list untouched, both go RED (a rephrase that avoids this literal
+    // sentence and quotes the list elsewhere is a known, disclosed gap — same class as C1).
+    if (!/category is one of 6 stable slugs: `test-power \/ overclaim \/ match-direction \/ unverified-claim \/ scope \/ other`\./.test(reviewerText))
+      fail('.claude/agents/reviewer.md is missing the closed-set category-slug sentence ("category is one of 6 stable slugs: `test-power / overclaim / match-direction / unverified-claim / scope / other`.") anchored to its exact framing and trailing punctuation — mutation-observation-points T4.4 fix pass (B2)');
   }
 
   const qlPath = path.join(ROOT, '.claude', 'skills', 'quality-loop', 'SKILL.md');
@@ -1141,20 +1243,90 @@ for (const [relPath, must, why] of INVARIANTS) {
 
     const loopSection = qlText.match(/## Loop Contract \(max 3 cycles\)[\s\S]*?(?=\n## Stall handling)/);
     if (!loopSection) fail('.claude/skills/quality-loop/SKILL.md: "## Loop Contract" section not found (or unterminated before "## Stall handling") — mutation-observation-points Phase 3');
-    else if (!/compute\/decide side or any consumption site of an observation point[\s\S]*?must include \*\*M2\*\* \(every consumption site\), not\s*\n?\s*M1 alone/.test(loopSection[0]))
-      fail('.claude/skills/quality-loop/SKILL.md "## Loop Contract" re-review mutation-evidence gate no longer names observation points (compute/decide side or consumption site) and requires M2 — mutation-observation-points Phase 3');
+    else {
+      if (!/compute\/decide side or any consumption site of an observation point[\s\S]*?must include \*\*M2\*\* \(every consumption site\), not\s*\n?\s*M1 alone/.test(loopSection[0]))
+        fail('.claude/skills/quality-loop/SKILL.md "## Loop Contract" re-review mutation-evidence gate no longer names observation points (compute/decide side or consumption site) and requires M2 — mutation-observation-points Phase 3');
+      // T4.4 fix (B7): M2 evidence must gate APPROVE at any cycle, not only step [4]'s re-review —
+      // a cycle-1 APPROVE previously never reached the M2 gate at all.
+      if (!/precondition of APPROVE at any cycle, not only on re-review/.test(loopSection[0]))
+        fail('.claude/skills/quality-loop/SKILL.md "## Loop Contract" is missing the B7 any-cycle M2-precondition clause — mutation-observation-points T4.4 fix pass');
+
+      const loopAnchorCount = (qlText.match(/## Loop Contract \(max 3 cycles\)/g) || []).length;
+      if (loopAnchorCount !== 1)
+        fail(`.claude/skills/quality-loop/SKILL.md: expected exactly 1 occurrence of the "## Loop Contract (max 3 cycles)" anchor, found ${loopAnchorCount} — a decoy heading could hijack which span gets checked (mutation-observation-points T4.4 fix, C1)`);
+      if (/\b(WITHDRAWN|repealed|retired|not-operative)\b/.test(loopSection[0]))
+        fail('.claude/skills/quality-loop/SKILL.md "## Loop Contract" contains a neutering marker (WITHDRAWN/repealed/retired/not-operative) inside the pinned duty span — mutation-observation-points T4.4 fix pass (C1 negative invariant)');
+    }
 
     const redTeamSection = qlText.match(/### Red-Team Second Seat \(standing, relay-independent\)[\s\S]*?(?=\n### Lens Catalog)/);
     if (!redTeamSection) fail('.claude/skills/quality-loop/SKILL.md: "### Red-Team Second Seat" section not found (or unterminated before "### Lens Catalog") — mutation-observation-points Phase 3');
-    else if (!/deleting a consumption site \(a call, an envelope\/response assembly, or the branch that acts on it\) while every unit test stays green/.test(redTeamSection[0]))
-      fail('.claude/skills/quality-loop/SKILL.md "### Red-Team Second Seat" lens text no longer names consumption-site deletion — mutation-observation-points Phase 3');
+    else {
+      if (!/deleting a consumption site \(a call, an envelope\/response assembly, or the branch that acts on it\) while every unit test stays green/.test(redTeamSection[0]))
+        fail('.claude/skills/quality-loop/SKILL.md "### Red-Team Second Seat" lens text no longer names consumption-site deletion — mutation-observation-points Phase 3');
+
+      const redTeamAnchorCount = (qlText.match(/### Red-Team Second Seat \(standing, relay-independent\)/g) || []).length;
+      if (redTeamAnchorCount !== 1)
+        fail(`.claude/skills/quality-loop/SKILL.md: expected exactly 1 occurrence of the "### Red-Team Second Seat (standing, relay-independent)" anchor, found ${redTeamAnchorCount} — a decoy heading could hijack which span gets checked (mutation-observation-points T4.4 fix, C1)`);
+      if (/\b(WITHDRAWN|repealed|retired|not-operative)\b/.test(redTeamSection[0]))
+        fail('.claude/skills/quality-loop/SKILL.md "### Red-Team Second Seat" contains a neutering marker (WITHDRAWN/repealed/retired/not-operative) inside the pinned duty span — mutation-observation-points T4.4 fix pass (C1 negative invariant)');
+    }
 
     // Closed 6-word category set (:86-92 region) must stay byte-identical — Phase 3 explicitly
     // folds the new "observation wiring" finding into the existing `test-power` slug rather than
     // adding a new category word (plan Rejected Alternatives — a new word would split the
     // recurring-category tally into a separate slot).
-    if (!/test-power \/ overclaim \/ match-direction \/ unverified-claim \/ scope \/ other/.test(qlText))
-      fail('.claude/skills/quality-loop/SKILL.md no longer carries the closed 6-word category set verbatim — mutation-observation-points Phase 3 requires this set stay untouched (observation wiring folds into `test-power`, not a new word)');
+    // T4.4 fix (B2): anchored the trailing backtick+")" so appending a 7th slug inside the quotes
+    // no longer passes as a substring-prefix match (seat B's hostile mutation (i)).
+    if (!/`test-power \/ overclaim \/ match-direction \/ unverified-claim \/ scope \/ other`\)/.test(qlText))
+      fail('.claude/skills/quality-loop/SKILL.md no longer carries the closed 6-word category set verbatim, anchored to its exact quoting — mutation-observation-points Phase 3 requires this set stay untouched (observation wiring folds into `test-power`, not a new word); T4.4/B2 tightened the anchor to catch an appended 7th slug');
+
+    // T4.4 fix (B10): the slug-merge disclosure must stay present so a future reader of the
+    // recurring-category trigger knows `test-power` now covers two distinct defect classes.
+    if (!/`test-power` now covers two\s*\ndistinct defect classes/.test(qlText))
+      fail('.claude/skills/quality-loop/SKILL.md is missing the B10 slug-merge disclosure ("`test-power` now covers two distinct defect classes") — mutation-observation-points T4.4 fix pass');
+  }
+}
+
+// ---- 17. Observation Points bugfix-path + standing-probe wiring (T4.4 fix pass, K1 pins 1-3) -----
+// T4.4 code review (fusion K1, seat B's 6-site list) found 3 of the 6 undefended-consumption sites
+// live outside the three files sections 14-16 already read: harness/SKILL.md's bugfix step 4 +
+// Quality Gate line (O5 M1+M2), debugger.md's pointer line (O5), and rules/agents.md's executor
+// standing-probe M2 expectation (O1②) — every one of these could be deleted with validate still
+// reporting PASS. Section-scoped (6.1 method) where the file has a natural section boundary;
+// debugger.md's pointer is a single Fix-step bullet with no enclosing section, so it is checked
+// against the file text directly (existsSync+fail guard still applies — no silent skip).
+{
+  const harnessSkillPath = path.join(ROOT, '.claude', 'skills', 'harness', 'SKILL.md');
+  if (!fs.existsSync(harnessSkillPath)) fail('.claude/skills/harness/SKILL.md missing — cannot verify Observation Points bugfix-path wiring (K1 pin 1 / O5)');
+  else {
+    const harnessText = read(harnessSkillPath);
+
+    const bugfixSection = harnessText.match(/### bugfix[\s\S]*?(?=\n### refactor)/);
+    if (!bugfixSection) fail('.claude/skills/harness/SKILL.md: "### bugfix" section not found (or unterminated before "### refactor") — cannot verify the regression-test step\'s observation-point pointer (K1 pin 1 / O5)');
+    else if (!/run it as an observation point too — M1\/M2 per executor\.md's Detection power duty/.test(bugfixSection[0]))
+      fail('.claude/skills/harness/SKILL.md "### bugfix" step 4 is missing the observation-point M1/M2 pointer — mutation-observation-points T4.4 fix pass (K1 pin 1 / O5)');
+
+    const qualityGateSection = harnessText.match(/## Quality Gate[\s\S]*$/);
+    if (!qualityGateSection) fail('.claude/skills/harness/SKILL.md: "## Quality Gate" section not found — cannot verify the bugfix regression-test observation-point line (K1 pin 1 / O5)');
+    else if (!/the regression-test step \(4\) additionally covers any observation point the fix touches \(M1\/M2, executor\.md Detection power\)/.test(qualityGateSection[0]))
+      fail('.claude/skills/harness/SKILL.md "## Quality Gate" is missing the bugfix regression-test observation-point line — mutation-observation-points T4.4 fix pass (K1 pin 1 / O5)');
+  }
+
+  const debuggerPath = path.join(ROOT, '.claude', 'agents', 'debugger.md');
+  if (!fs.existsSync(debuggerPath)) fail('.claude/agents/debugger.md missing — cannot verify Observation Points wiring (K1 pin 2 / O5)');
+  else if (!/run the same two mutations executor\.md's Detection power duty requires for an observation point \(M1: break the line that computes\/decides it; M2: break every place the product consumes it\) before reporting/.test(read(debuggerPath)))
+    fail('.claude/agents/debugger.md is missing the observation-point M1/M2 pointer in its Fix step — mutation-observation-points T4.4 fix pass (K1 pin 2 / O5)');
+
+  const agentsRulePath = path.join(ROOT, '.claude', 'rules', 'agents.md');
+  if (!fs.existsSync(agentsRulePath)) fail('.claude/rules/agents.md missing — cannot verify Observation Points wiring (K1 pin 3 / O1②)');
+  else {
+    const agentsRuleText = read(agentsRulePath);
+    if (!/reports the consumption-side green as an M2 finding \(mutation-observation-points Phase 2\) — not a pass/.test(agentsRuleText))
+      fail('.claude/rules/agents.md executor probe is missing the M2-finding PASS condition — mutation-observation-points T4.4 fix pass (K1 pin 3 / O1②)');
+    // T4.4 fix (T3 durable home): the pin threat-model disclosure sentence itself must not silently
+    // vanish either — it is the one place this repo states pins are tamper-evidence, not tamper-proof.
+    if (!/tamper-EVIDENCE against accidental\/careless drift, not tamper-PROOF against an adversarial editor/.test(agentsRuleText))
+      fail('.claude/rules/agents.md is missing the T4.4 pin threat-model disclosure ("tamper-EVIDENCE ... not tamper-PROOF") — mutation-observation-points T4.4 fix pass (C1/T3 durable home)');
   }
 }
 
