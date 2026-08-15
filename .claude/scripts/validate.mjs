@@ -1345,19 +1345,34 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
         fail('.claude/skills/harness/SKILL.md "### bugfix" section contains a neutering marker (withdrawn/repealed/retired/not-operative/撤回済み, case-insensitive) inside the pinned duty span — mutation-observation-points T4.4 tightening pass (A2)');
     }
 
-    const qualityGateSection = harnessText.match(/## Quality Gate[\s\S]*$/);
+    // Closure pass (C2): previously matched heading-to-EOF unconditionally ([\s\S]*$). A red-team
+    // probe showed that shape lets an attacker strip the operative-bullet clause and re-host it
+    // verbatim under a NEW "## Appendix" heading appended at the end of the file: since that new
+    // heading still sits after "## Quality Gate" and before EOF, the old unbounded extraction still
+    // swept it in, so the content-presence check just below found the clause "present" even though
+    // it no longer lived in the operative bullet — and the neuter guard didn't fire either, because
+    // the re-hosted copy was labeled with words outside NEUTER_MARKER_RE's alternation (e.g. "旧規定"
+    // rather than "撤回済み"). Bounding the span to stop at the next heading (of any level) instead
+    // of running unconditionally to EOF excludes any such re-hosted appendix from the match, so the
+    // content check now correctly goes RED when the clause is moved out of the operative bullet.
+    // Behavior on the real, unmutated file is unchanged (there is currently no heading after
+    // "## Quality Gate", so the match still runs to true EOF either way).
+    const qualityGateSection = harnessText.match(/## Quality Gate[\s\S]*?(?=\n#{1,6} |$)/);
     if (!qualityGateSection) fail('.claude/skills/harness/SKILL.md: "## Quality Gate" section not found — cannot verify the bugfix regression-test observation-point line (K1 pin 1 / O5)');
     else {
       if (!/the regression-test step \(4\) additionally covers any observation point the fix touches \(M1\/M2, executor\.md Detection power\)/.test(qualityGateSection[0]))
         fail('.claude/skills/harness/SKILL.md "## Quality Gate" is missing the bugfix regression-test observation-point line — mutation-observation-points T4.4 fix pass (K1 pin 1 / O5)');
 
-      // T4.4 tightening pass (A2): same count===1 + negative-invariant hardening as bugfixSection
-      // above. Unlike every other span in this family, this extraction runs to end-of-file
-      // ([\s\S]*$, no real terminator heading) — but the count===1 check below counts occurrences
-      // of the ANCHOR TEXT across the whole file, which is independent of how the span itself is
-      // bounded, so the EOF shape does not block a clean count===1 (verified: "## Quality Gate"
-      // occurs exactly once in the file today) — no retargeting to a narrower terminator was
-      // needed.
+      // T4.4 tightening pass (A2): count===1 + negative-invariant hardening, same as bugfixSection
+      // above. Correction (closure pass, C2): the comment that used to sit here reasoned that
+      // because the count===1 check below counts ANCHOR TEXT occurrences across the WHOLE FILE
+      // (independent of how the span itself is bounded), the old unconditional heading-to-EOF shape
+      // needed no retargeting. That reasoning holds for the anchor count specifically (still true —
+      // "## Quality Gate" occurs exactly once) but did NOT hold for the content-presence check or
+      // the neuter guard just below, both of which scan qualityGateSection[0] itself: an unbounded
+      // span let a re-hosted appendix (see the comment above the regex) satisfy both of those checks
+      // without the clause being operative. The span is now bounded, closing that gap; this count
+      // check is unaffected either way.
       const qualityGateAnchorCount = (harnessText.match(/## Quality Gate/g) || []).length;
       if (qualityGateAnchorCount !== 1)
         fail(`.claude/skills/harness/SKILL.md: expected exactly 1 occurrence of the "## Quality Gate" anchor, found ${qualityGateAnchorCount} — a decoy heading could hijack which span gets checked (mutation-observation-points T4.4 tightening pass, A2)`);
@@ -1374,8 +1389,20 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
     // instead of a whole-file-text test — see the header comment above this block.
     const fixSection = debuggerText.match(/### 5\. Fix[\s\S]*?(?=\n### 6\. Report)/);
     if (!fixSection) fail('.claude/agents/debugger.md: "### 5. Fix" section not found (or unterminated before "### 6. Report") — cannot verify the observation-point M1/M2 pointer (K1 pin 2 / O5)');
-    else if (!/run the same two mutations executor\.md's Detection power duty requires for an observation point \(M1: break the line that computes\/decides it; M2: break every place the product consumes it\) before reporting/.test(fixSection[0]))
-      fail('.claude/agents/debugger.md "### 5. Fix" is missing the observation-point M1/M2 pointer — mutation-observation-points T4.4 fix pass (K1 pin 2 / O5)');
+    else {
+      if (!/run the same two mutations executor\.md's Detection power duty requires for an observation point \(M1: break the line that computes\/decides it; M2: break every place the product consumes it\) before reporting/.test(fixSection[0]))
+        fail('.claude/agents/debugger.md "### 5. Fix" is missing the observation-point M1/M2 pointer — mutation-observation-points T4.4 fix pass (K1 pin 2 / O5)');
+
+      // Closure pass (C1): this was the only one of the 9 section-scoped duty spans in this family
+      // with no count===1 decoy-anchor guard at all — a red-team probe re-hosted this pointer
+      // sentence under a decoy "### 5. Fix (...)" heading inserted ABOVE the real one and validate
+      // stayed PASS, because match() above extracts from whichever "### 5. Fix" occurrence comes
+      // first in the file (the decoy), not necessarily the real one. Same shape as the other 8
+      // anchors in this family (sections 14-17).
+      const fixAnchorCount = (debuggerText.match(/### 5\. Fix/g) || []).length;
+      if (fixAnchorCount !== 1)
+        fail(`.claude/agents/debugger.md: expected exactly 1 occurrence of the "### 5. Fix" anchor, found ${fixAnchorCount} — a decoy heading could hijack which span gets checked (mutation-observation-points closure pass, C1)`);
+    }
   }
 
   const agentsRulePath = path.join(ROOT, '.claude', 'rules', 'agents.md');
