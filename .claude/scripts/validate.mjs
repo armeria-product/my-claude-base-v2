@@ -1463,6 +1463,14 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
 //     (`path.dirname(path.dirname(...))`) — it is exercised only on real scan targets, and the
 //     fixture has no equivalent to exercise it against. Measured GREEN (code-review-cycle1-fusion.md
 //     F1/R1, and PLAN.md M1f): mutating the real-root special case leaves exit 0.
+//   - Same category, found DURING this remediation pass (not by the original review): 18b's call
+//     `applyCodemapResult(target, codemapTotals)` passes a specific object by reference; swapping the
+//     2nd argument for any other object shaped like a sink (e.g. a throwaway `{ fail, warn, files: 0,
+//     anchored: 0, unanchored: 0 }`) leaves `codemapTotals` at its initial zeros and the header prints
+//     "0 files, 0 anchored, 0 unanchored" with exit 0 — the fixture's capture-sink calls in 18d use
+//     their OWN local sink objects and cannot observe which object 18b's call site happens to pass.
+//     Not fixable by a floor on the real count for the same reason as the bullet above (a clean clone
+//     legitimately scans 0 real files). Measured GREEN: 2026-08-16, this remediation pass.
 //   - The absolute-path rejection's char class (`^(?:[A-Za-z]:[\\/]|[\\/])`) needs BOTH backslash and
 //     forward slash for the same OS-independence reason the `..`-segment check below does (C20 pins
 //     that one) — but no fixture case isolates the backslash half of THIS regex (C18 is
@@ -1740,9 +1748,12 @@ function applyCodemapResult(target, sink) {
   sink.unanchored += target.unanchoredCount;
 }
 
-let codemapFilesScanned = 0;
-let codemapAnchoredTotal = 0;
-let codemapUnanchoredTotal = 0;
+// codemapTotals doubles as the real-file sink passed to applyCodemapResult() (F1 follow-up, found
+// during this same remediation pass): an earlier draft copied a separate accumulator's fields into
+// these 3 counters AFTER the loop, which was itself an unshared, unpinned consumption site (mutating
+// the copy-out left the header silently at "0 files, 0 anchored, 0 unanchored" with exit 0). Using
+// this object as the sink directly means there is no copy-out step left to mutate away.
+const codemapTotals = { fail, warn, files: 0, anchored: 0, unanchored: 0 };
 
 // -- 18a. target list derivation + pin P1 --
 // Derived from session-persistence.md's OWN frontmatter (not a value hardcoded twice) — the paths:
@@ -1780,7 +1791,6 @@ let derivedCodemapTargets = null;
 // -- 18b. real-file scan + pin P2 --
 {
   const visitedGlobs = [];
-  const realSink = { fail, warn, files: 0, anchored: 0, unanchored: 0 };
   for (const glob of derivedCodemapTargets || []) {
     visitedGlobs.push(glob);
     for (const relTarget of expandTargets(ROOT, glob)) {
@@ -1795,12 +1805,9 @@ let derivedCodemapTargets = null;
         warn(`${rel(mapPathAbs)}: could not read the CODEMAP file itself (encoding or permissions) — skipping anchor checks for this file`);
         continue;
       }
-      applyCodemapResult(target, realSink);
+      applyCodemapResult(target, codemapTotals);
     }
   }
-  codemapFilesScanned = realSink.files;
-  codemapAnchoredTotal = realSink.anchored;
-  codemapUnanchoredTotal = realSink.unanchored;
   if (derivedCodemapTargets !== null && JSON.stringify(visitedGlobs) !== JSON.stringify(derivedCodemapTargets))
     fail(`section 18 P2: visited [${visitedGlobs.join(', ')}] but the derived target list is [${(derivedCodemapTargets || []).join(', ')}]`);
 }
@@ -1950,7 +1957,7 @@ let derivedCodemapTargets = null;
 // ---- Report ----
 console.log('Harness Validation (v2)');
 console.log(`  agents: ${agentNames.size} | skills: ${fs.readdirSync(skillsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).length} | hooks registered: ${registered.size}`);
-console.log(`  codemap: ${codemapFilesScanned} files, ${codemapAnchoredTotal} anchored, ${codemapUnanchoredTotal} unanchored`);
+console.log(`  codemap: ${codemapTotals.files} files, ${codemapTotals.anchored} anchored, ${codemapTotals.unanchored} unanchored`);
 for (const w of warns) console.log('  WARN  ' + w);
 for (const f of fails) console.log('  FAIL  ' + f);
 console.log(fails.length ? `\nVERDICT: FAIL (${fails.length} findings, ${warns.length} warnings)` : `\nVERDICT: PASS (${warns.length} warnings)`);
