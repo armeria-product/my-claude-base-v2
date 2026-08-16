@@ -17,6 +17,7 @@ This file is not a real map. It is the expectation input for the section-18 self
 - C12 grace, not yet anchored — `codemap-anchor.fixture-target.txt:21`
 - C14 FAIL bare + anchor with no governing declaration — `:12#REPEAT`
 - C18 FAIL absolute path — `/tmp/absolute.txt:1#x`
+- C22 FAIL whitespace-only anchor — `codemap-anchor.fixture-target.txt:1#	`
 - N1 not an annotation (port, no declaration, no anchor) — `:8000`
 
 ## Declaration scope
@@ -43,5 +44,6 @@ This file is not a real map. It is the expectation input for the section-18 self
 - N2 not an annotation (full annotation inside a fence) — `codemap-anchor.fixture-target.txt:1#const ALPHA = 1;`
 - N3 not an annotation (bare inside a fence) — `:41#const MARKER_X`
 ```
+- C21 PASS after fence closes — `codemap-anchor.fixture-target.txt:1#const ALPHA = 1;`
 
 最終確認: 2026-08-16

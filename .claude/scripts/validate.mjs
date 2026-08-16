@@ -1430,7 +1430,7 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
 // less (pre-migration) annotation is a WARN-only grace period, never a FAIL, unless the file opts in
 // via the アンカー移行済み marker (session-persistence.md §6.5 hygiene rules 7-8).
 //
-// Detection-power design (why 18a-18d exist as 3 separate pins, not 1): a clean clone has ZERO
+// Detection-power design (why 18a-18d exist as separate pins, not 1): a clean clone has ZERO
 // tasks/CODEMAP.md content (both repos' CODEMAP files are gitignored) and may have zero dev/*
 // products, so "the real files disagree with expectations" cannot be the floor — a degenerate
 // scan (narrowed target list, disabled loop, broken extraction regex) would look identical to "there
@@ -1443,6 +1443,16 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
 // also runs the whole classifier against a committed fixture map with a literal expected-value table
 // (`CASES`), so gutting the classification logic itself goes RED independent of any real file.
 //
+// code-review-cycle1-fusion.md F1: the above pinned classification (v/code/found) but never pinned
+// the layer AFTER it — message emission, the fail-vs-warn dispatch, and the running counters — so
+// 18b's real-file path (the fixture structurally could never reach it) had zero coverage at 6 named
+// consumption sites. Fixed by routing BOTH the fixture and real files through the same
+// scanCodemapTarget()/applyCodemapResult() functions: 18d now asserts per-case that a warn/fail
+// message was actually emitted (with the correct drift line numbers), that anchored/unanchored/
+// fenced-token counts match a value derived from CASES itself, and — via a capture sink passed to
+// the SAME applyCodemapResult() 18b calls — that the fail/warn dispatch and all 3 counter increments
+// route correctly. See code-review-cycle1-fusion.md F1 for the mutation-by-mutation RED evidence.
+//
 // Disclosed gaps (named here so a future reader does not mistake "not covered" for "covered"):
 //   - A mutation that special-cases the REAL product root only (e.g. `if (dir === path.join(ROOT,
 //     'dev')) return []`) is NOT caught: P1/P2 only pin the glob STRINGS, and P3 exercises the
@@ -1451,27 +1461,37 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
 //     products, so real-file product COUNT cannot be used as a floor (would reject the legitimate
 //     zero-product state). Same reasoning extends to the dev/{name} baseDir derivation below
 //     (`path.dirname(path.dirname(...))`) — it is exercised only on real scan targets, and the
-//     fixture has no equivalent to exercise it against.
+//     fixture has no equivalent to exercise it against. Measured GREEN (code-review-cycle1-fusion.md
+//     F1/R1, and PLAN.md M1f): mutating the real-root special case leaves exit 0.
 //   - The absolute-path rejection's char class (`^(?:[A-Za-z]:[\\/]|[\\/])`) needs BOTH backslash and
 //     forward slash for the same OS-independence reason the `..`-segment check below does (C20 pins
 //     that one) — but no fixture case isolates the backslash half of THIS regex (C18 is
 //     `/tmp/absolute.txt`, caught by the slash-only second alternative regardless of the drive-letter
 //     branch's own char class). Narrowing `[A-Za-z]:[\\/]` to `[A-Za-z]:[\/]` therefore stays GREEN.
-//     Not fixed here (would need a 20th fixture case and a re-derivation of every extraction-count-
+//     Not fixed here (would need a 22nd fixture case and a re-derivation of every extraction-count-
 //     dependent expected value) — recorded as an undefended consumption site, not hidden.
 //   - realpath() is never called (symlinks/junctions are not resolved) — lexical containment only.
-//     A junction inside the product root pointing outside it is not caught. Accepted: writing an
-//     annotation only reveals a line NUMBER (never file content, see the canary check in 18d), and
-//     whoever can edit the CODEMAP can already read the real file.
+//     A junction inside the product root pointing outside it is not caught. Accepted, with a
+//     narrower claim than earlier drafts made (code-review-cycle1-fusion.md F7): writing an
+//     annotation only reveals a line NUMBER, never file content (the canary check in 18d enforces
+//     this) — but "whoever can edit the CODEMAP can already read the real file" does NOT hold for a
+//     file the Read tool's deny-list / block-secret-read.js refuse (`.env`, `*.pem`, `*.key`,
+//     `**/secrets/**`): this check is a guessing oracle over those files that a direct read is not.
+//     The same deny is already bypassable more directly via `grep`/`sed`/`awk`/`node -e` (one pass,
+//     full content) — that is why this is accepted rather than fixed here, not because the original
+//     "already readable" reasoning was correct.
 //   - `.txt` (not `.md`) is the fixture extension by design, not by directory placement: walkMd
 //     (#4/#9.5, `/\.(md|js|json|html)$/`) and walkJs (#9, `/\.(js|mjs)$/`) both skip `.txt`, which
 //     matters because these fixtures deliberately contain "broken" examples (dead-ref-shaped paths,
 //     absolute paths) that must never be scanned as if they were real harness content.
 const CODEMAP_CANARY = 'ZZLEAKCANARYZZ';
-const CODEMAP_EXPECTED_EXTRACTED = 19;
+const CODEMAP_EXPECTED_EXTRACTED = 21;
 const CODEMAP_EXPECTED_EXTRACTED_MIGRATED = 1;
-const CODEMAP_EXPECTED_CASES = 19;
+const CODEMAP_EXPECTED_CASES = 21;
 const CODEMAP_LOW_DISTINCT_LINES = 10;
+const CODEMAP_FOUND_DISPLAY_CAP = 20; // F11: drift WARNs cap the printed line-number list so one
+// pathological match count cannot balloon a single message to megabytes and bury real FAILs below it
+const CODEMAP_EXPECTED_FENCED_LIKE = 2; // F2/F3: N2 (full annotation) + N3 (bare annotation) inside the fixture's fenced block
 const CODEMAP_EXPECTED_FIXTURE_PRODUCTS = ['products/alpha/tasks/map.txt', 'products/beta/tasks/map.txt'];
 const CODEMAP_EXPECTED_TARGETS = ['tasks/CODEMAP.md', 'dev/*/tasks/CODEMAP.md'];
 const CODEMAP_MIGRATION_MARKER_RE = /^アンカー移行済み:\s*\d{4}-\d{2}-\d{2}\s*$/m;
@@ -1510,7 +1530,17 @@ const CASES = [
   { id: 'C17', v: 'pass', code: 'ok', found: [1] },
   { id: 'C18', v: 'fail', code: 'absolute', found: [] },
   { id: 'C20', v: 'fail', code: 'dotdot', found: [] },
+  { id: 'C21', v: 'pass', code: 'ok', found: [1] }, // F3: sits AFTER the fixture's fence closes — deleting the fence-close branch swallows this case too, giving the closing half of the fence toggle detection power
+  { id: 'C22', v: 'fail', code: 'empty-anchor', found: [] }, // F5: whitespace-only anchor — must normalize before the empty-anchor guard, not just before matching
 ];
+// Derived (not hardcoded) from CASES itself, which IS the committed, hand-authored source of truth
+// pinned by CODEMAP_EXPECTED_CASES above — so a mutation to computeCodemapReport's anchored/
+// unanchored counting is caught by comparing against these without duplicating a second hand-kept
+// number that could itself drift from CASES.
+const CODEMAP_EXPECTED_ANCHORED = CASES.filter((c) => c.v !== 'grace').length;
+const CODEMAP_EXPECTED_UNANCHORED = CASES.filter((c) => c.v === 'grace').length;
+const CODEMAP_EXPECTED_ANCHORED_MIGRATED = 0;
+const CODEMAP_EXPECTED_UNANCHORED_MIGRATED = 1;
 
 function listDir(dir) {
   return fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name) : [];
@@ -1533,6 +1563,15 @@ function expandTargets(rootDir, glob) {
 function hasMigrationMarker(text) {
   return CODEMAP_MIGRATION_MARKER_RE.test(text);
 }
+// countCodemapLikeTokens: counts annotation-shaped tokens on a line WITHOUT extracting them as real
+// candidates — used only to measure what a fenced block skipped (F2), so adding a single ``` fence
+// line to a CODEMAP is visible as a WARN instead of silently un-checking everything after it.
+function countCodemapLikeTokens(lineText) {
+  let n = 0;
+  for (const _ of lineText.matchAll(CODEMAP_FULL_RE)) n++;
+  for (const _ of lineText.matchAll(CODEMAP_BARE_RE)) n++;
+  return n;
+}
 // codemapClassify: the decision order below IS the spec (session-persistence.md §6.5) — order
 // matters because containment must be settled before existence is ever checked (a path that resolves
 // outside the product root must never reach fs.existsSync on an attacker-chosen absolute target).
@@ -1549,7 +1588,14 @@ function codemapClassify(cand, baseDir) {
     : abs === baseAbs || abs.startsWith(baseAbs + path.sep);
   if (!contained) return { v: 'fail', code: 'escape', found: [] }; // POSIX: unreachable behind the 2 guards above; win32: reachable via a drive-relative path (e.g. `C:x.txt`) — still FAILs, containment holds either way
   if (cand.anchor === undefined) return { v: 'grace', code: 'unanchored', found: [] };
-  if (cand.anchor === '') return { v: 'fail', code: 'empty-anchor', found: [] };
+  const norm = (s) => s.trim().replace(/\s+/g, ' ');
+  const normAnchor = norm(cand.anchor);
+  // F5 (code-review-cycle1-fusion.md): the empty-anchor guard must look at the NORMALIZED anchor,
+  // not the raw one — a whitespace-only anchor (' ', '\t') is non-empty raw but normalizes to '',
+  // and an empty anchor matches every line (see the empty-anchor reason text), which would PASS
+  // forever and — because a pass still counts toward anchoredCount — let a file game its way into
+  // "fully anchored" migration-marker eligibility without any real anchor being written.
+  if (normAnchor === '') return { v: 'fail', code: 'empty-anchor', found: [] };
   if (!fs.existsSync(abs)) return { v: 'fail', code: 'no-file', found: [] };
   let content;
   try {
@@ -1557,8 +1603,6 @@ function codemapClassify(cand, baseDir) {
   } catch {
     return { v: 'warn', code: 'unreadable', found: [] };
   }
-  const norm = (s) => s.trim().replace(/\s+/g, ' ');
-  const normAnchor = norm(cand.anchor);
   const found = [];
   content.split('\n').forEach((lineText, i) => {
     if (norm(lineText).includes(normAnchor)) found.push(i + 1);
@@ -1577,11 +1621,17 @@ function scanCodemap(mapPath, baseDir) {
   const lines = read(mapPath).split('\n');
   let activeDecl = null;
   let inFence = false;
+  let fencedLikeCount = 0; // F2: annotation-shaped tokens skipped because a fence was open
   const candidates = [];
   lines.forEach((lineText, idx) => {
     const mapLine = idx + 1;
     if (inFence) {
-      if (CODEMAP_FENCE_RE.test(lineText)) inFence = false;
+      if (CODEMAP_FENCE_RE.test(lineText)) {
+        inFence = false; // F3: the CLOSE half of the toggle — C21 sits after this fence closes,
+        // so deleting this branch (leaving inFence stuck true) makes C21 vanish from extraction too
+        return;
+      }
+      fencedLikeCount += countCodemapLikeTokens(lineText);
       return;
     }
     if (CODEMAP_FENCE_RE.test(lineText)) {
@@ -1604,19 +1654,28 @@ function scanCodemap(mapPath, baseDir) {
       candidates.push({ mapLine, isBare: true, path: activeDecl, rawLines: m[1], anchor, hasDecl });
     }
   });
-  return candidates.map((c) => ({ ...c, ...codemapClassify(c, baseDir) }));
+  return { results: candidates.map((c) => ({ ...c, ...codemapClassify(c, baseDir) })), fencedLikeCount };
+}
+// F6: strip C0 control characters (ESC, CR, ...) from CODEMAP-sourced text before it is ever
+// embedded in a printed WARN/FAIL line — display only, never used for matching (codemapClassify
+// still searches against the raw anchor). Without this, an anchor containing ESC/CR sequences
+// reaches console.log verbatim and can erase/overwrite a real FAIL line already on the terminal.
+function codemapSanitizeForDisplay(s) {
+  return s == null ? s : s.replace(/[\x00-\x1F\x7F]/g, '');
 }
 function describeCodemapAnnotation(r) {
-  const anchorPart = r.anchor === undefined ? '' : `#${r.anchor}`;
-  if (!r.isBare) return `\`${r.path}:${r.rawLines}${anchorPart}\``;
+  const anchor = codemapSanitizeForDisplay(r.anchor);
+  const pathText = codemapSanitizeForDisplay(r.path);
+  const anchorPart = anchor === undefined ? '' : `#${anchor}`;
+  if (!r.isBare) return `\`${pathText}:${r.rawLines}${anchorPart}\``;
   const bare = `\`:${r.rawLines}${anchorPart}\``;
-  return r.hasDecl ? `${bare} (> file: \`${r.path}\`)` : `${bare} (no governing \`> file:\` declaration)`;
+  return r.hasDecl ? `${bare} (> file: \`${pathText}\`)` : `${bare} (no governing \`> file:\` declaration)`;
 }
 // computeCodemapReport: turns classified candidates into the exact WARN/FAIL text (never pushing to
 // the global warns/fails itself) — the caller decides whether to push (18b, real files) or compare
 // against an expected shape (18d, the fixture's own self-check must not turn its OWN expected FAIL/
 // WARN into a real one).
-function computeCodemapReport(results, hasMarker, relLabel) {
+function computeCodemapReport(results, hasMarker, relLabel, fencedLikeCount = 0) {
   const messages = [];
   let anchoredCount = 0;
   let unanchoredCount = 0;
@@ -1632,7 +1691,12 @@ function computeCodemapReport(results, hasMarker, relLabel) {
     if (String(r.rawLines).includes(',')) enumCount++;
     if (r.v === 'warn' && r.code === 'drift') {
       const first = parseInt(String(r.rawLines).split(/[,\-]/)[0], 10);
-      messages.push({ level: 'warn', text: `${relLabel}:${r.mapLine}: ${describeCodemapAnnotation(r)} — anchor is not on line ${first}; found on line(s) ${r.found.join(', ')}` });
+      // F11: cap the printed line-number list so one high-match-count anchor cannot blow a single
+      // message up to megabytes (which would bury real FAILs printed after it).
+      const foundDisplay = r.found.length > CODEMAP_FOUND_DISPLAY_CAP
+        ? `${r.found.slice(0, CODEMAP_FOUND_DISPLAY_CAP).join(', ')}, … (+${r.found.length - CODEMAP_FOUND_DISPLAY_CAP} more)`
+        : r.found.join(', ');
+      messages.push({ level: 'warn', text: `${relLabel}:${r.mapLine}: ${describeCodemapAnnotation(r)} — anchor is not on line ${first}; found on line(s) ${foundDisplay}` });
     } else if (r.v === 'warn' && r.code === 'unreadable') {
       messages.push({ level: 'warn', text: `${relLabel}:${r.mapLine}: ${describeCodemapAnnotation(r)} — could not read the referenced file (encoding or permissions)` });
     } else if (r.v === 'fail') {
@@ -1649,7 +1713,31 @@ function computeCodemapReport(results, hasMarker, relLabel) {
     messages.push({ level: 'warn', text: `${relLabel}: ${lowDistinctCount} anchors match more than 10 lines — pick a more distinctive substring` });
   if (enumCount > 0)
     messages.push({ level: 'warn', text: `${relLabel}: ${enumCount} enumeration annotations — only the first line number is checked` });
+  if (fencedLikeCount > 0)
+    messages.push({ level: 'warn', text: `${relLabel}: ${fencedLikeCount} annotation-like token(s) inside fenced block(s) were skipped — fences are not scanned (session-persistence.md §6.5)` });
   return { messages, anchoredCount, unanchoredCount };
+}
+// scanCodemapTarget + applyCodemapResult: the ONE shared path between real-file scanning (18b) and
+// the fixture self-check (18d) for everything AFTER classification — marker detection, message
+// dispatch (fail vs warn), and the running file/anchored/unanchored counters. Before this refactor
+// (F1), 18d only ever compared codemapClassify()'s raw v/code/found against CASES and never touched
+// these lines at all, so mutating the marker read, the dispatch ternary, or any of the 3 counter
+// increments in 18b was invisible to the self-check even though it broke real-file behavior (the
+// 18b real-file path the fixture structurally could not reach). Routing 18d's fixtures through the
+// SAME functions with a capture sink instead of the real fail()/warn()/counters gives every one of
+// those consumption sites a fixture-backed pin without ever letting fixture data touch the real
+// VERDICT.
+function scanCodemapTarget(mapPathAbs, baseDir, relLabel) {
+  const { results, fencedLikeCount } = scanCodemap(mapPathAbs, baseDir);
+  const marker = hasMigrationMarker(read(mapPathAbs));
+  const report = computeCodemapReport(results, marker, relLabel, fencedLikeCount);
+  return { results, marker, fencedLikeCount, ...report };
+}
+function applyCodemapResult(target, sink) {
+  for (const msg of target.messages) (msg.level === 'fail' ? sink.fail : sink.warn)(msg.text);
+  sink.files++;
+  sink.anchored += target.anchoredCount;
+  sink.unanchored += target.unanchoredCount;
 }
 
 let codemapFilesScanned = 0;
@@ -1678,28 +1766,41 @@ let derivedCodemapTargets = null;
       }
     }
     derivedCodemapTargets = all.filter((g) => g.split('/').pop() === 'CODEMAP.md');
-    if (JSON.stringify(derivedCodemapTargets) !== JSON.stringify(CODEMAP_EXPECTED_TARGETS))
+    if (JSON.stringify(derivedCodemapTargets) !== JSON.stringify(CODEMAP_EXPECTED_TARGETS)) {
       fail(`section 18 P1: derived CODEMAP target list from session-persistence.md frontmatter is [${derivedCodemapTargets.join(', ')}] but must be [${CODEMAP_EXPECTED_TARGETS.join(', ')}]`);
+      // F14 (code-review-cycle1-fusion.md): fail() does not throw, so without this line 18b would
+      // keep scanning a target list that P1 has just declared untrustworthy (e.g. a `../` segment
+      // that slipped into the frontmatter) — nulling it here makes 18b's `|| []` fall back to zero
+      // targets instead of following a P1-rejected list.
+      derivedCodemapTargets = null;
+    }
   }
 }
 
 // -- 18b. real-file scan + pin P2 --
 {
   const visitedGlobs = [];
+  const realSink = { fail, warn, files: 0, anchored: 0, unanchored: 0 };
   for (const glob of derivedCodemapTargets || []) {
     visitedGlobs.push(glob);
     for (const relTarget of expandTargets(ROOT, glob)) {
-      codemapFilesScanned++;
       const mapPathAbs = path.join(ROOT, relTarget);
       const baseDir = path.dirname(path.dirname(mapPathAbs));
-      const results = scanCodemap(mapPathAbs, baseDir);
-      const marker = hasMigrationMarker(read(mapPathAbs));
-      const { messages, anchoredCount, unanchoredCount } = computeCodemapReport(results, marker, rel(mapPathAbs));
-      for (const msg of messages) (msg.level === 'fail' ? fail : warn)(msg.text);
-      codemapAnchoredTotal += anchoredCount;
-      codemapUnanchoredTotal += unanchoredCount;
+      let target;
+      try {
+        target = scanCodemapTarget(mapPathAbs, baseDir, rel(mapPathAbs));
+      } catch {
+        // F15: B16 already fail-opens on an unreadable REFERENCED file (warn, not a crash) — the
+        // CODEMAP file itself had no equivalent guard and took the whole validator down instead.
+        warn(`${rel(mapPathAbs)}: could not read the CODEMAP file itself (encoding or permissions) — skipping anchor checks for this file`);
+        continue;
+      }
+      applyCodemapResult(target, realSink);
     }
   }
+  codemapFilesScanned = realSink.files;
+  codemapAnchoredTotal = realSink.anchored;
+  codemapUnanchoredTotal = realSink.unanchored;
   if (derivedCodemapTargets !== null && JSON.stringify(visitedGlobs) !== JSON.stringify(derivedCodemapTargets))
     fail(`section 18 P2: visited [${visitedGlobs.join(', ')}] but the derived target list is [${(derivedCodemapTargets || []).join(', ')}]`);
 }
@@ -1743,12 +1844,17 @@ let derivedCodemapTargets = null;
   const fixtureMapPath = path.join(fixtureDir, 'codemap-anchor.fixture-map.txt');
   const fixtureMigratedPath = path.join(fixtureDir, 'codemap-anchor.fixture-map-migrated.txt');
   const fixtureRoot = path.join(fixtureDir, 'codemap-anchor.fixture-root');
+  const fixtureRelLabel = 'codemap-anchor.fixture-map.txt';
+  const migratedRelLabel = 'codemap-anchor.fixture-map-migrated.txt';
   let fixtureReportMessages = [];
+  let target = null;
+  let migTarget = null;
 
   if (!fs.existsSync(fixtureMapPath)) {
     fail('section 18 fixture: codemap-anchor.fixture-map.txt is missing — the self-check cannot run');
   } else {
-    const results = scanCodemap(fixtureMapPath, fixtureDir);
+    target = scanCodemapTarget(fixtureMapPath, fixtureDir, fixtureRelLabel);
+    const results = target.results;
     if (results.length !== CODEMAP_EXPECTED_EXTRACTED)
       fail(`section 18 fixture: extracted ${results.length} candidate annotation(s) from codemap-anchor.fixture-map.txt, expected ${CODEMAP_EXPECTED_EXTRACTED}`);
     if (CASES.length !== CODEMAP_EXPECTED_CASES)
@@ -1767,29 +1873,66 @@ let derivedCodemapTargets = null;
       compared++;
       if (r.v !== expected.v || r.code !== expected.code || JSON.stringify(r.found) !== JSON.stringify(expected.found))
         fail(`section 18 fixture: case ${expected.id} is ${r.v}/${r.code}/[${r.found.join(',')}] but expected ${expected.v}/${expected.code}/[${expected.found.join(',')}]`);
+      // F1 (a)/(b)/(c): CASES above only pins codemapClassify()'s raw v/code/found — it never proved
+      // computeCodemapReport() actually EMITS a message for a warn/fail case, or that a drift message
+      // carries the right line number(s). Assert the emitted message text directly.
+      if (expected.v === 'warn' || expected.v === 'fail') {
+        const msg = target.messages.find((m) => m.text.startsWith(`${fixtureRelLabel}:${r.mapLine}:`) && m.level === expected.v);
+        if (!msg)
+          fail(`section 18 fixture: case ${expected.id} (${expected.v}/${expected.code}) produced no ${expected.v}-level message at ${fixtureRelLabel}:${r.mapLine}`);
+        else if (expected.code === 'drift' && !msg.text.includes(`found on line(s) ${expected.found.join(', ')}`))
+          fail(`section 18 fixture: case ${expected.id} drift message does not report line(s) ${expected.found.join(', ')}: "${msg.text}"`);
+      }
     }
     if (compared !== CASES.length)
       fail(`section 18 fixture: ${compared} of ${CASES.length} cases were actually compared`);
-    const report = computeCodemapReport(results, false, 'codemap-anchor.fixture-map.txt');
-    fixtureReportMessages = report.messages;
+    if (target.anchoredCount !== CODEMAP_EXPECTED_ANCHORED || target.unanchoredCount !== CODEMAP_EXPECTED_UNANCHORED)
+      fail(`section 18 fixture: codemap-anchor.fixture-map.txt anchored/unanchored counts are ${target.anchoredCount}/${target.unanchoredCount}, expected ${CODEMAP_EXPECTED_ANCHORED}/${CODEMAP_EXPECTED_UNANCHORED}`);
+    if (target.fencedLikeCount !== CODEMAP_EXPECTED_FENCED_LIKE)
+      fail(`section 18 fixture: fenced-block annotation-like token count is ${target.fencedLikeCount}, expected ${CODEMAP_EXPECTED_FENCED_LIKE}`);
+    fixtureReportMessages = target.messages;
   }
 
   if (!fs.existsSync(fixtureMigratedPath)) {
     fail('section 18 fixture: codemap-anchor.fixture-map-migrated.txt is missing — the self-check cannot run');
   } else {
-    const migResults = scanCodemap(fixtureMigratedPath, fixtureDir);
-    if (migResults.length !== CODEMAP_EXPECTED_EXTRACTED_MIGRATED)
-      fail(`section 18 fixture: extracted ${migResults.length} candidate annotation(s) from codemap-anchor.fixture-map-migrated.txt, expected ${CODEMAP_EXPECTED_EXTRACTED_MIGRATED}`);
-    const marker = hasMigrationMarker(read(fixtureMigratedPath));
-    const migReport = computeCodemapReport(migResults, marker, 'codemap-anchor.fixture-map-migrated.txt');
-    const migFails = migReport.messages.filter((m) => m.level === 'fail');
+    migTarget = scanCodemapTarget(fixtureMigratedPath, fixtureDir, migratedRelLabel);
+    if (migTarget.results.length !== CODEMAP_EXPECTED_EXTRACTED_MIGRATED)
+      fail(`section 18 fixture: extracted ${migTarget.results.length} candidate annotation(s) from codemap-anchor.fixture-map-migrated.txt, expected ${CODEMAP_EXPECTED_EXTRACTED_MIGRATED}`);
+    if (migTarget.anchoredCount !== CODEMAP_EXPECTED_ANCHORED_MIGRATED || migTarget.unanchoredCount !== CODEMAP_EXPECTED_UNANCHORED_MIGRATED)
+      fail(`section 18 fixture: codemap-anchor.fixture-map-migrated.txt anchored/unanchored counts are ${migTarget.anchoredCount}/${migTarget.unanchoredCount}, expected ${CODEMAP_EXPECTED_ANCHORED_MIGRATED}/${CODEMAP_EXPECTED_UNANCHORED_MIGRATED}`);
+    const migFails = migTarget.messages.filter((m) => m.level === 'fail');
     if (migFails.length !== 1 || !/アンカー移行済み marker/.test(migFails[0].text))
-      fail(`section 18 fixture: codemap-anchor.fixture-map-migrated.txt self-check expected exactly 1 FAIL message naming the アンカー移行済み marker, got ${JSON.stringify(migReport.messages)}`);
-    fixtureReportMessages = fixtureReportMessages.concat(migReport.messages);
+      fail(`section 18 fixture: codemap-anchor.fixture-map-migrated.txt self-check expected exactly 1 FAIL message naming the アンカー移行済み marker, got ${JSON.stringify(migTarget.messages)}`);
+    fixtureReportMessages = fixtureReportMessages.concat(migTarget.messages);
   }
 
   if (fixtureReportMessages.some((m) => m.text.includes(CODEMAP_CANARY)))
     fail('section 18 fixture: a WARN/FAIL message leaked file content (canary token found) — messages must report line numbers only, never file content');
+
+  // F1 (d)/(e)/(f): route both fixtures through the SAME applyCodemapResult() 18b uses (marker read
+  // is already inside scanCodemapTarget, shared above), but into a capture sink instead of the real
+  // fail()/warn()/counters — this gives the dispatch ternary and all 3 counter increments a fixture-
+  // backed pin instead of only ever running against real files nothing here compared against.
+  if (target && migTarget) {
+    const fxFails = [];
+    const fxWarns = [];
+    const fxSink = { fail: (t) => fxFails.push(t), warn: (t) => fxWarns.push(t), files: 0, anchored: 0, unanchored: 0 };
+    applyCodemapResult(target, fxSink);
+    applyCodemapResult(migTarget, fxSink);
+    const expectedFxFails = target.messages.filter((m) => m.level === 'fail').length + migTarget.messages.filter((m) => m.level === 'fail').length;
+    const expectedFxWarns = target.messages.filter((m) => m.level === 'warn').length + migTarget.messages.filter((m) => m.level === 'warn').length;
+    if (fxFails.length !== expectedFxFails)
+      fail(`section 18 fixture: applyCodemapResult routed ${fxFails.length} message(s) to the fail sink, expected ${expectedFxFails}`);
+    if (fxWarns.length !== expectedFxWarns)
+      fail(`section 18 fixture: applyCodemapResult routed ${fxWarns.length} message(s) to the warn sink, expected ${expectedFxWarns}`);
+    if (fxSink.files !== 2)
+      fail(`section 18 fixture: applyCodemapResult was invoked for ${fxSink.files} target(s), expected 2`);
+    const expectedFxAnchored = CODEMAP_EXPECTED_ANCHORED + CODEMAP_EXPECTED_ANCHORED_MIGRATED;
+    const expectedFxUnanchored = CODEMAP_EXPECTED_UNANCHORED + CODEMAP_EXPECTED_UNANCHORED_MIGRATED;
+    if (fxSink.anchored !== expectedFxAnchored || fxSink.unanchored !== expectedFxUnanchored)
+      fail(`section 18 fixture: applyCodemapResult accumulated ${fxSink.anchored}/${fxSink.unanchored} anchored/unanchored, expected ${expectedFxAnchored}/${expectedFxUnanchored}`);
+  }
 
   // P3 is deliberately NOT gated on fixture-map.txt's presence (a retired/moved fixture map must not
   // also silence the expander check) — it runs unconditionally against the fixture product root.
