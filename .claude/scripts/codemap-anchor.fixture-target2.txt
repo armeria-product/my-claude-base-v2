@@ -1,0 +1,2 @@
+const SECOND = 'two';                  // ZZLEAKCANARYZZ
+end                                    // ZZLEAKCANARYZZ

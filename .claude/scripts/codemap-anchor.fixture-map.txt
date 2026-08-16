@@ -1,0 +1,49 @@
+# CODEMAP fixture — codemap-anchor self-check (validate.mjs section 18)
+This file is not a real map. It is the expectation input for the section-18 self-check.
+
+## Main flow
+- C1 PASS unique — `codemap-anchor.fixture-target.txt:1#const ALPHA = 1;`
+- C2 PASS + low-distinctiveness lint — `codemap-anchor.fixture-target.txt:9#REPEAT`
+- C3 WARN other line — `codemap-anchor.fixture-target.txt:5#const MARKER_X`
+- C4 FAIL anchor nowhere — `codemap-anchor.fixture-target.txt:1#const NOPE`
+- C5 PASS range head — `codemap-anchor.fixture-target.txt:2-4#function beta()`
+- C6 WARN inside range, not head — `codemap-anchor.fixture-target.txt:1-4#const MARKER_X`
+- C7 FAIL file missing — `codemap-anchor.fixture-missing.txt:1#const ALPHA = 1;`
+- C8 FAIL empty anchor — `codemap-anchor.fixture-target.txt:1#`
+- C9 PASS whitespace-normalized — `codemap-anchor.fixture-target.txt:6#return ALPHA;`
+- C10 FAIL mid-path .. escape — `sub/../../../CLAUDE.md:1#my-claude-base`
+- C20 FAIL mid-path .. escape, backslash separators — `sub\..\..\..\CLAUDE.md:1#my-claude-base`
+- C11 PASS + enumeration lint — `codemap-anchor.fixture-target.txt:7,8#const dup = 1;`
+- C12 grace, not yet anchored — `codemap-anchor.fixture-target.txt:21`
+- C14 FAIL bare + anchor with no governing declaration — `:12#REPEAT`
+- C18 FAIL absolute path — `/tmp/absolute.txt:1#x`
+- C22 FAIL whitespace-only anchor — `codemap-anchor.fixture-target.txt:1#	`
+- N1 not an annotation (port, no declaration, no anchor) — `:8000`
+
+## Declaration scope
+> file: `codemap-anchor.fixture-target.txt`
+
+| # | expected | annotation |
+| --- | --- | --- |
+| C13 | PASS | `:3#const MARKER_X` |
+| C15 | grace | `:5` |
+
+> file: `codemap-anchor.fixture-target2.txt`
+
+- C17 PASS declaration switched — `:1#const SECOND`
+
+> file: `codemap-anchor.fixture-absent.txt`
+
+- C16 FAIL declared file missing — `:1#whatever`
+
+## Scope closed by heading
+- N4 not an annotation (declaration expired at this heading, no anchor) — `:5`
+
+## Fenced block is skipped
+```text
+- N2 not an annotation (full annotation inside a fence) — `codemap-anchor.fixture-target.txt:1#const ALPHA = 1;`
+- N3 not an annotation (bare inside a fence) — `:41#const MARKER_X`
+```
+- C21 PASS after fence closes — `codemap-anchor.fixture-target.txt:1#const ALPHA = 1;`
+
+最終確認: 2026-08-16

@@ -1,0 +1,1 @@
+fixture product without a map — gamma must be dropped by the existence filter.

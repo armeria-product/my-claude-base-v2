@@ -1,0 +1,21 @@
+const ALPHA = 1;                       // ZZLEAKCANARYZZ
+function beta() {                      // ZZLEAKCANARYZZ
+  const MARKER_X = 'x';                // ZZLEAKCANARYZZ
+}                                      // ZZLEAKCANARYZZ
+const GAMMA = 2;                       // ZZLEAKCANARYZZ
+return   ALPHA;                        // ZZLEAKCANARYZZ
+const dup = 1;                         // ZZLEAKCANARYZZ
+const dup = 2;                         // ZZLEAKCANARYZZ
+REPEAT                                 // ZZLEAKCANARYZZ
+REPEAT                                 // ZZLEAKCANARYZZ
+REPEAT                                 // ZZLEAKCANARYZZ
+REPEAT                                 // ZZLEAKCANARYZZ
+REPEAT                                 // ZZLEAKCANARYZZ
+REPEAT                                 // ZZLEAKCANARYZZ
+REPEAT                                 // ZZLEAKCANARYZZ
+REPEAT                                 // ZZLEAKCANARYZZ
+REPEAT                                 // ZZLEAKCANARYZZ
+REPEAT                                 // ZZLEAKCANARYZZ
+REPEAT                                 // ZZLEAKCANARYZZ
+REPEAT                                 // ZZLEAKCANARYZZ
+const OMEGA = 3;                       // ZZLEAKCANARYZZ
