@@ -165,8 +165,8 @@ function denyBaseMessage(base) {
 // A5 (2026-08-12): see the header paragraph above for why this is opt-in and what it does not
 // check (mtime only, never content — a workflow reminder, not an adversarial control).
 const DENY_CODEMAP_MESSAGE =
-  'BLOCKED: gh pr create の前に、tasks/CODEMAP.md を確認してください。構造に変更があれば内容を更新し、無ければ「最終確認: YYYY-MM-DD」の行だけ今日の日付にしてから、もう一度実行してください。\n' +
-  '（これはファイルの更新日時だけを比較する仕組みで、内容までは見ていません。更新し忘れを防ぐためのものです。）';
+  'BLOCKED: gh pr create の前に、tasks/CODEMAP.md を確認してください。行番号がずれていれば file:line#anchor の注記を直し、何も変わっていなければ「最終確認: YYYY-MM-DD」の行だけ今日の日付にしてから、もう一度実行してください。\n' +
+  '（このチェック自体はファイルの更新日時だけを比較し、内容までは見ていません。中身のずれは `node .claude/scripts/validate.mjs` の節18が機械検査します。）';
 
 // Directory-change command names this hook cannot reliably follow (see header) — PowerShell's
 // Set-Location/its aliases, and bash's pushd/popd (which, unlike `cd`, this hook never tracks at

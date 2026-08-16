@@ -36,6 +36,7 @@ When a dev session starts with a vague "I want to build / make X" (a new product
 ## CODEMAP Maintenance
 - If `dev/{product-name}/tasks/CODEMAP.md` exists, update it **in the same change** whenever you touch the structure it describes: a new entry point, a new table, a moved folder, a changed command, a changed storage location.
 - If something you re-investigated disagrees with the map, fix the map **before** returning to the work — a stale map sends the next session off on a wrong assumption.
+- Line drift (not just structural change) is machine-checked: `node .claude/scripts/validate.mjs` section 18 compares each `file:line#anchor` annotation against the real file and WARNs/FAILs on drift — fix the annotation even when nothing about the map's structure changed.
 - Structure contract: `.claude/rules/session-persistence.md` §6.5
 
 ## Scope Separation
