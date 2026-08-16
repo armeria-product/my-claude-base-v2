@@ -1,0 +1,1 @@
+fixture product map (alpha) — exists only so the glob expander has something to find.

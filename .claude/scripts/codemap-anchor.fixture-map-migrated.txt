@@ -1,0 +1,8 @@
+# CODEMAP fixture (migration-complete marker) — codemap-anchor self-check
+This file carries the marker, so the grace for un-anchored annotations is off here.
+
+## Main flow
+- C19 un-anchored under the marker — `codemap-anchor.fixture-target.txt:21`
+
+最終確認: 2026-08-16
+アンカー移行済み: 2026-08-16

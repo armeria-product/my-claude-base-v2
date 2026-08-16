@@ -1420,9 +1420,394 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
   }
 }
 
+// ---- 18. CODEMAP file:line anchor drift ----
+// codemap-anchor-validate plan (2026-08-16): CODEMAP.md's `file:line` annotations drift from the
+// code they point at (the same breakage recurred 3 times — none of it caught until a human happened
+// to read both files side by side). The fix is a machine cross-check: every annotation now carries
+// an anchor (a literal substring of the line it names, joined after `#`), and this section verifies
+// the anchor is still on the named line (PASS), has moved to another line in the same file (WARN,
+// with the real line number), or is nowhere in the file / the file doesn't exist (FAIL). An anchor-
+// less (pre-migration) annotation is a WARN-only grace period, never a FAIL, unless the file opts in
+// via the アンカー移行済み marker (session-persistence.md §6.5 hygiene rules 7-8).
+//
+// Detection-power design (why 18a-18d exist as 3 separate pins, not 1): a clean clone has ZERO
+// tasks/CODEMAP.md content (both repos' CODEMAP files are gitignored) and may have zero dev/*
+// products, so "the real files disagree with expectations" cannot be the floor — a degenerate
+// scan (narrowed target list, disabled loop, broken extraction regex) would look identical to "there
+// is legitimately nothing to check". The floor instead lives entirely in files that ARE committed:
+// P1 (18a) pins the derived target-list against session-persistence.md's own frontmatter; P2 (18b)
+// pins that the scan loop actually visited every glob P1 derived (recorded and compared OUTSIDE the
+// loop body on purpose — deleting the loop leaves the visited-list empty, which still fails the
+// comparison); P3 (18d) pins the glob->file expander (`expandTargets`/`listDir`) against a fixture
+// product-root tree so the expander itself is exercised even when dev/ has zero real products; 18d
+// also runs the whole classifier against a committed fixture map with a literal expected-value table
+// (`CASES`), so gutting the classification logic itself goes RED independent of any real file.
+//
+// Disclosed gaps (named here so a future reader does not mistake "not covered" for "covered"):
+//   - A mutation that special-cases the REAL product root only (e.g. `if (dir === path.join(ROOT,
+//     'dev')) return []`) is NOT caught: P1/P2 only pin the glob STRINGS, and P3 exercises the
+//     expander only against the fixture's own product root (`codemap-anchor.fixture-root/`), which
+//     that kind of mutation does not touch. Accepted: a clean clone legitimately has zero dev/*
+//     products, so real-file product COUNT cannot be used as a floor (would reject the legitimate
+//     zero-product state). Same reasoning extends to the dev/{name} baseDir derivation below
+//     (`path.dirname(path.dirname(...))`) — it is exercised only on real scan targets, and the
+//     fixture has no equivalent to exercise it against.
+//   - The absolute-path rejection's char class (`^(?:[A-Za-z]:[\\/]|[\\/])`) needs BOTH backslash and
+//     forward slash for the same OS-independence reason the `..`-segment check below does (C20 pins
+//     that one) — but no fixture case isolates the backslash half of THIS regex (C18 is
+//     `/tmp/absolute.txt`, caught by the slash-only second alternative regardless of the drive-letter
+//     branch's own char class). Narrowing `[A-Za-z]:[\\/]` to `[A-Za-z]:[\/]` therefore stays GREEN.
+//     Not fixed here (would need a 20th fixture case and a re-derivation of every extraction-count-
+//     dependent expected value) — recorded as an undefended consumption site, not hidden.
+//   - realpath() is never called (symlinks/junctions are not resolved) — lexical containment only.
+//     A junction inside the product root pointing outside it is not caught. Accepted: writing an
+//     annotation only reveals a line NUMBER (never file content, see the canary check in 18d), and
+//     whoever can edit the CODEMAP can already read the real file.
+//   - `.txt` (not `.md`) is the fixture extension by design, not by directory placement: walkMd
+//     (#4/#9.5, `/\.(md|js|json|html)$/`) and walkJs (#9, `/\.(js|mjs)$/`) both skip `.txt`, which
+//     matters because these fixtures deliberately contain "broken" examples (dead-ref-shaped paths,
+//     absolute paths) that must never be scanned as if they were real harness content.
+const CODEMAP_CANARY = 'ZZLEAKCANARYZZ';
+const CODEMAP_EXPECTED_EXTRACTED = 19;
+const CODEMAP_EXPECTED_EXTRACTED_MIGRATED = 1;
+const CODEMAP_EXPECTED_CASES = 19;
+const CODEMAP_LOW_DISTINCT_LINES = 10;
+const CODEMAP_EXPECTED_FIXTURE_PRODUCTS = ['products/alpha/tasks/map.txt', 'products/beta/tasks/map.txt'];
+const CODEMAP_EXPECTED_TARGETS = ['tasks/CODEMAP.md', 'dev/*/tasks/CODEMAP.md'];
+const CODEMAP_MIGRATION_MARKER_RE = /^アンカー移行済み:\s*\d{4}-\d{2}-\d{2}\s*$/m;
+const CODEMAP_FULL_RE = /`([^`\n#]*?\.[A-Za-z][A-Za-z0-9]*):(\d[\d,\-]*)(?:#([^`\n]*))?`/g;
+const CODEMAP_BARE_RE = /`:(\d[\d,\-]*)(?:#([^`\n]*))?`/g;
+const CODEMAP_DECL_RE = /^>\s*file:\s*`([^`\n]+)`\s*$/;
+const CODEMAP_HEADING_RE = /^#{1,6}\s/;
+const CODEMAP_FENCE_RE = /^\s*(?:```|~~~)/;
+const CODEMAP_REASON_TEXT = {
+  'bare-no-decl': "a line-number-only annotation carries an anchor but has no governing `> file:` declaration",
+  'no-decl': 'the annotation has no resolvable path',
+  absolute: 'absolute path — annotations must be relative to the product root',
+  dotdot: "path contains a `..` segment — annotations must stay inside the product root",
+  escape: 'path resolves outside the product root',
+  'empty-anchor': 'empty anchor — an empty anchor matches every line and would PASS forever',
+  'no-file': 'referenced file does not exist — write the full path relative to the product root',
+  'anchor-missing': 'anchor text is nowhere in the referenced file',
+};
+const CASES = [
+  { id: 'C1', v: 'pass', code: 'ok', found: [1] },
+  { id: 'C2', v: 'pass', code: 'low-distinct', found: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] },
+  { id: 'C3', v: 'warn', code: 'drift', found: [3] },
+  { id: 'C4', v: 'fail', code: 'anchor-missing', found: [] },
+  { id: 'C5', v: 'pass', code: 'ok', found: [2] },
+  { id: 'C6', v: 'warn', code: 'drift', found: [3] },
+  { id: 'C7', v: 'fail', code: 'no-file', found: [] },
+  { id: 'C8', v: 'fail', code: 'empty-anchor', found: [] },
+  { id: 'C9', v: 'pass', code: 'ok', found: [6] },
+  { id: 'C10', v: 'fail', code: 'dotdot', found: [] },
+  { id: 'C11', v: 'pass', code: 'ok', found: [7] },
+  { id: 'C12', v: 'grace', code: 'unanchored', found: [] },
+  { id: 'C13', v: 'pass', code: 'ok', found: [3] },
+  { id: 'C14', v: 'fail', code: 'bare-no-decl', found: [] },
+  { id: 'C15', v: 'grace', code: 'unanchored', found: [] },
+  { id: 'C16', v: 'fail', code: 'no-file', found: [] },
+  { id: 'C17', v: 'pass', code: 'ok', found: [1] },
+  { id: 'C18', v: 'fail', code: 'absolute', found: [] },
+  { id: 'C20', v: 'fail', code: 'dotdot', found: [] },
+];
+
+function listDir(dir) {
+  return fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name) : [];
+}
+// expandTargets: a glob is "prefix segments + '*' + suffix segments" (exactly one wildcard depth —
+// `dev/*/tasks/CODEMAP.md` and the fixture's `products/*/tasks/map.txt` are both this shape; `**`
+// and multiple `*` are out of scope, CLAUDE.md §1.7). No '*' -> single-file existence check.
+function expandTargets(rootDir, glob) {
+  const starIdx = glob.indexOf('*');
+  if (starIdx === -1) return fs.existsSync(path.join(rootDir, glob)) ? [glob] : [];
+  const prefix = glob.slice(0, starIdx).replace(/\/$/, '');
+  const suffix = glob.slice(starIdx + 1).replace(/^\//, '');
+  const out = [];
+  for (const name of listDir(path.join(rootDir, prefix)).sort()) {
+    const candidate = `${prefix}/${name}/${suffix}`;
+    if (fs.existsSync(path.join(rootDir, candidate))) out.push(candidate);
+  }
+  return out;
+}
+function hasMigrationMarker(text) {
+  return CODEMAP_MIGRATION_MARKER_RE.test(text);
+}
+// codemapClassify: the decision order below IS the spec (session-persistence.md §6.5) — order
+// matters because containment must be settled before existence is ever checked (a path that resolves
+// outside the product root must never reach fs.existsSync on an attacker-chosen absolute target).
+function codemapClassify(cand, baseDir) {
+  if (cand.isBare && !cand.hasDecl) return { v: 'fail', code: 'bare-no-decl', found: [] };
+  const p = cand.path;
+  if (p == null) return { v: 'fail', code: 'no-decl', found: [] }; // defensive: unreachable unless the line above is mutated away
+  if (/^(?:[A-Za-z]:[\\/]|[\\/])/.test(p) || path.isAbsolute(p)) return { v: 'fail', code: 'absolute', found: [] };
+  if (p.split(/[\\/]/).includes('..')) return { v: 'fail', code: 'dotdot', found: [] };
+  const baseAbs = path.resolve(baseDir);
+  const abs = path.resolve(baseAbs, p);
+  const contained = process.platform === 'win32'
+    ? abs.toLowerCase() === baseAbs.toLowerCase() || abs.toLowerCase().startsWith(baseAbs.toLowerCase() + path.sep)
+    : abs === baseAbs || abs.startsWith(baseAbs + path.sep);
+  if (!contained) return { v: 'fail', code: 'escape', found: [] }; // POSIX: unreachable behind the 2 guards above; win32: reachable via a drive-relative path (e.g. `C:x.txt`) — still FAILs, containment holds either way
+  if (cand.anchor === undefined) return { v: 'grace', code: 'unanchored', found: [] };
+  if (cand.anchor === '') return { v: 'fail', code: 'empty-anchor', found: [] };
+  if (!fs.existsSync(abs)) return { v: 'fail', code: 'no-file', found: [] };
+  let content;
+  try {
+    content = fs.readFileSync(abs, 'utf8').replace(/\r\n/g, '\n');
+  } catch {
+    return { v: 'warn', code: 'unreadable', found: [] };
+  }
+  const norm = (s) => s.trim().replace(/\s+/g, ' ');
+  const normAnchor = norm(cand.anchor);
+  const found = [];
+  content.split('\n').forEach((lineText, i) => {
+    if (norm(lineText).includes(normAnchor)) found.push(i + 1);
+  });
+  const firstLine = parseInt(String(cand.rawLines).split(/[,\-]/)[0], 10);
+  if (found.includes(firstLine)) return { v: 'pass', code: found.length > CODEMAP_LOW_DISTINCT_LINES ? 'low-distinct' : 'ok', found };
+  if (found.length > 0) return { v: 'warn', code: 'drift', found };
+  return { v: 'fail', code: 'anchor-missing', found: [] };
+}
+// scanCodemap: extracts every candidate annotation from mapPath in document order, tracking the
+// active `> file:` declaration scope and fence state line by line, then classifies each candidate
+// against baseDir. Shared verbatim by 18b (real files) and 18d (the fixture) — the classifier and
+// extractor are exercised identically by both, so a mutation that degrades either one shows up in
+// whichever caller's expectations are pinned (real-file message shape, or the fixture's CASES table).
+function scanCodemap(mapPath, baseDir) {
+  const lines = read(mapPath).split('\n');
+  let activeDecl = null;
+  let inFence = false;
+  const candidates = [];
+  lines.forEach((lineText, idx) => {
+    const mapLine = idx + 1;
+    if (inFence) {
+      if (CODEMAP_FENCE_RE.test(lineText)) inFence = false;
+      return;
+    }
+    if (CODEMAP_FENCE_RE.test(lineText)) {
+      inFence = true;
+      activeDecl = null; // fence start closes any open declaration scope
+      return;
+    }
+    if (CODEMAP_HEADING_RE.test(lineText)) activeDecl = null; // any heading level closes the scope
+    const declMatch = lineText.match(CODEMAP_DECL_RE);
+    if (declMatch) {
+      activeDecl = declMatch[1];
+      return;
+    }
+    for (const m of lineText.matchAll(CODEMAP_FULL_RE))
+      candidates.push({ mapLine, isBare: false, path: m[1], rawLines: m[2], anchor: m[3], hasDecl: true });
+    for (const m of lineText.matchAll(CODEMAP_BARE_RE)) {
+      const hasDecl = activeDecl !== null;
+      const anchor = m[2];
+      if (!hasDecl && anchor === undefined) continue; // no governing declaration + no anchor = invisible (indistinguishable from a port number), not a candidate
+      candidates.push({ mapLine, isBare: true, path: activeDecl, rawLines: m[1], anchor, hasDecl });
+    }
+  });
+  return candidates.map((c) => ({ ...c, ...codemapClassify(c, baseDir) }));
+}
+function describeCodemapAnnotation(r) {
+  const anchorPart = r.anchor === undefined ? '' : `#${r.anchor}`;
+  if (!r.isBare) return `\`${r.path}:${r.rawLines}${anchorPart}\``;
+  const bare = `\`:${r.rawLines}${anchorPart}\``;
+  return r.hasDecl ? `${bare} (> file: \`${r.path}\`)` : `${bare} (no governing \`> file:\` declaration)`;
+}
+// computeCodemapReport: turns classified candidates into the exact WARN/FAIL text (never pushing to
+// the global warns/fails itself) — the caller decides whether to push (18b, real files) or compare
+// against an expected shape (18d, the fixture's own self-check must not turn its OWN expected FAIL/
+// WARN into a real one).
+function computeCodemapReport(results, hasMarker, relLabel) {
+  const messages = [];
+  let anchoredCount = 0;
+  let unanchoredCount = 0;
+  let lowDistinctCount = 0;
+  let enumCount = 0;
+  for (const r of results) {
+    if (r.v === 'grace') {
+      unanchoredCount++;
+      continue;
+    }
+    anchoredCount++;
+    if (r.code === 'low-distinct') lowDistinctCount++;
+    if (String(r.rawLines).includes(',')) enumCount++;
+    if (r.v === 'warn' && r.code === 'drift') {
+      const first = parseInt(String(r.rawLines).split(/[,\-]/)[0], 10);
+      messages.push({ level: 'warn', text: `${relLabel}:${r.mapLine}: ${describeCodemapAnnotation(r)} — anchor is not on line ${first}; found on line(s) ${r.found.join(', ')}` });
+    } else if (r.v === 'warn' && r.code === 'unreadable') {
+      messages.push({ level: 'warn', text: `${relLabel}:${r.mapLine}: ${describeCodemapAnnotation(r)} — could not read the referenced file (encoding or permissions)` });
+    } else if (r.v === 'fail') {
+      messages.push({ level: 'fail', text: `${relLabel}:${r.mapLine}: ${describeCodemapAnnotation(r)} — ${CODEMAP_REASON_TEXT[r.code]}` });
+    }
+  }
+  if (unanchoredCount > 0) {
+    if (hasMarker)
+      messages.push({ level: 'fail', text: `${relLabel}: ${unanchoredCount} annotations are still un-anchored but the file carries the アンカー移行済み marker — anchor them; removing the marker rolls the migration back and must be recorded with a reason (PR body / journal), it is not a way to silence this check` });
+    else
+      messages.push({ level: 'warn', text: `${relLabel}: ${unanchoredCount} annotations are not yet anchored — drift is not checked for these (session-persistence.md §6.5)` });
+  }
+  if (lowDistinctCount > 0)
+    messages.push({ level: 'warn', text: `${relLabel}: ${lowDistinctCount} anchors match more than 10 lines — pick a more distinctive substring` });
+  if (enumCount > 0)
+    messages.push({ level: 'warn', text: `${relLabel}: ${enumCount} enumeration annotations — only the first line number is checked` });
+  return { messages, anchoredCount, unanchoredCount };
+}
+
+let codemapFilesScanned = 0;
+let codemapAnchoredTotal = 0;
+let codemapUnanchoredTotal = 0;
+
+// -- 18a. target list derivation + pin P1 --
+// Derived from session-persistence.md's OWN frontmatter (not a value hardcoded twice) — the paths:
+// list already governs write-routing for CODEMAP.md, so this reads the same list rather than
+// maintaining a second copy that could silently drift from it (F1: the target list must depend on a
+// COMMITTED file, never on which real CODEMAP files happen to exist).
+let derivedCodemapTargets = null;
+{
+  const sp = path.join(ROOT, '.claude', 'rules', 'session-persistence.md');
+  if (!fs.existsSync(sp)) {
+    fail('section 18 P1: .claude/rules/session-persistence.md missing — cannot derive the CODEMAP target list');
+  } else {
+    const spLines = read(sp).split('\n');
+    const pathsIdx = spLines.findIndex((l) => /^paths:\s*$/.test(l));
+    const all = [];
+    if (pathsIdx !== -1) {
+      for (let i = pathsIdx + 1; i < spLines.length; i++) {
+        const m = spLines[i].match(/^\s*-\s+(\S+)\s*$/);
+        if (!m) break;
+        all.push(m[1]);
+      }
+    }
+    derivedCodemapTargets = all.filter((g) => g.split('/').pop() === 'CODEMAP.md');
+    if (JSON.stringify(derivedCodemapTargets) !== JSON.stringify(CODEMAP_EXPECTED_TARGETS))
+      fail(`section 18 P1: derived CODEMAP target list from session-persistence.md frontmatter is [${derivedCodemapTargets.join(', ')}] but must be [${CODEMAP_EXPECTED_TARGETS.join(', ')}]`);
+  }
+}
+
+// -- 18b. real-file scan + pin P2 --
+{
+  const visitedGlobs = [];
+  for (const glob of derivedCodemapTargets || []) {
+    visitedGlobs.push(glob);
+    for (const relTarget of expandTargets(ROOT, glob)) {
+      codemapFilesScanned++;
+      const mapPathAbs = path.join(ROOT, relTarget);
+      const baseDir = path.dirname(path.dirname(mapPathAbs));
+      const results = scanCodemap(mapPathAbs, baseDir);
+      const marker = hasMigrationMarker(read(mapPathAbs));
+      const { messages, anchoredCount, unanchoredCount } = computeCodemapReport(results, marker, rel(mapPathAbs));
+      for (const msg of messages) (msg.level === 'fail' ? fail : warn)(msg.text);
+      codemapAnchoredTotal += anchoredCount;
+      codemapUnanchoredTotal += unanchoredCount;
+    }
+  }
+  if (derivedCodemapTargets !== null && JSON.stringify(visitedGlobs) !== JSON.stringify(derivedCodemapTargets))
+    fail(`section 18 P2: visited [${visitedGlobs.join(', ')}] but the derived target list is [${(derivedCodemapTargets || []).join(', ')}]`);
+}
+
+// -- 18c. session-persistence.md §6.5 template pin --
+// Section-scoped (6.1 method): a generic whole-file phrase pin would tolerate the template lines
+// being gutted while some other sentence elsewhere keeps a pinned phrase alive.
+{
+  const spPath = path.join(ROOT, '.claude', 'rules', 'session-persistence.md');
+  if (!fs.existsSync(spPath)) {
+    fail('.claude/rules/session-persistence.md missing — cannot verify the CODEMAP §6.5 anchor-format template');
+  } else {
+    const spText = read(spPath);
+    const headingCount = (spText.match(/### 6\.5 CODEMAP\.md/g) || []).length;
+    if (headingCount !== 1)
+      fail(`.claude/rules/session-persistence.md: expected exactly 1 occurrence of the "### 6.5 CODEMAP.md" heading, found ${headingCount} — a decoy heading could hijack which span the anchor-format pin below checks`);
+    const m = spText.match(/### 6\.5 CODEMAP\.md[\s\S]*?(?=\n### |\n---)/);
+    if (!m) {
+      fail('.claude/rules/session-persistence.md: "### 6.5 CODEMAP.md" section not found (or unterminated before the next "### " heading) — cannot verify the anchor-format template');
+    } else {
+      const section = m[0];
+      const items = [
+        [/- <step> — `<file>:<line>#<anchor>`/, 'the Main flow template line in the anchor-carrying form'],
+        [/- <entry point> — `<file>:<line>#<anchor>`/, 'the Entry points template line in the anchor-carrying form'],
+        [/the main flow with `<file>:<line>#<anchor>` annotations \(the anchor is a literal substring of that line; validate\.mjs section 18 machine-checks it\)/, 'hygiene rule (1) in its anchor-aware wording'],
+      ];
+      for (const [re, label] of items)
+        if (!re.test(section)) fail(`.claude/rules/session-persistence.md §6.5 is missing ${label} — codemap-anchor-validate T1.1/T1.2`);
+      const oldFormCount = section.split('`<file>:<line>`').length - 1;
+      if (oldFormCount > 0)
+        fail(`.claude/rules/session-persistence.md §6.5: found ${oldFormCount} occurrence(s) of the pre-anchor form (backtick <file>:<line> with no #<anchor>) — the anchor-format migration must not leave the old placeholder form behind`);
+      if (NEUTER_MARKER_RE.test(section))
+        fail('.claude/rules/session-persistence.md §6.5 contains a neutering marker (withdrawn/repealed/retired/not-operative/撤回済み, case-insensitive) inside the CODEMAP anchor-format section');
+    }
+  }
+}
+
+// -- 18d. fixture self-check + pin P3 --
+{
+  const fixtureDir = path.join(ROOT, '.claude', 'scripts');
+  const fixtureMapPath = path.join(fixtureDir, 'codemap-anchor.fixture-map.txt');
+  const fixtureMigratedPath = path.join(fixtureDir, 'codemap-anchor.fixture-map-migrated.txt');
+  const fixtureRoot = path.join(fixtureDir, 'codemap-anchor.fixture-root');
+  let fixtureReportMessages = [];
+
+  if (!fs.existsSync(fixtureMapPath)) {
+    fail('section 18 fixture: codemap-anchor.fixture-map.txt is missing — the self-check cannot run');
+  } else {
+    const results = scanCodemap(fixtureMapPath, fixtureDir);
+    if (results.length !== CODEMAP_EXPECTED_EXTRACTED)
+      fail(`section 18 fixture: extracted ${results.length} candidate annotation(s) from codemap-anchor.fixture-map.txt, expected ${CODEMAP_EXPECTED_EXTRACTED}`);
+    if (CASES.length !== CODEMAP_EXPECTED_CASES)
+      fail(`section 18 fixture: CASES has ${CASES.length} entries, expected ${CODEMAP_EXPECTED_CASES}`);
+    const fixtureLines = read(fixtureMapPath).split('\n');
+    let compared = 0;
+    for (const expected of CASES) {
+      const r = results.find((res) => {
+        const lm = (fixtureLines[res.mapLine - 1] || '').match(/\bC(\d+)\b/);
+        return lm && `C${lm[1]}` === expected.id;
+      });
+      if (!r) {
+        fail(`section 18 fixture: case ${expected.id} not found among extracted annotations`);
+        continue;
+      }
+      compared++;
+      if (r.v !== expected.v || r.code !== expected.code || JSON.stringify(r.found) !== JSON.stringify(expected.found))
+        fail(`section 18 fixture: case ${expected.id} is ${r.v}/${r.code}/[${r.found.join(',')}] but expected ${expected.v}/${expected.code}/[${expected.found.join(',')}]`);
+    }
+    if (compared !== CASES.length)
+      fail(`section 18 fixture: ${compared} of ${CASES.length} cases were actually compared`);
+    const report = computeCodemapReport(results, false, 'codemap-anchor.fixture-map.txt');
+    fixtureReportMessages = report.messages;
+  }
+
+  if (!fs.existsSync(fixtureMigratedPath)) {
+    fail('section 18 fixture: codemap-anchor.fixture-map-migrated.txt is missing — the self-check cannot run');
+  } else {
+    const migResults = scanCodemap(fixtureMigratedPath, fixtureDir);
+    if (migResults.length !== CODEMAP_EXPECTED_EXTRACTED_MIGRATED)
+      fail(`section 18 fixture: extracted ${migResults.length} candidate annotation(s) from codemap-anchor.fixture-map-migrated.txt, expected ${CODEMAP_EXPECTED_EXTRACTED_MIGRATED}`);
+    const marker = hasMigrationMarker(read(fixtureMigratedPath));
+    const migReport = computeCodemapReport(migResults, marker, 'codemap-anchor.fixture-map-migrated.txt');
+    const migFails = migReport.messages.filter((m) => m.level === 'fail');
+    if (migFails.length !== 1 || !/アンカー移行済み marker/.test(migFails[0].text))
+      fail(`section 18 fixture: codemap-anchor.fixture-map-migrated.txt self-check expected exactly 1 FAIL message naming the アンカー移行済み marker, got ${JSON.stringify(migReport.messages)}`);
+    fixtureReportMessages = fixtureReportMessages.concat(migReport.messages);
+  }
+
+  if (fixtureReportMessages.some((m) => m.text.includes(CODEMAP_CANARY)))
+    fail('section 18 fixture: a WARN/FAIL message leaked file content (canary token found) — messages must report line numbers only, never file content');
+
+  // P3 is deliberately NOT gated on fixture-map.txt's presence (a retired/moved fixture map must not
+  // also silence the expander check) — it runs unconditionally against the fixture product root.
+  const expandedProducts = expandTargets(fixtureRoot, 'products/*/tasks/map.txt');
+  if (JSON.stringify(expandedProducts) !== JSON.stringify(CODEMAP_EXPECTED_FIXTURE_PRODUCTS))
+    fail(`section 18 fixture: product-glob expansion is [${expandedProducts.join(',')}] but must be [${CODEMAP_EXPECTED_FIXTURE_PRODUCTS.join(',')}]`);
+  // Permanent pin for listDir's existsSync guard (review-cycle3.md non-blocking #7): a nonexistent
+  // glob prefix must expand to [], not throw — V5b below only exercises this once, by hand, against
+  // the real dev/ directory; this makes the same guarantee a standing per-run check.
+  const nonexistentExpansion = expandTargets(fixtureRoot, 'no-such-prefix/*/tasks/map.txt');
+  if (nonexistentExpansion.length !== 0)
+    fail(`section 18 fixture: expandTargets() against a nonexistent glob prefix returned [${nonexistentExpansion.join(',')}] instead of [] — listDir's existsSync guard must return [] for a directory that does not exist`);
+}
+
 // ---- Report ----
 console.log('Harness Validation (v2)');
 console.log(`  agents: ${agentNames.size} | skills: ${fs.readdirSync(skillsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).length} | hooks registered: ${registered.size}`);
+console.log(`  codemap: ${codemapFilesScanned} files, ${codemapAnchoredTotal} anchored, ${codemapUnanchoredTotal} unanchored`);
 for (const w of warns) console.log('  WARN  ' + w);
 for (const f of fails) console.log('  FAIL  ' + f);
 console.log(fails.length ? `\nVERDICT: FAIL (${fails.length} findings, ${warns.length} warnings)` : `\nVERDICT: PASS (${warns.length} warnings)`);
