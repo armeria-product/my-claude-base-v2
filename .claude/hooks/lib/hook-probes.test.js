@@ -46,9 +46,9 @@ const SANDBOX_TODO_WORKTREE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-tod
 const SANDBOX_TODO_GITDIR_ESCAPE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-todo-gitdir-escape');
 const SANDBOX_TODO_GITDIR_ESCAPE_TARGET = path.join(ROOT, 'tmp', 'hook-probes', 'evil-gitdir-store');
 const SANDBOX_TODO_BRANCH_ESCAPE = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-todo-branch-escape');
-// Batch A / A5 (2026-08-12): tasks/CODEMAP.md mtime-vs-branch-creation fixtures for
+// Batch A / A5 (2026-08-12): tasks/codemap.md mtime-vs-branch-creation fixtures for
 // block-pr-without-todo.js's isCodemapStaleForBranch() check, same shape as the SANDBOX_TODO_*
-// pair above but for CODEMAP.md instead of todo.md. See buildSandboxCodemapSandboxes() below.
+// pair above but for codemap.md instead of todo.md. See buildSandboxCodemapSandboxes() below.
 const SANDBOX_CODEMAP_DENY = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-codemap-deny');
 const SANDBOX_CODEMAP_ALLOW_NEWER = path.join(ROOT, 'tmp', 'hook-probes', 'sandbox-codemap-allow-newer');
 // Batch A / A3 (2026-08-12): relay ON, for relay-required-agent.js's new description/alias
@@ -301,15 +301,15 @@ function buildSandboxTodoSandboxes() {
   buildSandboxTodoBranchEscape();
 }
 
-// Batch A / A5 (2026-08-12): mirrors setTodoMtime() above but for tasks/CODEMAP.md. Kept as a
+// Batch A / A5 (2026-08-12): mirrors setTodoMtime() above but for tasks/codemap.md. Kept as a
 // separate small function rather than adding a filename parameter to setTodoMtime() -- that
 // function already has several call sites above and this keeps them untouched.
 function setCodemapMtime(root, when) {
-  fs.utimesSync(path.join(root, 'tasks', 'CODEMAP.md'), when, when);
+  fs.utimesSync(path.join(root, 'tasks', 'codemap.md'), when, when);
 }
 
 // Batch A / A5 (2026-08-12): reuses buildSandboxTodoRepo() (git repo + tasks/todo.md + `topic`
-// branch checkout) as-is, then adds tasks/CODEMAP.md on top with its own pinned mtime. todo.md's
+// branch checkout) as-is, then adds tasks/codemap.md on top with its own pinned mtime. todo.md's
 // own mtime is pinned to the future (allow-producing) in BOTH roots below so that a deny verdict
 // on SANDBOX_CODEMAP_DENY can only come from the new isCodemapStaleForBranch() check, never from
 // the pre-existing todo-staleness check -- otherwise the deny sample would still "pass" even if
@@ -318,13 +318,13 @@ function buildSandboxCodemapSandboxes() {
   if (!fs.existsSync(path.join(SANDBOX_CODEMAP_DENY, '.git'))) {
     buildSandboxTodoRepo(SANDBOX_CODEMAP_DENY);
     setTodoMtime(SANDBOX_CODEMAP_DENY, TODO_FUTURE_MTIME);
-    fs.writeFileSync(path.join(SANDBOX_CODEMAP_DENY, 'tasks', 'CODEMAP.md'), '# CODEMAP\n');
+    fs.writeFileSync(path.join(SANDBOX_CODEMAP_DENY, 'tasks', 'codemap.md'), '# CODEMAP\n');
     setCodemapMtime(SANDBOX_CODEMAP_DENY, TODO_PAST_MTIME);
   }
   if (!fs.existsSync(path.join(SANDBOX_CODEMAP_ALLOW_NEWER, '.git'))) {
     buildSandboxTodoRepo(SANDBOX_CODEMAP_ALLOW_NEWER);
     setTodoMtime(SANDBOX_CODEMAP_ALLOW_NEWER, TODO_FUTURE_MTIME);
-    fs.writeFileSync(path.join(SANDBOX_CODEMAP_ALLOW_NEWER, 'tasks', 'CODEMAP.md'), '# CODEMAP\n');
+    fs.writeFileSync(path.join(SANDBOX_CODEMAP_ALLOW_NEWER, 'tasks', 'codemap.md'), '# CODEMAP\n');
     setCodemapMtime(SANDBOX_CODEMAP_ALLOW_NEWER, TODO_FUTURE_MTIME);
   }
 }
@@ -620,7 +620,7 @@ function registerTests() {
   // over another row's, or a row deleted and a different one duplicated in its place) passes the
   // count test above but changes this hash. See samplesHash() for the algorithm (sha256 over
   // pre-substitution rows sorted by set/name) and why it's built that way.
-  const EXPECTED_SAMPLES_HASH = 'c2583e39c527a265093b8bea74ba30e6dbfa39644b9285e10369be87ae099b2c';
+  const EXPECTED_SAMPLES_HASH = '2dc9837aec7cc39dc6d0e6a7561a97e4b046875fdb86043b19b9f2211fc7f9b6';
 
   test('samples file integrity: full-content hash matches (catches same-count content swaps the row/set count checks miss)', () => {
     const rawRows = JSON.parse(raw); // pre-substitution rows -- see samplesHash() comment for why

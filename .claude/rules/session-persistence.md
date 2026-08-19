@@ -5,21 +5,21 @@ paths:
   - tasks/lessons.md
   - tasks/todo.md
   - tasks/roadmap.md
-  - tasks/CODEMAP.md
+  - tasks/codemap.md
   - tasks/todo-archive.md
   - tasks/lessons-archive.md
   - dev/*/tasks/session-state.md
   - dev/*/tasks/lessons.md
   - dev/*/tasks/todo.md
   - dev/*/tasks/roadmap.md
-  - dev/*/tasks/CODEMAP.md
+  - dev/*/tasks/codemap.md
   - dev/*/tasks/todo-archive.md
   - dev/*/tasks/lessons-archive.md
 ---
 
 # Session Persistence Routing Rule
 
-Centralizes location detection and bootstrap for `session-state.md` / `lessons.md` / `todo.md` / `roadmap.md` / `CODEMAP.md` (+ `todo-archive.md`, §6.6).
+Centralizes location detection and bootstrap for `session-state.md` / `lessons.md` / `todo.md` / `roadmap.md` / `codemap.md` (+ `todo-archive.md`, §6.6).
 This rule fires on any write attempt to the 14 paths above — `todo-archive.md` and `lessons-archive.md` were added together: both existed in prose (§6.3, §6.6) but were missing from this list, so the rule never fired for writes to either archive file until now.
 
 > **The journal is outside this rule's routing**: the work journal (`tasks/journal/YYYY-MM/DD.md`)
@@ -44,12 +44,12 @@ When multiple products match: adopt the one with the most hits; on a tie, confir
 
 | Situation | session-state | lessons | todo | roadmap | CODEMAP | todo-archive |
 |------|--------------|---------|------|---------|---------|---------|
-| Product context present | `dev/{name}/tasks/session-state.md` | `dev/{name}/tasks/lessons.md` | `dev/{name}/tasks/todo.md` | `dev/{name}/tasks/roadmap.md` | `dev/{name}/tasks/CODEMAP.md` | `dev/{name}/tasks/todo-archive.md` |
-| No product context | `tasks/session-state.md` | `tasks/lessons.md` | `tasks/todo.md` | `tasks/roadmap.md` | `tasks/CODEMAP.md` | `tasks/todo-archive.md` |
+| Product context present | `dev/{name}/tasks/session-state.md` | `dev/{name}/tasks/lessons.md` | `dev/{name}/tasks/todo.md` | `dev/{name}/tasks/roadmap.md` | `dev/{name}/tasks/codemap.md` | `dev/{name}/tasks/todo-archive.md` |
+| No product context | `tasks/session-state.md` | `tasks/lessons.md` | `tasks/todo.md` | `tasks/roadmap.md` | `tasks/codemap.md` | `tasks/todo-archive.md` |
 
 ## 3. Bootstrap Rule (new-file creation)
 
-When running `/save-session`, if **a product context is detected**, create the `dev/{name}/tasks/` directory as needed and bootstrap the 3 files below (only the ones not yet created). `roadmap.md` and `CODEMAP.md` are excluded — created on-demand (§6.4, §6.5).
+When running `/save-session`, if **a product context is detected**, create the `dev/{name}/tasks/` directory as needed and bootstrap the 3 files below (only the ones not yet created). `roadmap.md` and `codemap.md` are excluded — created on-demand (§6.4, §6.5).
 
 ```markdown
 # TODO — {product-name}
@@ -81,11 +81,11 @@ When **there is no product context** and a write to `dev/{name}/tasks/` is attem
 
 ## 5. Scope of This Rule
 
-Write-target detection for all 6 tasks files (CODEMAP.md included, §6.5; todo-archive.md included, §6.6), bootstrap for the 3 bootstrapped files, and the structure contract (§6). Actually writing is each actor's responsibility. Actors that follow this rule:
+Write-target detection for all 6 tasks files (codemap.md included, §6.5; todo-archive.md included, §6.6), bootstrap for the 3 bootstrapped files, and the structure contract (§6). Actually writing is each actor's responsibility. Actors that follow this rule:
 - `.claude/agents/planner.md` — todo.md (checklist only, §6.1); roadmap.md (large-scale step list, §6.4)
 - `.claude/commands/save-session.md` — session-state.md (§6.2) + bootstrap + lessons/todo appends
 - `.claude/commands/resume-session.md` — detecting the source to read from
-- `.claude/hooks/session-start.js` — reads the tasks files + journal tail for context injection (structure-independent); for CODEMAP.md it injects only a pointer (path + headings), never the body
+- `.claude/hooks/session-start.js` — reads the tasks files + journal tail for context injection (structure-independent); for codemap.md it injects only a pointer (path + headings), never the body
 
 ---
 
@@ -151,7 +151,7 @@ Reader = the next Claude session. **This file duplicates nothing**: next actions
 
 **Hygiene rules**: (1) markers `- [ ]` 未実装 / `- [~]` 進行中 / `- [x]` 完了; (2) top-to-bottom = implementation order; (3) mark `[~]` on start and `[x]` only when implementation **and verification** are done; (4) one work unit = one H2 section; (5) one line per step, no design body (link to plans/); (6) created on-demand only for large-scale work; (7) on completion fold into one line under todo.md `Recently Done`, then move the finished section verbatim into `todo-archive.md` (§6.6) — **do not delete it**. `roadmap.md` is `tasks/*.md` and therefore gitignored/untracked exactly like todo.md (root `.gitignore:2`), so git log holds no copy and a deletion here is just as unrecoverable; this rule previously said "delete the section (git log is the canonical history)", which was false for the same reason §6.1's did (corrected 2026-08-13).
 
-### 6.5 CODEMAP.md — a lookup map of where things are, created on demand
+### 6.5 codemap.md — a lookup map of where things are, created on demand
 
 ```markdown
 # CODEMAP — {product}
@@ -186,7 +186,7 @@ Reader = the next Claude session. **This file duplicates nothing**: next actions
 
 A bare `file:line` cannot tell 3 breakage modes apart (the line moved / never existed / was never checked at all), so every annotation carries an **anchor**: a literal substring of the line it points at, joined after `#` inside the same backtick span — `` `<path>:<lines>#<anchor>` ``.
 
-1. **`<path>`**: relative to the product root (the directory holding `tasks/` — repo root for `tasks/CODEMAP.md`, `dev/{name}/` for `dev/{name}/tasks/CODEMAP.md`). Write out elided paths (`.../review/page.tsx`) and unresolvable basenames in full — only an unresolvable path is disallowed; a file at the product root naming itself is fine.
+1. **`<path>`**: relative to the product root (the directory holding `tasks/` — repo root for `tasks/codemap.md`, `dev/{name}/` for `dev/{name}/tasks/codemap.md`). Write out elided paths (`.../review/page.tsx`) and unresolvable basenames in full — only an unresolvable path is disallowed; a file at the product root naming itself is fine.
 2. **`<lines>`**: `12` / `12-18` / `12,20`. The anchor is checked against the line named by the **first** number only — a range's end line and an enumeration's later numbers are not checked (split multi-target annotations one-per-line instead).
 3. **`<anchor>`**: a literal substring actually present on that line. No backtick inside it (it would close the span). `#` and `:` are both free to use inside the anchor.
 4. **Matching**: both sides are whitespace-normalized (runs of whitespace collapsed to one space, trimmed) before a substring match — indentation or table column padding must not cause a false drift/FAIL.
@@ -202,7 +202,7 @@ A bare `file:line` cannot tell 3 breakage modes apart (the line moved / never ex
 
    This opens a scope that governs every following `` `:N#anchor` `` row until the next `> file:` line, the next heading (any level, `#` through `######`), or the start of a fenced code block. A `` `:N` `` with no anchor and no governing declaration is not treated as an annotation at all (it cannot be told apart from a port number or a timestamp); a `` `:N#anchor` `` with no governing declaration FAILs instead — writing the anchor is a signal it is meant to be checked, and there is no declared path to check it against.
 10. Content inside a fenced code block (`` ``` `` / `~~~`) is never scanned for annotations — CODEMAP may show the annotation format itself as a fenced example without that example being checked as a real annotation.
-11. **Not checked, by design** (disclosed, not silent): a range annotation's end line; an enumeration annotation's 2nd and later line numbers; a `` `:N` `` with no anchor and no governing declaration (rule 9); symlink/junction targets (rule 6); a path with no `.<extension>` (e.g. `Makefile`, `Dockerfile`, `bin/run`) or containing `#` — the discovery regex (rule 12) requires a dotted alphabetic extension and treats the first `#` as the anchor separator, so such a path is never even found, let alone counted toward `unanchored` (code-review-cycle1-fusion.md F10); and, for `dev/*/tasks/CODEMAP.md` specifically, a change that only reroutes the `dev/*` product-directory listing itself — a clean clone legitimately has zero `dev/*` products, so "zero products" cannot be used as a tamper signal.
+11. **Not checked, by design** (disclosed, not silent): a range annotation's end line; an enumeration annotation's 2nd and later line numbers; a `` `:N` `` with no anchor and no governing declaration (rule 9); symlink/junction targets (rule 6); a path with no `.<extension>` (e.g. `Makefile`, `Dockerfile`, `bin/run`) or containing `#` — the discovery regex (rule 12) requires a dotted alphabetic extension and treats the first `#` as the anchor separator, so such a path is never even found, let alone counted toward `unanchored` (code-review-cycle1-fusion.md F10); and, for `dev/*/tasks/codemap.md` specifically, a change that only reroutes the `dev/*` product-directory listing itself — a clean clone legitimately has zero `dev/*` products, so "zero products" cannot be used as a tamper signal.
 12. **Discovery regexes** (the literal patterns validate.mjs section 18 uses to find candidates — code-review-cycle1-fusion.md F18):
     - Annotation: `` /`([^`\n#]*?\.[A-Za-z][A-Za-z0-9]*):(\d[\d,\-]*)(?:#([^`\n]*))?`/g ``
     - Bare, under a governing `> file:` scope: `` /`:(\d[\d,\-]*)(?:#([^`\n]*))?`/g ``
@@ -220,7 +220,7 @@ A bare `file:line` cannot tell 3 breakage modes apart (the line moved / never ex
 - [x] <step 2, 1 line — done>
 ```
 
-**Hygiene rules**: (1) verbatim move only, in either of two shapes — flat `- [x]` one-liners moved from todo.md's `Recently Done` (§6.1 rule 2), and whole finished H2 sections moved from roadmap.md (§6.4 rule 7) — never rewritten or summarized, matching `lessons-archive.md` (§6.3); a roadmap section landing here alongside its own folded one-line `Recently Done` summary is expected, not duplication to clean up; (2) append-only, never rotated; (3) excluded from SessionStart injection — `session-start.js` injects an explicit, hardcoded file list (session-state.md, roadmap.md, todo.md, today's journal tail, lessons.md, plus a separate CODEMAP.md pointer) with no glob that could ever pick up an archive file; (4) routed the same way as the other tasks files (§2): `dev/{name}/tasks/todo-archive.md` with a product context, else `tasks/todo-archive.md`; (5) created on demand only, like roadmap.md and CODEMAP.md — not bootstrapped.
+**Hygiene rules**: (1) verbatim move only, in either of two shapes — flat `- [x]` one-liners moved from todo.md's `Recently Done` (§6.1 rule 2), and whole finished H2 sections moved from roadmap.md (§6.4 rule 7) — never rewritten or summarized, matching `lessons-archive.md` (§6.3); a roadmap section landing here alongside its own folded one-line `Recently Done` summary is expected, not duplication to clean up; (2) append-only, never rotated; (3) excluded from SessionStart injection — `session-start.js` injects an explicit, hardcoded file list (session-state.md, roadmap.md, todo.md, today's journal tail, lessons.md, plus a separate codemap.md pointer) with no glob that could ever pick up an archive file; (4) routed the same way as the other tasks files (§2): `dev/{name}/tasks/todo-archive.md` with a product context, else `tasks/todo-archive.md`; (5) created on demand only, like roadmap.md and codemap.md — not bootstrapped.
 
 ---
 

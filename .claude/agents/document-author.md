@@ -3,6 +3,7 @@ name: document-author
 description: "資料・ドキュメント作成の専任エージェント。ユーザーが読む成果物（レポート・調査/分析結果・ガイド・比較表・サマリ・設計マップ）を、CLAUDE.md §10 準拠の自己完結HTML（CSSインライン・外部依存ゼロ・オフラインで開ける単一ファイル）として作る。構造図・フロー図・進捗ボードつきのビジュアル資料（design-map）と、スライドデッキ（deck mode: 1920×1080 の section 群、PPTX 変換前提）も担う。印刷/PDF化を見据えた print CSS（@page・改ページ・日本語フォント）まで面倒を見る。「資料を作って」「ドキュメント化して」「HTMLでまとめて」「PDF用の資料を」「スライドを作って」「プレゼン資料を」「pptxにして」「設計マップ/構造図にして」「図で見せて」で使う。"
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash
+effort: xhigh
 ---
 
 # Document Author Agent
