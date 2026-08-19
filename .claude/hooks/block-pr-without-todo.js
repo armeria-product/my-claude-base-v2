@@ -129,10 +129,10 @@
 // limits apply (no newline-splitting, no `(...)`/`{...}` grouping — see lib/parse-cmd.js's header).
 //
 // Batch A / A5 addition (2026-08-12): the SAME mtime-vs-branch-creation comparison above, applied
-// to tasks/CODEMAP.md in the same resolved repo root, opt-in — a repo root with no CODEMAP.md is
+// to tasks/codemap.md in the same resolved repo root, opt-in — a repo root with no codemap.md is
 // unaffected (isCodemapStaleForBranch() fails open exactly like isTodoStaleForBranch() does for a
 // repo with no reflog or no branch; see that function below). Same disclosure as the todo.md gate
-// above: this compares ONLY the file's mtime, never its content, so touching CODEMAP.md once with
+// above: this compares ONLY the file's mtime, never its content, so touching codemap.md once with
 // no real update satisfies this gate the same way todo.md's own gate can be satisfied without a
 // real update — a workflow-reminder device, not an adversarial control (see the second header
 // paragraph above). The honest, cheap way to pass this gate on a branch that changed none of the
@@ -165,7 +165,7 @@ function denyBaseMessage(base) {
 // A5 (2026-08-12): see the header paragraph above for why this is opt-in and what it does not
 // check (mtime only, never content — a workflow reminder, not an adversarial control).
 const DENY_CODEMAP_MESSAGE =
-  'BLOCKED: gh pr create の前に、tasks/CODEMAP.md を確認してください。行番号がずれていれば file:line#anchor の注記を直し、何も変わっていなければ「最終確認: YYYY-MM-DD」の行だけ今日の日付にしてから、もう一度実行してください。\n' +
+  'BLOCKED: gh pr create の前に、tasks/codemap.md を確認してください。行番号がずれていれば file:line#anchor の注記を直し、何も変わっていなければ「最終確認: YYYY-MM-DD」の行だけ今日の日付にしてから、もう一度実行してください。\n' +
   '（このチェック自体はファイルの更新日時だけを比較し、内容までは見ていません。中身のずれは `node .claude/scripts/validate.mjs` の節18が機械検査します。）';
 
 // Directory-change command names this hook cannot reliably follow (see header) — PowerShell's
@@ -433,8 +433,8 @@ function isTodoStaleForBranch(cwd) {
   }
 }
 
-// A5 (2026-08-12): same comparison as isTodoStaleForBranch() above, applied to tasks/CODEMAP.md —
-// opt-in: a repo root with no CODEMAP.md fails open here (fs.statSync throws ENOENT, caught below,
+// A5 (2026-08-12): same comparison as isTodoStaleForBranch() above, applied to tasks/codemap.md —
+// opt-in: a repo root with no codemap.md fails open here (fs.statSync throws ENOENT, caught below,
 // same as every other resolution failure this file treats as fail-open), so a project that has not
 // adopted the CODEMAP mechanism is unaffected. Mirrors isTodoStaleForBranch()'s structure rather
 // than sharing code with it, so each function's fail-open shape stays independently readable
@@ -447,7 +447,7 @@ function isCodemapStaleForBranch(cwd) {
     if (!branch) return false;
     const createdMs = branchCreatedMs(repoRoot, branch);
     if (createdMs === null) return false;
-    const codemapMtimeMs = fs.statSync(path.join(repoRoot, 'tasks', 'CODEMAP.md')).mtimeMs;
+    const codemapMtimeMs = fs.statSync(path.join(repoRoot, 'tasks', 'codemap.md')).mtimeMs;
     return codemapMtimeMs < createdMs;
   } catch {
     return false;
@@ -472,7 +472,7 @@ process.stdin.on('end', () => {
     const prCreateCwds = findPrCreateCwds(command, payload.cwd || process.cwd());
     if (!prCreateCwds) process.exit(0);
 
-    // L-2 (2026-08-12): todo.md and CODEMAP.md staleness are two independent, opt-in checks (see
+    // L-2 (2026-08-12): todo.md and codemap.md staleness are two independent, opt-in checks (see
     // the A5 header paragraph) over the SAME cwd list — both are evaluated and reported together
     // in one message when both fire, rather than exiting on the first and leaving the second
     // failure for a follow-up run to discover.

@@ -3,6 +3,7 @@ name: verifier
 description: "実証的検証エージェント。「動くはず」を退け、証拠（テスト出力・diff・ログ・grep 結果）で正しさを立証する。理解→ビルド/型→Lint→テスト→挙動・回帰→判定の6フェーズを実行し、PASS/FAIL/INCOMPLETE で報告する。コード変更後の検証・修正の動作確認に使う。"
 tools: Bash, Glob, Grep, Read
 model: sonnet
+effort: xhigh
 ---
 
 # Verifier Agent

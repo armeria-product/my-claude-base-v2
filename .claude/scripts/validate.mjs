@@ -25,13 +25,20 @@ const warn = (m) => warns.push(m);
 const MODEL_ALIASES = new Set(['fable', 'opus', 'sonnet', 'haiku', 'inherit']);
 const READ_ONLY_AGENTS = new Set(['reviewer', 'verifier', 'explorer']);
 // CLAUDE.md §2: planner/reviewer default to native Opus, permit only native Fable or Opus in an
-// authority dispatch, and pin a per-role effort (planner max; reviewer xhigh — user ruling
-// 2026-08-16: the co-review loop runs 2 seats × up to 3 cycles, so the review seat steps down one
-// notch while planning keeps max). Fable is permitted only while the CLAUDE.md §1.11 gate
+// authority dispatch. Effort is pinned per role (EFFORT_PINS below) — planner/reviewer/verifier all
+// xhigh: the review seat stepped down from max by user ruling 2026-08-16 (the co-review loop runs
+// 2 seats × up to 3 cycles), planner likewise by ruling 2026-08-19, which also pinned verifier so
+// the evidence check runs deep on a standard-tier model. Fable is permitted only while the CLAUDE.md §1.11 gate
 // (.claude/.fable-status = ON) is open, enforced for all dispatches by block-fable-when-off.js —
 // never a silent/lower-tier fallback, and a failed Opus dispatch is reported and stopped, not
 // silently retried on Fable.
-const AUTHORITY_EFFORT = new Map([['planner', 'max'], ['reviewer', 'xhigh']]);
+// Effort pins (CLAUDE.md §2) — a superset of the authority roles: every agent except the light-tier
+// explorer pins its thinking depth at xhigh, standard-tier ones included (user ruling 2026-08-19).
+const EFFORT_PINS = new Map([
+  ['planner', 'xhigh'], ['reviewer', 'xhigh'], ['verifier', 'xhigh'],
+  ['executor', 'xhigh'], ['debugger', 'xhigh'], ['document-author', 'xhigh'],
+]);
+const AUTHORITY_ROLES = new Set(['planner', 'reviewer']);
 const AUTHORITY_MODELS = new Set(['fable', 'opus']);
 const AUTHORITY_DEFAULT_MODEL = 'opus';
 // agents-revision plan Phase 2 + Batch H L11 (2026-08-06 Q1 ruling, option a): shared clause (A)
@@ -95,16 +102,16 @@ for (const f of fs.readdirSync(agentsDir).filter((x) => x.endsWith('.md'))) {
     if (!fm.tools) fail(`agent ${fm.name}: read-only agent must declare a tools allowlist`);
     else if (/\b(Edit|Write|NotebookEdit)\b/.test(fm.tools)) fail(`agent ${fm.name}: read-only agent has write tool in allowlist (${fm.tools})`);
   }
-  if (AUTHORITY_EFFORT.has(fm.name) && fm.effort !== AUTHORITY_EFFORT.get(fm.name))
-    fail(`agent ${fm.name}: frontmatter must pin "effort: ${AUTHORITY_EFFORT.get(fm.name)}" (CLAUDE.md §2 per-role effort pin for the authority tier)`);
-  if (AUTHORITY_EFFORT.has(fm.name) && !AUTHORITY_MODELS.has(fm.model))
+  if (EFFORT_PINS.has(fm.name) && fm.effort !== EFFORT_PINS.get(fm.name))
+    fail(`agent ${fm.name}: frontmatter must pin "effort: ${EFFORT_PINS.get(fm.name)}" (CLAUDE.md §2 per-role effort pin)`);
+  if (AUTHORITY_ROLES.has(fm.name) && !AUTHORITY_MODELS.has(fm.model))
     fail(`agent ${fm.name}: model "${fm.model}" is not in the authority allowlist (${[...AUTHORITY_MODELS].join(' | ')})`);
-  if (AUTHORITY_EFFORT.has(fm.name) && fm.model !== AUTHORITY_DEFAULT_MODEL)
+  if (AUTHORITY_ROLES.has(fm.name) && fm.model !== AUTHORITY_DEFAULT_MODEL)
     fail(`agent ${fm.name}: frontmatter default must be "${AUTHORITY_DEFAULT_MODEL}" — Fable is allowed only while the CLAUDE.md §1.11 gate (.claude/.fable-status = ON) is open`);
-  // Reverse effort check: effort: is reserved for the authority tier (CLAUDE.md §2) — an
+  // Reverse effort check: effort: is reserved for the pinned roles (CLAUDE.md §2) — an
   // effort key on any other agent is either drift or an unauthorized tier upgrade.
-  if (!AUTHORITY_EFFORT.has(fm.name) && fm.effort)
-    fail(`agent ${fm.name}: has "effort: ${fm.effort}" in frontmatter but is not an authority agent (${[...AUTHORITY_EFFORT.keys()].join('/')}) — effort pinning is reserved for the authority tier`);
+  if (!EFFORT_PINS.has(fm.name) && fm.effort)
+    fail(`agent ${fm.name}: has "effort: ${fm.effort}" in frontmatter but is not an effort-pinned role (${[...EFFORT_PINS.keys()].join('/')}) — effort pinning is reserved for those roles`);
   // Fleet loop (a): the read-only Bash constraint sentence must stay verbatim in every
   // read-only agent's own body (a path-scoped rule only loads while editing agent files, so
   // the per-agent restatement is what the model actually sees at dispatch time).
@@ -1421,7 +1428,7 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
 }
 
 // ---- 18. CODEMAP file:line anchor drift ----
-// codemap-anchor-validate plan (2026-08-16): CODEMAP.md's `file:line` annotations drift from the
+// codemap-anchor-validate plan (2026-08-16): codemap.md's `file:line` annotations drift from the
 // code they point at (the same breakage recurred 3 times — none of it caught until a human happened
 // to read both files side by side). The fix is a machine cross-check: every annotation now carries
 // an anchor (a literal substring of the line it names, joined after `#`), and this section verifies
@@ -1431,7 +1438,7 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
 // via the アンカー移行済み marker (session-persistence.md §6.5 hygiene rules 7-8).
 //
 // Detection-power design (why 18a-18d exist as separate pins, not 1): a clean clone has ZERO
-// tasks/CODEMAP.md content (both repos' CODEMAP files are gitignored) and may have zero dev/*
+// tasks/codemap.md content (both repos' CODEMAP files are gitignored) and may have zero dev/*
 // products, so "the real files disagree with expectations" cannot be the floor — a degenerate
 // scan (narrowed target list, disabled loop, broken extraction regex) would look identical to "there
 // is legitimately nothing to check". The floor instead lives entirely in files that ARE committed:
@@ -1501,7 +1508,7 @@ const CODEMAP_FOUND_DISPLAY_CAP = 20; // F11: drift WARNs cap the printed line-n
 // pathological match count cannot balloon a single message to megabytes and bury real FAILs below it
 const CODEMAP_EXPECTED_FENCED_LIKE = 2; // F2/F3: N2 (full annotation) + N3 (bare annotation) inside the fixture's fenced block
 const CODEMAP_EXPECTED_FIXTURE_PRODUCTS = ['products/alpha/tasks/map.txt', 'products/beta/tasks/map.txt'];
-const CODEMAP_EXPECTED_TARGETS = ['tasks/CODEMAP.md', 'dev/*/tasks/CODEMAP.md'];
+const CODEMAP_EXPECTED_TARGETS = ['tasks/codemap.md', 'dev/*/tasks/codemap.md'];
 const CODEMAP_MIGRATION_MARKER_RE = /^アンカー移行済み:\s*\d{4}-\d{2}-\d{2}\s*$/m;
 const CODEMAP_FULL_RE = /`([^`\n#]*?\.[A-Za-z][A-Za-z0-9]*):(\d[\d,\-]*)(?:#([^`\n]*))?`/g;
 const CODEMAP_BARE_RE = /`:(\d[\d,\-]*)(?:#([^`\n]*))?`/g;
@@ -1554,7 +1561,7 @@ function listDir(dir) {
   return fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name) : [];
 }
 // expandTargets: a glob is "prefix segments + '*' + suffix segments" (exactly one wildcard depth —
-// `dev/*/tasks/CODEMAP.md` and the fixture's `products/*/tasks/map.txt` are both this shape; `**`
+// `dev/*/tasks/codemap.md` and the fixture's `products/*/tasks/map.txt` are both this shape; `**`
 // and multiple `*` are out of scope, CLAUDE.md §1.7). No '*' -> single-file existence check.
 function expandTargets(rootDir, glob) {
   const starIdx = glob.indexOf('*');
@@ -1757,7 +1764,7 @@ const codemapTotals = { fail, warn, files: 0, anchored: 0, unanchored: 0 };
 
 // -- 18a. target list derivation + pin P1 --
 // Derived from session-persistence.md's OWN frontmatter (not a value hardcoded twice) — the paths:
-// list already governs write-routing for CODEMAP.md, so this reads the same list rather than
+// list already governs write-routing for codemap.md, so this reads the same list rather than
 // maintaining a second copy that could silently drift from it (F1: the target list must depend on a
 // COMMITTED file, never on which real CODEMAP files happen to exist).
 let derivedCodemapTargets = null;
@@ -1776,7 +1783,7 @@ let derivedCodemapTargets = null;
         all.push(m[1]);
       }
     }
-    derivedCodemapTargets = all.filter((g) => g.split('/').pop() === 'CODEMAP.md');
+    derivedCodemapTargets = all.filter((g) => g.split('/').pop() === 'codemap.md');
     if (JSON.stringify(derivedCodemapTargets) !== JSON.stringify(CODEMAP_EXPECTED_TARGETS)) {
       fail(`section 18 P1: derived CODEMAP target list from session-persistence.md frontmatter is [${derivedCodemapTargets.join(', ')}] but must be [${CODEMAP_EXPECTED_TARGETS.join(', ')}]`);
       // F14 (code-review-cycle1-fusion.md): fail() does not throw, so without this line 18b would
@@ -1821,12 +1828,12 @@ let derivedCodemapTargets = null;
     fail('.claude/rules/session-persistence.md missing — cannot verify the CODEMAP §6.5 anchor-format template');
   } else {
     const spText = read(spPath);
-    const headingCount = (spText.match(/### 6\.5 CODEMAP\.md/g) || []).length;
+    const headingCount = (spText.match(/### 6\.5 codemap\.md/g) || []).length;
     if (headingCount !== 1)
-      fail(`.claude/rules/session-persistence.md: expected exactly 1 occurrence of the "### 6.5 CODEMAP.md" heading, found ${headingCount} — a decoy heading could hijack which span the anchor-format pin below checks`);
-    const m = spText.match(/### 6\.5 CODEMAP\.md[\s\S]*?(?=\n### |\n---)/);
+      fail(`.claude/rules/session-persistence.md: expected exactly 1 occurrence of the "### 6.5 codemap.md" heading, found ${headingCount} — a decoy heading could hijack which span the anchor-format pin below checks`);
+    const m = spText.match(/### 6\.5 codemap\.md[\s\S]*?(?=\n### |\n---)/);
     if (!m) {
-      fail('.claude/rules/session-persistence.md: "### 6.5 CODEMAP.md" section not found (or unterminated before the next "### " heading) — cannot verify the anchor-format template');
+      fail('.claude/rules/session-persistence.md: "### 6.5 codemap.md" section not found (or unterminated before the next "### " heading) — cannot verify the anchor-format template');
     } else {
       const section = m[0];
       const items = [
