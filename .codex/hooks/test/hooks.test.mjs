@@ -9,6 +9,9 @@ import { buildContext, extractFilePaths, readPayload } from '../lib/runtime.mjs'
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-hooks-'));
+  fs.mkdirSync(path.join(root, '.codex'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.codex', 'hooks.json'), '{}\n');
+  fs.writeFileSync(path.join(root, 'AGENTS.md'), '# Test workspace\n');
   execFileSync('git', ['init', '-q', root]);
   execFileSync('git', ['-C', root, 'checkout', '-q', '-b', 'main']);
   execFileSync('git', ['-C', root, '-c', 'user.name=Codex Test', '-c', 'user.email=codex@example.invalid', 'commit', '--allow-empty', '-q', '-m', 'initial']);
