@@ -78,7 +78,7 @@ Within the plan flow, the plan skill's Phase 2 template takes priority — this 
 ### Verification
 ```
 
-For a heavy-path plan, also write `plans/{slug}/scope.json` as the reviewable touch-surface manifest — fields and glob guidance are the plan skill's Phase 2 contract (SOT). It is advisory, not a write lock. Each Verification claim names a check that goes RED if broken (including the reverse "X is still denied/allowed" check), with numbers scoped to the measured branch/OS.
+For a heavy-path plan that will run under a scope lock, also write `plans/{slug}/scope.json` — fields and glob guidance are the plan skill's Phase 2 contract (SOT). Each Verification claim names a check that goes RED if broken (including the reverse "X is still denied/allowed" check), with numbers scoped to the measured branch/OS.
 
 **Return message (end of the Plan Mode reply)**: close with a fixed block — Artifacts (paths written) / Complexity (trivial…epic) / Open questions / Gap proposals & objections (the conductor folds this into a single AskUserQuestion).
 

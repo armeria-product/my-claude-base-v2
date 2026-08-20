@@ -56,6 +56,17 @@ process.stdin.on("end", () => {
   const model = data?.model?.display_name || "Claude";
   const parts = [model];
 
+  // scope-lock indicator: 🔒slug while a plan lock is armed (reads hook-owned state)
+  try {
+    const proj = data?.workspace?.project_dir || data?.cwd || process.cwd();
+    const lock = JSON.parse(
+      fs.readFileSync(path.join(proj, ".claude", "state", "scope-lock.json"), "utf8")
+    );
+    if (lock.status === "locked") parts.push(`\x1b[33m🔒${lock.slug}${R}`);
+  } catch {
+    /* no lock file -> no segment */
+  }
+
   // Fable ON/OFF switch indicator (CLAUDE.md §1.11): the switch is the user's file to edit, not
   // Claude's (2026-08-06 ruling) — surface it so a leftover ON from a previous session is visible.
   try {

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// SessionStart hook: inject session-state / roadmap / todo / today's journal tail / lessons.
+// SessionStart hook: inject session-state / roadmap / todo / today's journal tail / lessons
+// plus the scope-lock status line into Claude's context.
 // Input: Claude Code hook event JSON on stdin (cwd field)
 // Output: JSON {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "..."}}
 //
-// dev-mode routing (tasks files only — journal is workspace-global):
+// dev-mode routing (tasks files only — journal and scope-lock are workspace-global):
 //   cwd is under dev/{name}/ → read dev/{name}/tasks/
 //   otherwise               → read the root tasks/
 //
@@ -80,6 +81,7 @@ process.stdin.on('end', () => {
 
   const blocks = [
     devMatch ? `=== CONTEXT: dev/${devMatch[1]} ===` : '=== CONTEXT: workspace root ===',
+    lockStatus(projectDir),
   ];
   for (const f of files) {
     blocks.push(`\n=== ${f.label} ===\n` + (f.text == null ? f.empty : f.text));
@@ -124,9 +126,20 @@ function journalView(text) {
   return '[latest session report + after]\n' + view;
 }
 
+function lockStatus(projectDir) {
+  try {
+    const lock = JSON.parse(fs.readFileSync(path.join(projectDir, '.claude', 'state', 'scope-lock.json'), 'utf8'));
+    if (lock.status === 'locked')
+      return `🔒 scope-lock: LOCKED — slug=${lock.slug} plan=${lock.plan}（範囲外への書き込みはフックが拒否。解除はユーザーの「解除」のみ）`;
+    return `🔓 scope-lock: ${lock.status || 'none'}（ロックなし — 通常モード）`;
+  } catch {
+    return '🔓 scope-lock: none（ロックなし — 通常モード）';
+  }
+}
+
 // A6: short pointer block for tasks/codemap.md — path + `##` headings + one reminder line.
 // Deliberately does not read/inject the file body (see header comment). Returns null when the
-// file doesn't exist at this tasksDir (opt-in, fail-open).
+// file doesn't exist at this tasksDir (opt-in, fail-open — same convention as lockStatus above).
 function codemapPointerBlock(tasksDir, projectDir) {
   const codemapPath = path.join(tasksDir, 'codemap.md');
   let text;

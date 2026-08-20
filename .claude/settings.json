@@ -1,8 +1,5 @@
 {
   "cleanupPeriodDays": 365,
-  "env":{
-    "CLAUDE_CODE_USE_POWERSHELL_TOOL": "1"
-  },
   "permissions": {
     "deny": [
       "Read(./.env)",
@@ -14,6 +11,7 @@
       "Read(./**/secrets/**)",
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
+      "Edit(./.claude/state/**)",
       "Edit(./.claude/.fable-status)"
     ],
     "defaultMode": "bypassPermissions",
@@ -54,6 +52,10 @@
       {
         "matcher": "",
         "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/approve-lock.js\""
+          },
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-prompt.js\""
@@ -109,11 +111,20 @@
         ]
       },
       {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/scope-guard.js\""
+          }
+        ]
+      },
+      {
         "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-fable-status-write.js\""
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/cmd-write-guard.js\""
           },
           {
             "type": "command",

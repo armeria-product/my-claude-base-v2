@@ -1,26 +1,30 @@
-// Write-target extraction for shell safety hooks (bash tokens via lib/parse-cmd, PowerShell
+// Write-target extraction for cmd-write-guard.js (bash tokens via lib/parse-cmd, PowerShell
 // cmdlets via exact-name regex). Shared so the extraction logic is independently unit-testable.
 //
 //   extractTargets(toolName, command, startCwd) -> { targets: string[](absolute paths), unresolved: boolean }
 //
 // cd tracking (bash path only): segments() is walked with a running cwd; `cd <path>` updates
 // it for later segments in the same command, `cd` (bare, -> home) and `cd -` leave it
-// unchanged. NOT tracked: subshells `( )`, a cd inside one stage of a pipeline, pushd/popd,
-// and variable-expanded cd targets. The PowerShell path does no cd tracking — its targets
-// resolve against startCwd only. This precise path is appropriate for general target extraction.
+// unchanged. NOT tracked: subshells `( )`, a cd inside one stage of a pipeline (runs in a
+// separate process — inheriting it anyway over-detects, which is safe), pushd/popd, and
+// variable-expanded cd targets. The PowerShell path does no cd tracking — its targets resolve
+// against startCwd only. This precise/limited model is intentional for extractTargets, which
+// feeds Duty 2 (scope enforcement) — over-detecting there would falsely deny legitimate writes.
 //
-//   extractProtectionCandidates(toolName, command, startCwd) -> string[](absolute paths)
+//   extractStateCandidates(toolName, command, startCwd) -> string[](absolute paths)
 //
-// A separate, deliberately over-detecting extractor used for protected control files. A false
-// DENY just makes the user split the command, while a false ALLOW could mutate the control.
-// This path additionally treats `pushd <dest>` and a subshell-entry `cd <dest>`
+// A SEPARATE, deliberately over-detecting extractor used only by cmd-write-guard.js's
+// unconditional .claude/state protection (Arm B). For that check the safe direction is the
+// opposite of Duty 2's: a false DENY just makes the user split the command, but a false ALLOW
+// is a tamper. So this path additionally treats `pushd <dest>` and a subshell-entry `cd <dest>`
 // as cwd changes, in both tokenizations the parser produces — glued (`(cd .claude` -> cmd "(cd")
 // and space-separated (`( cd .claude` -> cmd "(", args[0] "cd") — with NO subshell-exit scoping
 // (a cd inside `( )` leaks forward to the rest of the command).
 // The PowerShell mirror treats any `Set-Location`/`sl`/`pushd` call whose destination path is (or
 // ends in) `.claude`, anywhere in the command, as grounds to re-scan all write cmdlets rooted at
 // `.claude` instead of startCwd — also with no ordering/scoping precision. Both intentionally
-// over-approximate — accepted per the design principle above.
+// over-approximate (e.g. a cd-into-.claude that happens AFTER an unrelated state/-named write
+// elsewhere in the same command can still flag) — accepted per the design principle above.
 
 const path = require('node:path');
 const { segments } = require('./parse-cmd');
@@ -187,11 +191,11 @@ function extractTargets(toolName, command, startCwd) {
   return { targets, unresolved };
 }
 
-// PowerShell cd-equivalents recognized only by the liberal protected-target path below.
+// PowerShell cd-equivalents recognized only by the liberal state-candidate path below.
 const PS_CD_RE = /\b(?:Set-Location|sl|pushd)\b\s+(?:-(?:Path|LiteralPath)\s+)?(?:"([^"]*)"|'([^']*)'|([^\s;|]+))/gi;
 
-// See header: deliberately over-detecting, used only for protected control-file checks.
-function extractProtectionCandidates(toolName, command, startCwd) {
+// See header: deliberately over-detecting, used only for the .claude/state protection check.
+function extractStateCandidates(toolName, command, startCwd) {
   const cwd = startCwd || process.cwd();
   const targets = [];
   targets.push(...extractBash(command, cwd, { liberalCd: true }).targets);
@@ -210,4 +214,4 @@ function extractProtectionCandidates(toolName, command, startCwd) {
   return targets;
 }
 
-module.exports = { extractTargets, extractProtectionCandidates };
+module.exports = { extractTargets, extractStateCandidates };

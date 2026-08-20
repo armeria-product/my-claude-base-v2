@@ -33,6 +33,13 @@
 //     3. Recovery fact the user already accepted when making this ruling: tasks/journal/**,
 //        tasks/history/**, tasks/*.md, plans/**, and dev/** are all gitignored (CLAUDE.md §0) — an
 //        rm under this new policy can delete any of them with NO git history to recover from.
+//     4. .claude/state/ stays protected regardless of this change, by a DIFFERENT hook: every
+//        Bash/PowerShell call runs cmd-write-guard.js and block-destructive-fs.js independently
+//        (same PreToolUse "Bash|PowerShell" matcher, settings.json) and either can veto. cmd-write-
+//        guard.js's write-indicator regex matches `rm` (\brm\b) and its Arm B unconditionally checks
+//        the resolved target against the state dir via isStateDir() — this hook allowing an rm
+//        under .claude/state/ (it resolves inside the root) does not make it succeed.
+//
 //   - Recursive deletes (rm -r / -rf) of RELATIVE targets are blocked unless every target's leaf name
 //     is a disposable build-output dir (node_modules, dist, ...) -> otherwise Claude confirms with the user.
 //   - find ... -delete is blocked unconditionally
@@ -67,7 +74,7 @@
 const { segments, stripExeSuffix } = require('./lib/parse-cmd');
 const path = require('node:path');
 const { projectRoot } = require('./lib/journal-util');
-const { normalizeRel } = require('./lib/path-util');
+const { normalizeRel } = require('./lib/scope-match');
 
 // Directories that can be safely regenerated after deletion (matched by the trailing path element).
 // rm/shred no longer consult this (workspace-root containment supersedes it — see header "Policy:
@@ -188,7 +195,8 @@ process.stdin.on('end', () => {
     process.exit(0);
   }
 
-  // Resolve root/cwd consistently with the other workspace hooks.
+  // Mirrors cmd-write-guard.js's own root/cwd resolution exactly (CLAUDE_PROJECT_DIR -> payload.cwd
+  // -> process.cwd(), walking up for a .claude dir; see lib/journal-util.js projectRoot).
   const root = projectRoot(payload);
   const cwd = payload.cwd || root;
 

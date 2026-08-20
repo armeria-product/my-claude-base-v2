@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
-const { extractTargets, extractProtectionCandidates } = require('./cmd-targets');
+const { extractTargets, extractStateCandidates } = require('./cmd-targets');
 
 const ROOT = 'D:\\proj';
 const abs = (...parts) => path.resolve(ROOT, ...parts);
@@ -85,54 +85,54 @@ test('bare cd (-> home) and cd - leave cwd unchanged', () => {
   assert.deepEqual(extractTargets('Bash', 'cd - && echo x > a.txt', ROOT).targets, [abs('a.txt')]);
 });
 
-test('extractProtectionCandidates: subshell-entry cd tracks liberally into .claude', () => {
-  const r = extractProtectionCandidates('Bash', '(cd .claude && echo x > .fable-status)', ROOT);
+test('extractStateCandidates: subshell-entry (cd .claude tracks liberally into state/', () => {
+  const r = extractStateCandidates('Bash', '(cd .claude && echo x > state/f)', ROOT);
   assert.ok(
-    r.some((t) => t.toLowerCase().startsWith(abs('.claude', '.fable-status').toLowerCase())),
-    `expected the Fable control file, got ${JSON.stringify(r)}`
+    r.some((t) => t.toLowerCase().startsWith(abs('.claude', 'state').toLowerCase())),
+    `expected a target under .claude/state, got ${JSON.stringify(r)}`
   );
 });
 
-test('extractProtectionCandidates: pushd .claude tracks liberally', () => {
-  const r = extractProtectionCandidates('Bash', 'pushd .claude && echo x > .fable-status', ROOT);
-  assert.deepEqual(r, [abs('.claude', '.fable-status')]);
+test('extractStateCandidates: pushd .claude tracks liberally into state/', () => {
+  const r = extractStateCandidates('Bash', 'pushd .claude && echo x > state/f', ROOT);
+  assert.deepEqual(r, [abs('.claude', 'state', 'f')]);
 });
 
-test('extractProtectionCandidates: PowerShell Set-Location .claude', () => {
-  const r = extractProtectionCandidates('PowerShell', 'Set-Location .claude; Set-Content .fable-status ON', ROOT);
+test('extractStateCandidates: PowerShell Set-Location .claude; Set-Content state\\f', () => {
+  const r = extractStateCandidates('PowerShell', 'Set-Location .claude; Set-Content state\\f x', ROOT);
   assert.ok(
-    r.some((t) => t.toLowerCase() === abs('.claude', '.fable-status').toLowerCase()),
-    `expected the Fable control file, got ${JSON.stringify(r)}`
+    r.some((t) => t.toLowerCase().startsWith(abs('.claude', 'state').toLowerCase())),
+    `expected a target under .claude/state, got ${JSON.stringify(r)}`
   );
 });
 
-test('extractProtectionCandidates: non-.claude subshell stays outside .claude', () => {
-  const r = extractProtectionCandidates('Bash', '(cd sub && echo x > f)', ROOT);
+test('extractStateCandidates: negative control — subshell cd into a non-.claude dir stays outside .claude/state', () => {
+  const r = extractStateCandidates('Bash', '(cd sub && echo x > f)', ROOT);
   assert.ok(
-    r.every((t) => !t.toLowerCase().startsWith(abs('.claude').toLowerCase())),
-    `expected no target under .claude, got ${JSON.stringify(r)}`
+    r.every((t) => !t.toLowerCase().startsWith(abs('.claude', 'state').toLowerCase())),
+    `expected no target under .claude/state, got ${JSON.stringify(r)}`
   );
 });
 
-test('extractProtectionCandidates: spaced subshell cd tracks liberally', () => {
-  const r = extractProtectionCandidates('Bash', '( cd .claude && echo x > .fable-status )', ROOT);
-  assert.deepEqual(r, [abs('.claude', '.fable-status')]);
+test('extractStateCandidates: subshell-entry with a space, "( cd .claude", tracks liberally into state/', () => {
+  const r = extractStateCandidates('Bash', '( cd .claude && echo x > state/f )', ROOT);
+  assert.deepEqual(r, [abs('.claude', 'state', 'f')]);
 });
 
-test('extractProtectionCandidates: spaced subshell pushd tracks liberally', () => {
-  const r = extractProtectionCandidates('Bash', '( pushd .claude && echo x > .fable-status )', ROOT);
-  assert.deepEqual(r, [abs('.claude', '.fable-status')]);
+test('extractStateCandidates: subshell-entry with a space, "( pushd .claude", tracks liberally into state/', () => {
+  const r = extractStateCandidates('Bash', '( pushd .claude && echo x > state/f )', ROOT);
+  assert.deepEqual(r, [abs('.claude', 'state', 'f')]);
 });
 
-test('extractProtectionCandidates: spaced non-.claude subshell stays outside .claude', () => {
-  const r = extractProtectionCandidates('Bash', '( cd sub && echo x > f )', ROOT);
+test('extractStateCandidates: negative control — "( cd sub" (space form, no .claude) stays outside .claude/state', () => {
+  const r = extractStateCandidates('Bash', '( cd sub && echo x > f )', ROOT);
   assert.ok(
-    r.every((t) => !t.toLowerCase().startsWith(abs('.claude').toLowerCase())),
-    `expected no target under .claude, got ${JSON.stringify(r)}`
+    r.every((t) => !t.toLowerCase().startsWith(abs('.claude', 'state').toLowerCase())),
+    `expected no target under .claude/state, got ${JSON.stringify(r)}`
   );
 });
 
-test('extractProtectionCandidates: plain cd .claude is also present', () => {
-  const r = extractProtectionCandidates('Bash', 'cd .claude && echo x > .fable-status', ROOT);
-  assert.deepEqual(r, [abs('.claude', '.fable-status')]);
+test('extractStateCandidates: plain cd .claude (already caught by extractTargets) is also present', () => {
+  const r = extractStateCandidates('Bash', 'cd .claude && echo x > state/f', ROOT);
+  assert.deepEqual(r, [abs('.claude', 'state', 'f')]);
 });

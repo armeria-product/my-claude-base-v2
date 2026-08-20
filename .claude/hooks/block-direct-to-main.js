@@ -73,8 +73,11 @@
 //       lib/parse-cmd.js's normalized `cmd`, so GP2's strip reaches them directly. That is NOT true
 //       of every guard in this codebase — a guard whose first check is a raw-text regex match on the
 //       un-normalized command string (before lib/parse-cmd's segments() output is ever consulted) is
-//       entirely unaffected by this normalization. A hook that gates first on a raw-text regex
-//       still needs its own executable-suffix handling; GP2 does not close that separate class.
+//       entirely unaffected by this normalization. Confirmed example: cmd-write-guard.js's
+//       WRITE_INDICATOR_RE requires the literal bare `git\s+(?:checkout|restore)` / `sed\s+-i` in the
+//       raw command text, so `git.exe restore` / `git.cmd restore` / `sed.exe -i` never even reach
+//       extraction there and bypass that guard while locked (measured; filed as the highest-priority
+//       tasks/todo.md Backlog item). GP2 does not close this class in any file that has such a gate.
 //
 // Command parsing goes through the shared tokenizer (lib/parse-cmd: quote-aware segment split,
 // then per-token unquoting) so a quoted commit message / heredoc that merely mentions "main"
