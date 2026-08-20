@@ -10,11 +10,14 @@ first and then waits for the user's direction; do not begin implementation by it
 
 ## Non-negotiable record rules
 
-- The work journal is the workspace-root `tasks/journal/YYYY-MM/DD.md`, including product work.
+- The canonical human journal is the workspace-root `tasks/journal/YYYY-MM/DD.md`, including product work.
+- Existing native `tasks/journal/YYYY/MM/DD.md` files remain read-compatible historical records.
+  Treat only their `## HH:MM` sections as human reports; do not move, merge, rewrite, or append to them.
+- Lifecycle and supported edit-path machine events live separately in `tasks/journal/.machine/YYYY-MM/DD.log`.
 - `session-state.md` is a two-line pointer, not a second copy of next actions or blockers.
 - A native SessionStart context is useful only when actually present. When it is absent, read real
   records, Codex task history, and Git directly.
-- Never manufacture a machine line, session ID, save marker, or claim that hooks were active.
+- Never manufacture a machine event, session ID, save marker, or claim that hooks were active.
 - Unexpected changes can belong to a parallel task. Do not modify them while reconciling.
 
 ## Invocation
@@ -27,15 +30,16 @@ first and then waits for the user's direction; do not begin implementation by it
 
 ## 1. Read the record trail
 
-Read the selected `session-state.md` first, then the journal report it points to. Read the prior
-journal day when the latest report is incomplete or points there. Also inspect the active todo and,
-when relevant, roadmap and codemap.
+Read the selected `session-state.md` first, then the human journal report it points to. If a historical
+pointer targets `tasks/journal/YYYY/MM/DD.md`, read it for compatibility but do not rewrite it merely
+to normalize the layout. Read the prior journal day when the latest report is incomplete or points there.
+Also inspect the active todo and, when relevant, roadmap and codemap.
 
 If native SessionStart context already supplied a latest report and a real journal ID, do not repeat
 that read merely to duplicate context. Still verify Git and the plan. Without such context, use
 Codex task history, existing records, and Git directly.
 
-Scan real recent journal markers when useful:
+Scan real recent machine-event markers (or equivalent historical legacy markers) when useful:
 
 - `SESSION START` without a corresponding `SESSION END` or `SAVE` is a possible interrupted or
   still-parallel task.
@@ -73,6 +77,8 @@ the user gives a new direction.
 
 ## Limits disclosure
 
-Trusted native hooks can inject bounded records and journal supported local tool calls. They do not
-prove complete history and do not cover disabled hooks, trust bypass, external terminals/editors, or
-other task activity. Keep the report grounded in the observable records and Git state.
+Trusted native hooks can inject at most 10 KiB of state, the latest human report, a compact TODO view,
+and CODEMAP headings. They journal lifecycle and supported edit-path machine events only; they never
+run a formatter, rewrite files, or retain arbitrary shell command text. They do not prove complete
+history and do not cover disabled hooks, trust bypass, external terminals/editors, or other task
+activity. Keep the report grounded in the observable records and Git state.

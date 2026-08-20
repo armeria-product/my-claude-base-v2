@@ -6,8 +6,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process');let r=process.cwd();for(;;){if(fs.existsSync(p.join(r,'.codex','hooks.json')))break;const n=p.dirname(r);if(n===r)process.exit(1);r=n}process.exit(c.spawnSync(process.execPath,[p.join(r,'.codex','hooks','session-start.mjs')],{stdio:'inherit'}).status??1)\"",
+            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process'),s='session-start.mjs',ok=(b,x)=>{try{const r=p.relative(b,x);if(!r||r==='..'||r.startsWith('..'+p.sep)||p.isAbsolute(r))return false;let q=b;for(const n of r.split(p.sep)){q=p.join(q,n);const t=fs.lstatSync(q);if(t.isSymbolicLink())return false}return fs.statSync(x).isFile()}catch{return false}};let r;try{r=fs.realpathSync(process.cwd())}catch{process.exit(1)}let h='';for(;;){const q=p.join(r,'.codex','hooks.json'),x=p.join(r,'.codex','hooks',s),a=p.join(r,'AGENTS.md');if(ok(r,q)&&ok(r,x)&&ok(r,a))h=x;const n=p.dirname(r);if(n===r)break;r=n}if(!h)process.exit(1);process.exit(c.spawnSync(process.execPath,[h],{stdio:'inherit'}).status??1)\"",
             "timeout": 10,
+            "additionalContextLimit": 2500,
             "statusMessage": "Loading workspace context"
           }
         ]
@@ -18,8 +19,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process');let r=process.cwd();for(;;){if(fs.existsSync(p.join(r,'.codex','hooks.json')))break;const n=p.dirname(r);if(n===r)process.exit(1);r=n}process.exit(c.spawnSync(process.execPath,[p.join(r,'.codex','hooks','session-end.mjs')],{stdio:'inherit'}).status??1)\"",
-            "timeout": 5,
+            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process'),s='session-end.mjs',ok=(b,x)=>{try{const r=p.relative(b,x);if(!r||r==='..'||r.startsWith('..'+p.sep)||p.isAbsolute(r))return false;let q=b;for(const n of r.split(p.sep)){q=p.join(q,n);const t=fs.lstatSync(q);if(t.isSymbolicLink())return false}return fs.statSync(x).isFile()}catch{return false}};let r;try{r=fs.realpathSync(process.cwd())}catch{process.exit(1)}let h='';for(;;){const q=p.join(r,'.codex','hooks.json'),x=p.join(r,'.codex','hooks',s),a=p.join(r,'AGENTS.md');if(ok(r,q)&&ok(r,x)&&ok(r,a))h=x;const n=p.dirname(r);if(n===r)break;r=n}if(!h)process.exit(1);process.exit(c.spawnSync(process.execPath,[h],{stdio:'inherit'}).status??1)\"",
+            "timeout": 3,
             "statusMessage": "Saving session marker"
           }
         ]
@@ -27,11 +28,11 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^(exec_command|Bash|PowerShell|apply_patch|Edit|Write)$",
+        "matcher": "^(exec_command|Bash|PowerShell|apply_patch|Edit|Write|Move)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process');let r=process.cwd();for(;;){if(fs.existsSync(p.join(r,'.codex','hooks.json')))break;const n=p.dirname(r);if(n===r)process.exit(1);r=n}process.exit(c.spawnSync(process.execPath,[p.join(r,'.codex','hooks','pre-tool-use.mjs')],{stdio:'inherit'}).status??1)\"",
+            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process'),s='pre-tool-use.mjs',ok=(b,x)=>{try{const r=p.relative(b,x);if(!r||r==='..'||r.startsWith('..'+p.sep)||p.isAbsolute(r))return false;let q=b;for(const n of r.split(p.sep)){q=p.join(q,n);const t=fs.lstatSync(q);if(t.isSymbolicLink())return false}return fs.statSync(x).isFile()}catch{return false}};let r;try{r=fs.realpathSync(process.cwd())}catch{process.exit(1)}let h='';for(;;){const q=p.join(r,'.codex','hooks.json'),x=p.join(r,'.codex','hooks',s),a=p.join(r,'AGENTS.md');if(ok(r,q)&&ok(r,x)&&ok(r,a))h=x;const n=p.dirname(r);if(n===r)break;r=n}if(!h)process.exit(1);process.exit(c.spawnSync(process.execPath,[h],{stdio:'inherit'}).status??1)\"",
             "timeout": 10,
             "statusMessage": "Checking workspace policy"
           }
@@ -40,10 +41,11 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "^(apply_patch|Edit|Write|Move)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process');let r=process.cwd();for(;;){if(fs.existsSync(p.join(r,'.codex','hooks.json')))break;const n=p.dirname(r);if(n===r)process.exit(1);r=n}process.exit(c.spawnSync(process.execPath,[p.join(r,'.codex','hooks','post-tool-use.mjs')],{stdio:'inherit'}).status??1)\"",
+            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process'),s='post-tool-use.mjs',ok=(b,x)=>{try{const r=p.relative(b,x);if(!r||r==='..'||r.startsWith('..'+p.sep)||p.isAbsolute(r))return false;let q=b;for(const n of r.split(p.sep)){q=p.join(q,n);const t=fs.lstatSync(q);if(t.isSymbolicLink())return false}return fs.statSync(x).isFile()}catch{return false}};let r;try{r=fs.realpathSync(process.cwd())}catch{process.exit(1)}let h='';for(;;){const q=p.join(r,'.codex','hooks.json'),x=p.join(r,'.codex','hooks',s),a=p.join(r,'AGENTS.md');if(ok(r,q)&&ok(r,x)&&ok(r,a))h=x;const n=p.dirname(r);if(n===r)break;r=n}if(!h)process.exit(1);process.exit(c.spawnSync(process.execPath,[h],{stdio:'inherit'}).status??1)\"",
             "timeout": 20,
             "statusMessage": "Recording workspace activity"
           }

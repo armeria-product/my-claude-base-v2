@@ -1,6 +1,6 @@
 ---
 name: save-session
-description: Save the current Codex task with an evidence-backed Japanese handoff report, a two-line resume pointer, and an optional real journal SAVE marker. Use for `$save-session`, `$save-session 補完`, “save this session”, or an explicitly requested work-boundary handoff.
+description: Save the current Codex task with an evidence-backed Japanese handoff report, a two-line resume pointer, and an optional real machine-event SAVE marker. Use for `$save-session`, `$save-session 補完`, “save this session”, or an explicitly requested work-boundary handoff.
 ---
 
 # Save a Codex Session
@@ -11,13 +11,17 @@ automatic end-of-session action.
 
 ## Non-negotiable record rules
 
-- The journal is always the workspace-root `tasks/journal/YYYY-MM/DD.md`; it never moves into
-  `dev/{name}/tasks/`.
-- Journal and history records are append-only. Never rewrite or delete past journal lines.
+- The canonical human journal is always the workspace-root `tasks/journal/YYYY-MM/DD.md`; it never
+  moves into `dev/{name}/tasks/`.
+- Existing native `tasks/journal/YYYY/MM/DD.md` files are read-compatible historical records only.
+  Never move, merge, rewrite, or append a new human report to them; only `## HH:MM` sections are reports.
+- Lifecycle, SAVE, and supported edit-path machine events live in `tasks/journal/.machine/YYYY-MM/DD.log`,
+  separate from human reports.
+- Journal and history records are append-only. Never rewrite or delete past records.
 - `session-state.md` is exactly a two-line pointer. Next actions, holds, and user questions live
-  only in the journal report.
+  only in the canonical human journal report.
 - Use only observed native-hook records, Codex task history, Git, and existing task files. Missing
-  evidence is `未検証`; never invent a session ID, hook activity, machine line, or test result.
+  evidence is `未検証`; never invent a session ID, hook activity, machine event, or test result.
 - A trusted native-hook context can be useful evidence. Untrusted, disabled, bypassed, or absent
   hooks require the same workflow using task history, Git, and real files instead.
 
@@ -72,7 +76,8 @@ implement the deviation while saving the session.
 
 Inspect, in this order where available:
 
-1. The current task's observed native journal marker and machine lines.
+1. The current task's observed `.machine` lifecycle/edit-path events, plus legacy journal markers
+   only when resolving historical context.
 2. Codex task history.
 3. `git status --porcelain`, `git diff`, and `git log -1 --oneline` in the owning repository.
 4. Existing task records, including the latest report and active todo/roadmap entries.
@@ -82,8 +87,9 @@ sources, state `未検証` rather than inferring it.
 
 ## 4. Append the human report
 
-Append one report to the current root journal. Write plain Japanese: the heading is a one-line
-conclusion, each field stays concise, and detailed file lists remain in Git and machine lines.
+Append one report to the canonical current root human journal. Write plain Japanese: the heading is
+a one-line conclusion beginning exactly `## HH:MM`, each field stays concise, and detailed file lists
+remain in Git and machine events.
 
 ```markdown
 ## HH:MM セッションレポート — <結論1行>
@@ -109,16 +115,17 @@ Overwrite the selected `session-state.md` with exactly two lines:
 
 Do not put next steps, blockers, scope notes, or a duplicate report in this file.
 
-## 6. Add a SAVE marker only when real
+## 6. Add a machine SAVE marker only when real
 
-Append this one line only when the current native context supplied a real ID, or `$save-session 補完`
-identified a real prior ID:
+Append this one line to the current day's `tasks/journal/.machine/YYYY-MM/DD.log` only when the current
+native context supplied a real ID, or `$save-session 補完` identified a real prior ID:
 
 ```markdown
 - HH:MM:SS [xxxxxxxx] SAVE
 ```
 
-Without that evidence, omit the marker. Never create a plausible-looking ID.
+This is a machine event, never a human report. Without that evidence, omit the marker.
+Never create a plausible-looking ID.
 
 ## 7. Keep task records tidy
 

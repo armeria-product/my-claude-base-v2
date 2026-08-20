@@ -33,9 +33,9 @@ For session work, invoke the standalone skills directly: `$save-session` or `$re
 
 - Follow the selected workflow's custom-agent and verification requirements. Do not substitute an
   unregistered role note for a native role contract.
-- Apply the model and reasoning-effort policy from the active `AGENTS.md` as explicit dispatch
-  settings. The coordinator owns useful parallelism and must not create duplicate work merely to
-  fill slots.
+- Treat the matching `.codex/agents/*.toml` as authoritative. Read its role contract and TOML;
+  explicit dispatch settings must agree, and prose/tests must not copy exact model or effort values.
+- The coordinator owns useful parallelism and must not create duplicate work merely to fill slots.
 - When PLAN/scope artifacts exist, pass their paths to delegated workers and require each worker
   to read them. Treat scope as a review boundary, not a write lock or approval token.
 - Preserve unrelated worktree changes. Inspect `git status --short` before broad edits and keep
@@ -43,6 +43,10 @@ For session work, invoke the standalone skills directly: `$save-session` or `$re
 - Use the trusted `.codex/hooks.json` layer only for the behavior it actually observes. It is not a
   complete security boundary: disabled or untrusted hooks, trust bypass, external terminals/editors,
   and unsupported tool paths remain outside it.
+- Native PostToolUse records supported edit paths in machine events only; it is not a formatter, file
+  rewriter, or arbitrary shell-command transcript.
+- For native harness changes, run `node .codex/scripts/check-native.mjs`. Use
+  `node .codex/scripts/records-doctor.mjs` only as a read-only record-layout diagnostic.
 - A request for a new provider capability or an expansion beyond the approved scope requires a
   user decision before implementation.
 

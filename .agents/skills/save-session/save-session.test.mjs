@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-const skill = fs.readFileSync(path.join(import.meta.dirname, 'SKILL.md'), 'utf8');
+const skill = fs.readFileSync(path.join(import.meta.dirname, 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
 const legacyCommands = ['.', 'claude', '/commands'].join('');
 
 test('save-session has a discoverable standalone Codex frontmatter contract', () => {
@@ -24,8 +24,8 @@ test('save-session preserves the fixed record contracts', () => {
     '**確認してほしいこと**',
     '**次にやること**',
     '[xxxxxxxx] SAVE',
-    'Never create a plausible-looking ID',
   ]) assert.ok(skill.includes(required), required);
+  assert.match(skill, /Never create a\s+plausible-looking ID/);
 });
 
 test('save-session retains root and product routing plus scope-review behavior', () => {

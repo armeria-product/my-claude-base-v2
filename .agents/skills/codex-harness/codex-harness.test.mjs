@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-const skill = fs.readFileSync(path.join(import.meta.dirname, 'SKILL.md'), 'utf8');
+const skill = fs.readFileSync(path.join(import.meta.dirname, 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
 const legacySurface = ['.', 'claude'].join('');
 
 test('codex-harness is discoverable and routes to every native workflow', () => {

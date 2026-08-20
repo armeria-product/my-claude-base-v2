@@ -13,10 +13,10 @@ codex    # Codex: AGENTS.md、.codex/agents、.agents/skills/ が読み込まれ
 ```
 
 - 外部モデル連携（clover）を使う場合: `node clover/bin/install.mjs`（詳細は `clover/README.md`）
-- Codexの動作確認: `node --test ".codex/hooks/test/*.test.mjs" ".codex/agents/test/*.test.mjs" ".agents/skills/codex-harness/*.test.mjs" ".agents/skills/save-session/*.test.mjs" ".agents/skills/resume-session/*.test.mjs"`
+- Codexの動作確認: `node .codex/scripts/check-native.mjs`（ローカルとCIで共通）
 - Claude Codeの構成検査: `node .claude/scripts/validate.mjs`（Claude側のみ。`PASS` が正常）
 - `.claude/settings.json` の hooks は Claude Code 専用です。Codex は同じ hooks を実行せず、独立した `.codex/hooks.json` を使います。初回と変更後は Codex の `/hooks` で内容を確認・信頼し、新しい task を開始してから使います。
-- Codex native hooks は、設定したツール経路で journal・開始時注入・単一ファイル整形・危険操作/秘密情報/main直書き/PR関門を扱います。無効化・信頼確認の迂回・外部の端末やエディタは対象外なので、sandbox・承認・Git ホスティング側の保護も併用します。
+- Codex native hooks は、設定したツール経路でライフサイクルと対応する編集パスを機械イベントとして記録し、SessionStart に state・最新の人間向けレポート・TODO・CODEMAP見出しを合計10 KiB以内で渡します。PostToolUse は自動整形・書き換え・任意のshellコマンド記録を行いません。PreToolUse は秘密情報、`--no-verify`、破壊的操作、保護ブランチへの書き込みを扱いますが、更新時刻だけを見るPR関門は持ちません。無効化・信頼確認の迂回・外部の端末やエディタは対象外なので、sandbox・承認・Git ホスティング側の保護も併用します。
 - `dev/{name}/` は独立リポジトリです。そこで直接作業する場合は、その製品ルートで Codex を開始して製品側の `AGENTS.md` を読み込みます。custom agents・skills・hooks を含む完全な共通ハーネスが必要な作業はハブルートから開始し、作業前に対象製品の `AGENTS.md` も確認します。
 
 ---
@@ -43,20 +43,25 @@ codex    # Codex: AGENTS.md、.codex/agents、.agents/skills/ が読み込まれ
 - 1〜2ファイルの小さな修正は、重い計画成果物を作らずに進められます。
 - 計画のない追加機能や依存関係は「動くおまけ」ではなく scope drift として報告します。
 - hooks・設定・validator・provider adapter を変える場合は、ユーザーがハーネス自体を対象に含めたことを確認します。
+- プロジェクト構造・entrypoint・所有/責務・重要な制御フローが変わるときは、同じ変更で現在の作業コンテキストにルーティングされた最寄りの `tasks/codemap.md` を更新します。内容だけの編集や、その関係を変えない振る舞いだけの変更では地図を無駄に更新せず、完了時に適用可否と見出し・パスの正確さを確認します。
 - 永続 scope-lock、共有ロック状態、特別な「承認」「解除」コマンドはありません。
 
 ### Claude Code と Codex で作業記録を自動化し、途中から再開できる
 
-Claude Code と、信頼済みの native hooks を読み込んだ Codex では、操作のたびに機械的な記録が残ります。どちらでも save-session workflow で人間向けレポートと再開ポインタを残し、task 履歴と Git で実態を照合します。
+Claude Code と、信頼済みの native hooks を読み込んだ Codex では、それぞれの provider の記録契約に従って記録が残ります。どちらでも save-session workflow で人間向けレポートと再開ポインタを残し、task 履歴と Git で実態を照合します。
 
 | 層 | 何が残るか | 誰が書くか | いつ |
 |---|---|---|---|
-| 機械ジャーナル `tasks/journal/YYYY-MM/DD.md` | ツール実行・安全イベントの1行ログ | Claude Code hooks / trusted Codex native hooks（自動） | 操作のたび |
-| 人間向けレポート（同ファイル末尾） | 固定4節の平易な日本語まとめ | save-session workflow | 区切りごと |
+| Claude Code の機械ジャーナル `tasks/journal/YYYY-MM/DD.md` | ツール実行・安全イベントの1行ログ | Claude Code hooks（自動） | 操作のたび |
+| Claude Code の人間向けレポート（同ファイル末尾） | 固定4節の平易な日本語まとめ | Claude Code の save-session workflow | 区切りごと |
+| Codex の機械イベント `tasks/journal/.machine/YYYY-MM/DD.log` | ライフサイクルと対応する編集パスのみ | 信頼済み Codex native hooks（自動） | 対応イベント時 |
+| Codex の人間向けレポート `tasks/journal/YYYY-MM/DD.md` | 固定4節の平易な日本語まとめ | `$save-session` | 区切りごと |
 | 再開メモ `tasks/session-state.md` | 次の一手への短いポインタ（詳細はジャーナルの最新レポートを参照） | save-session workflow | 区切りごと |
 
 - ジャーナルは追記専用で、ローテーションによる削除はありません。再開メモの2026-08-13より前の版は `tasks/history/` に凍結保存されたまま残ります（同日以降は session-state.md が2行のポインタになり退避が不要になったため、これ以上は増えません）。
-- Claude Code と信頼済み Codex native hooks は、セッション開始時に session-state・todo・最新 journal レポート・lessons を注入します。注入が無い task では、task 履歴と records を直接照合します。
+- Claude Code は、セッション開始時に session-state・todo・最新 journal レポート・lessons を注入します。
+- 信頼済み Codex native hooks は、SessionStart に state・最新の人間向けレポート・TODO・CODEMAP見出しを合計10 KiB以内で渡し、lessons は注入しません。
+- 注入が無い task では、task 履歴と records を直接照合します。
 - 会話そのものは利用中のクライアントが保存します。Claude Code では `/rewind`（Esc Esc）や `/export`、Codex では Codex の task 履歴を使います。
 
 再開の手順はシンプルです。Claude Code は同じフォルダで `claude -r`、Codex は同じ task を開くか新しい task を開始します。各 provider の専用 SessionStart hook が有効なら記録を注入し、いずれでも resume workflow は記録と git の実際の状態を突き合わせて現在地を確認します。
@@ -91,9 +96,12 @@ native モデル名（fable / opus / sonnet / haiku / inherit）以外を指定�
 
 **Codex native surface**
 
-- **custom agents（7種）** — `.codex/agents/*.toml` に planner / reviewer / executor / debugger / verifier / document-author / explorer を登録する。役割、モデル、思考量、意図したsandboxをCodexのspawn設定として持つ。
-- **native workflows** — `.codex/workflows/` に plan / harness / quality-loop / check / commit / pr の共通契約を置く。
-- **skills（3種）** — **$codex-harness**（計画・実装・レビュー・完了）、**$save-session**、**$resume-session**。Codex CLI/IDE では `$` で明示でき、説明に合う依頼では自動でも選ばれる。
+- **custom agents（7種）** — `.codex/agents/*.toml` に planner / reviewer / executor / debugger / verifier / document-author / explorer を登録する。TOML が役割・モデル・思考量・意図したsandboxの唯一の正本で、文書やテストはその値を重複して持たない。
+- **native workflows** — `.codex/workflows/` に plan / harness / quality-loop / check / commit / pr の共通契約を置く。標準の非自明作業は独立reviewer 1名とverifier、高リスク作業は二つの独立レンズ・必要時の独立security・fusion・verifierを使う。
+- **skills（11種）** — **$codex-harness**、**$save-session**、**$resume-session** に加え、**brandkit**、**frontend-design**、**imagegen-frontend-web**、**imagegen-frontend-mobile**、**image-to-code**、**doc**、**preview**、**code-cleaner** を `.agents/skills/` から検出する。Codex CLI/IDE では `$` で明示でき、説明に合う依頼では自動でも選ばれる。
+- **skills / workflows の境界** — skills はユーザーが呼ぶ能力、`.codex/workflows/` は `$codex-harness` が読む内部の工程契約。plan / harness / quality-loop / check / commit / pr を薄い別skillsとして重複させない。Claude/clover固有の provider routing である **relay はCodexへ移行しない**。
+- **native records** — 人間向けの追記専用記録は `tasks/journal/YYYY-MM/DD.md` が正本。旧 `tasks/journal/YYYY/MM/DD.md` は読むだけの互換経路で、ライフサイクルと編集パスの機械イベントは `.machine/YYYY-MM/DD.log` に分離する。
+- **native hooks** — SessionStart は state・最新人間レポート・TODO・CODEMAP を10 KiB以内で渡す。PostToolUse は編集パスだけを機械記録し、自動整形・書き換え・任意のshellコマンド記録はしない。
 - **path guidance** — ルートと対象ディレクトリの `AGENTS.md` を使う。Codexは開始時のパスまでしか自動収集しないため、別の独立製品へ移るときは新しい task を開始する。独立製品のルートはローカル指針のみを受け取り、共通agents/skills/hooksはハブルートから開始したtaskで使う。
 
 **Claude Code surface**
@@ -124,7 +132,7 @@ native モデル名（fable / opus / sonnet / haiku / inherit）以外を指定�
 ```
 CLAUDE.md            … Claude Code 用の運用ルール
 AGENTS.md            … Codex/GPT 用の独立した運用ルール・入口
-.agents/skills/      … Codex が自動検出する native skills（codex-harness / save-session / resume-session）
+.agents/skills/      … Codex が自動検出する native skills（運用3種＋移行した能力8種。relayは含めない）
 .codex/              … Codex custom agents・role/workflow 契約・native hooks・製品用テンプレート
 .claude/
   agents/            … サブエージェント定義 7体
@@ -170,10 +178,12 @@ tmp/                 … 使い捨ての作業ファイル（git 追跡外・使
 
 ## 動かして確かめる
 
-- **Codex native surface**:
+- **Codex native surface**（ローカルとCIで共通）:
   ```bash
-  node --test ".codex/hooks/test/*.test.mjs" ".codex/agents/test/*.test.mjs" ".agents/skills/codex-harness/*.test.mjs" ".agents/skills/save-session/*.test.mjs" ".agents/skills/resume-session/*.test.mjs"
+  node .codex/scripts/check-native.mjs
   ```
+- **Codex native records診断**: 必要時だけ、読み取り専用の `node .codex/scripts/records-doctor.mjs` を使う。
+- **Codex native hookの確認**: hook設定を変えたときは `/hooks` で確認・信頼してtaskを再開始またはreloadし、`codex --strict-config doctor --summary` も実行する。これはnative checkの代わりにはならない。
 - **Claude Codeの構成整合性検査**: `node .claude/scripts/validate.mjs` — Claude hooks・記録配線・規範文言の消失検知などを検査する。`VERDICT: PASS` が正常
 - **フックの全テストを1コマンドで実行**（手動実行。上記の整合性検査には配線されていない）:
   ```bash
