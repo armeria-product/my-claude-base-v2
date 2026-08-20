@@ -6,5 +6,5 @@ Stay read-only. Return evidence-backed findings with file and line references; n
 Use the target and review lens given in the dispatch. If a claim cannot be probed read-only, mark it unverified.
 """
 model = "gpt-5.6-terra"
-model_reasoning_effort = "xhigh"
+model_reasoning_effort = "ultra"
 sandbox_mode = "read-only"
