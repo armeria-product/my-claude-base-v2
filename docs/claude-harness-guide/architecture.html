@@ -490,7 +490,7 @@ body{
           <tr><td><code>skills/</code></td><td>複数ステップのワークフロー定義（15）。状況に応じて自動発動するものと、コマンドとして明示起動するものがある</td><td>plan / harness / quality-loop / check / doc / relay 等</td></tr>
           <tr><td><code>commands/</code></td><td>ユーザーが明示的に打つセッションコマンド（2・自動発動しない）</td><td><code>/save-session</code> / <code>/resume-session</code></td></tr>
           <tr><td><code>rules/</code></td><td>ファイルパスに紐づき自動適用される規則（3）。frontmatterの <code>paths:</code> にマッチしたときだけ効く</td><td>agents.md / dev-projects.md / session-persistence.md</td></tr>
-          <tr><td><code>hooks/</code></td><td><code>settings.json</code> から呼ばれる安全装置・自動処理（20 ―― うち1本 <code>deliberation-gate.js</code> は処理をブロックせず気づきを添えるだけ）。ツール呼び出しの前後やセッション開始時に走る</td><td>block-direct-to-main.js / block-secret-read.js / block-fable-when-off.js</td></tr>
+          <tr><td><code>hooks/</code></td><td><code>settings.json</code> から呼ばれる安全装置・自動処理（18 ―― うち1本 <code>deliberation-gate.js</code> は処理をブロックせず気づきを添えるだけ）。ツール呼び出しの前後やセッション開始時に走る</td><td>block-direct-to-main.js / block-secret-read.js / block-fable-when-off.js</td></tr>
           <tr><td><code>scripts/</code></td><td>hooksやskillsから呼ばれる共有ツール（Node.js）</td><td>validate.mjs / html2pdf.mjs / html2pptx.mjs / deckpack.mjs / fusion-detect.mjs</td></tr>
           <tr><td><code>clover/</code></td><td>リポジトリ直下にある自己完結の外部モデル中継（relay）サブプロジェクト。native Fableとは別系統</td><td>router / shim / launcher（bin/clover, bin/relay-serve）</td></tr>
           <tr><td><code>settings.json</code></td><td>hooksの登録・permissions（読み書き制限）の一元定義</td><td>SessionStart / UserPromptSubmit / PreToolUse / PostToolUse の4イベントに登録（Stopイベントは未使用）</td></tr>
@@ -523,7 +523,7 @@ body{
       <p>このゲートが止められるのは、起動先のモデルが分かるサブエージェントの起動だけ。あなた自身のセッションが Fable で動いている場合（<code>/model</code> で選んだモデル）はそもそも対象外で、モデル名を指定せずに起動してセッションのモデルがそのまま引き継がれた場合も、この仕組みからは見えないことがある。</p>
     </div>
 
-    <p>reasoning深さ（effort）はtierとは独立の軸で、権威役は役割別にfrontmatter固定: <code>planner</code> は <code>effort: max</code>、<code>reviewer</code> は <code>effort: xhigh</code>（2026-08-16のユーザー裁定で1段引き下げ ―― 共同レビューは2席×最大3巡走るため）。ピンと違う値は<code>validate.mjs</code>がFAILにする。他のagentはセッションの<code>/effort</code>設定を継承する。</p>
+    <p>reasoning深さ（effort）はtierとは独立の軸で、<code>planner</code> / <code>reviewer</code> / <code>verifier</code> / <code>executor</code> / <code>debugger</code> / <code>document-author</code> は frontmatter を <code>effort: xhigh</code> に固定する。light-tier の <code>explorer</code> だけは <code>effort:</code> を持たず、セッション設定を継承する。ピンと違う値は<code>validate.mjs</code>がFAILにする。</p>
 
     <h2>境界線（4つの分離）</h2>
     <p>このハーネスは4つの境界線で責務を分けている。</p>

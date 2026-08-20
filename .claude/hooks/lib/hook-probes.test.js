@@ -88,27 +88,17 @@ function ensureJournal(root) {
 }
 
 function buildSandbox() {
-  fs.mkdirSync(path.join(SANDBOX, '.claude', 'state'), { recursive: true });
+  fs.mkdirSync(path.join(SANDBOX, '.claude'), { recursive: true });
   fs.mkdirSync(path.join(SANDBOX, 'sub'), { recursive: true });
   fs.mkdirSync(path.join(SANDBOX, 'other'), { recursive: true });
   fs.mkdirSync(path.join(SANDBOX, 'dev', 'foo'), { recursive: true });
+  fs.writeFileSync(path.join(SANDBOX, 'notes.txt'), 'scratch fixture\n');
 
   ensureJournal(SANDBOX);
 
-  fs.writeFileSync(
-    path.join(SANDBOX, '.claude', 'state', 'scope-lock.json'),
-    JSON.stringify({
-      status: 'locked',
-      slug: 'probe',
-      plan: 'plans/probe/PLAN.md',
-      allow: ['sub/**'],
-      forbid: [],
-    })
-  );
 }
 
 function buildSandboxFree() {
-  fs.mkdirSync(path.join(SANDBOX_FREE, '.claude', 'state'), { recursive: true });
   fs.mkdirSync(path.join(SANDBOX_FREE, '.claude', 'agents'), { recursive: true });
   fs.mkdirSync(path.join(SANDBOX_FREE, 'clover'), { recursive: true });
   fs.writeFileSync(
@@ -475,9 +465,8 @@ function runRow(row) {
 }
 
 // Hooks that always exit 0 and signal deny via a "permissionDecision":"deny" JSON blob on
-// stdout instead of exit code 2 (scope-guard.js is the Edit/Write counterpart of
-// cmd-write-guard.js's Bash/PowerShell path; both share lib/scope-decision.js's decide()).
-const STDOUT_DENY_HOOKS = ['cmd-write-guard.js', 'scope-guard.js'];
+// stdout instead of exit code 2.
+const STDOUT_DENY_HOOKS = ['block-fable-status-write.js'];
 
 function verdictOf(row, result) {
   if (STDOUT_DENY_HOOKS.some((h) => row.hook.endsWith(h))) {
@@ -587,7 +576,7 @@ function registerTests() {
   const raw = fs.readFileSync(SAMPLES_FILE, 'utf8');
   const allRows = JSON.parse(substitute(raw));
 
-  const EXPECTED_SAMPLE_COUNT = 313;
+  const EXPECTED_SAMPLE_COUNT = 244;
   // Independently-hardcoded expectation (not re-derived from allRows) so this assertion can't
   // silently pass no matter what skipIf tags actually exist in the samples file — mirrors the
   // EXPECTED_SAMPLE_COUNT literal above. Keyed by exact set/name (not just a per-tag count) so a
@@ -600,7 +589,6 @@ function registerTests() {
     'S-git-env/ge-push-bare': 'protected-branch',
     'S-git-env/ge-reset-hard-bare': 'protected-branch',
     'S-git-env/ge-commit-amend': 'protected-branch',
-    'S-state/state-ps-setlocation-bypass': 'non-win32',
     'S-git-pure/gp-redirect-junction-realpath-deny': 'non-win32',
   };
 
@@ -620,7 +608,7 @@ function registerTests() {
   // over another row's, or a row deleted and a different one duplicated in its place) passes the
   // count test above but changes this hash. See samplesHash() for the algorithm (sha256 over
   // pre-substitution rows sorted by set/name) and why it's built that way.
-  const EXPECTED_SAMPLES_HASH = '2dc9837aec7cc39dc6d0e6a7561a97e4b046875fdb86043b19b9f2211fc7f9b6';
+  const EXPECTED_SAMPLES_HASH = '753e89e9785157a8d41bdba9541759c2311d77548fe39ddd1030a530e29f7da4';
 
   test('samples file integrity: full-content hash matches (catches same-count content swaps the row/set count checks miss)', () => {
     const rawRows = JSON.parse(raw); // pre-substitution rows -- see samplesHash() comment for why
@@ -665,8 +653,6 @@ function registerTests() {
     'S-git-pure': 69,
     'S-git-env': 19,
     'S-gh': 15,
-    'S-state': 30,
-    'S-lock': 39,
     'S-fs': 32,
     'S-prompt': 8,
     'S-session': 5,

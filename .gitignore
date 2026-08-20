@@ -3,9 +3,6 @@ tasks/*.md
 tasks/history/
 tasks/journal/*
 
-# Scope-lock runtime state (hook-owned; untracked so git holds no restorable copy)
-.claude/state/
-
 # Scratch/temp workspace (CLAUDE.md §0 Temp files)
 /tmp/
 

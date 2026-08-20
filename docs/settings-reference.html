@@ -953,7 +953,7 @@ Agent(*)                           // 任意のエージェントへの委譲</c
 
     <div class="callout callout--important">
       <div class="callout__label">このリポジトリの実例</div>
-      <p>このリポジトリの<code>.claude/settings.json</code>では、<code>PreToolUse</code>で<code>matcher: "Bash"</code>（破壊的なgit操作やmainへの直push、秘密ファイル読み込みをブロック）、<code>matcher: "Task|Agent"</code>（relay必須チェック）、<code>matcher: "Workflow"</code>（トークン予算ガード）を使い分け、<code>PostToolUse</code>では<code>matcher: "Edit|Write"</code>で保存後の自動フォーマットを走らせている。</p>
+      <p>このリポジトリの<code>.claude/settings.json</code>では、<code>PreToolUse</code>で<code>matcher: "Bash|PowerShell"</code>（破壊的なgit・ファイル操作、mainへの直push、Fable制御ファイルへの書き込みなどをブロック）と<code>matcher: "Task|Agent"</code>（relay・レビュー役・Fable利用条件のチェック）を使い分ける。<code>Workflow</code> matcher は登録していない。<code>PostToolUse</code>では<code>matcher: "Edit|Write"</code>で保存後の自動フォーマットを走らせ、より広いmatcherでjournalへ記録する。</p>
     </div>
 
     <h2>環境変数</h2>

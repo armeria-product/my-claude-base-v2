@@ -104,4 +104,4 @@ Packed decks intentionally contain `<script src="<uuid>">` and `url("<uuid>")` r
 - An artifact over ~5KB is never written in one `Write` — write the skeleton, then append section by section with `Edit` (~2KB per tool call).
 - If the dispatch prompt, this definition, a referenced artifact (PLAN.md / scope.json), or the repo's actual state contradict one another, **do not silently pick a side**: name the contradiction in your report and proceed only with the non-conflicting portion.
 - When a tool call is denied by a hook or permission, stop that line of work — **never retry variants or route around** the denial — quote the denial in your final report, and mark whatever it prevented as unverified.
-- If a tool call is denied for a `[scope-lock]` reason, do not retry or work around it — record the intent as one line in `plans/{slug}/deviations.md` and note the denial in your final report.
+- If the deliverable requires work outside the plan, record the intent as one line in `plans/{slug}/deviations.md` and report it instead of expanding the task silently.

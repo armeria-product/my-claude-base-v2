@@ -115,7 +115,7 @@ function unquoteToken(t) {
 // also a no-op, but for a PATH-dependent reason a future environment could remove. The
 // child-process reason above is the one this exception actually rests on.) Suffix-stripping would
 // make lib/cmd-targets.js's exact-match cwd tracking (`case 'cd':`) and its liberal cd/pushd
-// tracking (used for .claude/state protection) believe a no-op invocation moved the cwd — see the
+// tracking used by protected-control checks believe a no-op invocation moved the cwd — see the
 // comment at the strip site below for the bypasses this produced, both in the plain form and, in
 // a later review round, in the parenthesized/subshell-entry form.
 //
@@ -185,17 +185,13 @@ function normalizeSegment(seg) {
   //
   //    Concretely, without this exception `cd.exe sub; cp a.txt other/b.txt` made
   //    cmd-targets.js's cwd tracker believe cwd moved to `sub/` when a real shell never left the
-  //    top level (scope-lock escape: the cp target then falsely resolves inside an allow-listed
-  //    dir), and `cd .claude; cd.exe ..; echo x > state/f` made it believe cwd left `.claude`
-  //    when a real shell never did (defeats the unconditional .claude/state write protection).
-  //    Both were found in review and are pinned as samples (hook-probes.samples.json:
-  //    lock-cd-exe-fake-cwd-move-escape, state-cd-exe-fake-cwd-move-defeat). A later review round
+  //    top level, and `cd .claude; cd.exe ..; echo x > .fable-status` made it believe cwd left
+  //    `.claude` when a real shell never did. Both were found in review. A later review round
   //    found the same two bypasses again in the parenthesized/subshell-entry form specifically —
   //    the paren-stripped-but-not-suffix-stripped membership check above closes those too (pinned
   //    alongside the same two samples). Backlog note: today, the plain (non-parenthesized) form's
-  //    safety in the non-nested case also happens to rest on cmd-write-guard.js checking the
-  //    union of its precise and liberal target lists, not on this exception alone; after this fix
-  //    this exception is what actually carries the parenthesized form too — see tasks/todo.md.
+  //    protected-control checks also compare both precise and liberal target lists; this
+  //    exception is what carries the parenthesized form too.
   //
   //    This strip is NOT an exhaustive fix for suffixed commands — only the plain
   //    `<basename>.exe`/`<basename>.cmd`/`<basename>.com`/`<basename>.ps1` case (optionally

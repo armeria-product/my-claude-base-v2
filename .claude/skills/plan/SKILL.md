@@ -207,13 +207,13 @@ derive-from-text rule above applies to it directly — it is **not** routed to e
 `### Observation Points` takes precedence — it is the roster of required behaviors, Verification
 Strategy is how to prove them.
 
-Additionally output `{base}/scope.json` — the machine-readable contract the approve-lock hook transcribes into the scope lock (**required — the heavy path is incomplete without it**):
+Additionally output `{base}/scope.json` — a machine-readable review aid for the intended touch surface (**required on the heavy path, but never used as a write lock**):
 
 ```json
 {
   "slug": "{slug}",
-  "status": "proposed",
-  "proposedAt": "<ISO 8601 now>",
+  "status": "ready",
+  "updatedAt": "<ISO 8601 now>",
   "plan": "{base}/PLAN.md",
   "allow": ["dev/app/src/feature-x/**", "dev/app/tests/feature-x/**"],
   "forbid": ["dev/app/src/payment/**"],
@@ -222,17 +222,15 @@ Additionally output `{base}/scope.json` — the machine-readable contract the ap
 }
 ```
 
-Set `"securityReview": true` when the planned work touches auth/permissions, payments, API endpoints / external input surfaces, DB/query/migration, secrets, or dangerous operations (shell/eval/external sends) — the flag is carried into the lock and **every code review during the locked run auto-seats the security track** (SOT: quality-loop Security Track). When in doubt, set it true — the user cannot interject mid-run.
+Set `"securityReview": true` when the planned work touches auth/permissions, payments, API endpoints / external input surfaces, DB/query/migration, secrets, or dangerous operations (shell/eval/external sends). Every code review governed by that plan auto-seats the security track (SOT: quality-loop Security Track). When in doubt, set it true.
 
-Glob subset: `**` (any depth) / `*` (one segment) / exact path; a trailing `/` means the whole directory. **Prefer folder-level allow globs** so legitimate helpers and tests fit without re-approval. Records (tasks/ — journal・history 含む — tmp/ and `{base}/` itself) are always writable — don't list them. Never propose `**`-class breadth (a lock that allows everything locks nothing; the hook warns the user). While locked, the enforcement chain (`.claude/settings.json` / hooks / validate.mjs) is implicitly forbidden — a plan whose target is the harness itself must state that it runs **unlocked**.
+Glob subset: `**` (any depth) / `*` (one segment) / exact path; a trailing `/` means the whole directory. Prefer folder-level allow globs so legitimate helpers and tests are visible in the proposed scope. Records (tasks/ — journal・history 含む — tmp/ and `{base}/` itself) need not be listed. Never propose `**`-class breadth because it provides no useful review boundary. A plan that changes the harness itself must name settings/hooks/validator/provider adapters explicitly and cite the user's authorization.
 
-### Approval Handoff (the user gate that arms the lock)
+### User Handoff
 
-After self-review APPROVE, present to the user in plain Japanese: the approach in 2-3 lines, the allow/forbid ranges in readable form, the task list — and end with **exactly**:
+After self-review APPROVE, present to the user in plain Japanese: the approach in 2-3 lines, the allow/forbid ranges in readable form, and the task list. Ask for ordinary explicit approval to start; there is no magic approval word or persistent scope state.
 
-「scope.json を書き出しました。**『承認』と返信するとロックして自走を開始します**（対象を選ぶ場合は『承認 {slug}』、解除は『解除』）」
-
-Phase 3 starts **only after** the approve-lock hook confirms the lock (it injects a 🔒 confirmation). Any other affirmative phrasing does not arm the lock — if the hook's near-miss notice appears, relay it. If the user replies with change requests instead, revise and re-propose (scope.json stays `"proposed"`).
+Phase 3 starts after the user clearly accepts the plan, or immediately when the user's original request already gives sufficiently specific authorization for the planned scope. If the user requests changes, revise PLAN.md and scope.json before implementation.
 
 ### Phase 3 — Implement
 For implementation, **use the harness skill's pipeline as the execution engine** (the SOT for the pipeline definition is harness; plan focuses on "deciding" and does not restate the pipeline here). Choose the appropriate type per phase:

@@ -115,7 +115,7 @@ Write-target detection for all 6 tasks files (codemap.md included, §6.5; todo-a
 
 ### 6.2 session-state.md — a 2-line pointer, nothing else
 
-Reader = the next Claude session. **This file duplicates nothing**: next actions / holds / user-facing notes live ONLY in the journal report (/save-session step 4 — SessionStart injects the latest report section reliably), and lock state lives ONLY in `.claude/state/scope-lock.json` (also injected). What remains here is the per-product resume anchor and the pointer to the report that is "current".
+Reader = the next Claude Code session or Codex task. **This file duplicates nothing**: next actions / holds / user-facing notes live ONLY in the journal report (/save-session step 4). Claude Code's SessionStart injects the latest report section; Codex reads that report or its task history through the resume workflow. What remains here is the per-product resume anchor and the pointer to the report that is "current".
 
 ```markdown
 # Session State — {product}

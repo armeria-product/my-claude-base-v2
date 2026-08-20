@@ -58,7 +58,7 @@
 //     PowerShell spellings `git show HEAD:a.js | Out-File a.js` / `| Set-Content a.js` (this hook
 //     is registered for `Bash|PowerShell`).
 //   - write-to-new-then-move (`git show HEAD:a.js > new && mv new a.js`) -- the `mv` half is
-//     block-destructive-fs.js / cmd-write-guard.js territory, not this file's.
+//     block-destructive-fs.js territory, not this file's.
 //   - UNC redirect targets (`\\server\share\...` / `//server/share/...`) are skipped on purpose
 //     before any filesystem call: fs.statSync() on an unreachable UNC host measured 17.6s (35.2s
 //     for two unreachable hosts) against 42ms for a local target, and this hook runs before every
