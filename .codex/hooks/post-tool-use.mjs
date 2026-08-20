@@ -1,17 +1,25 @@
 import path from 'node:path';
-import { appendJournal, clip, extractFilePaths, readPayload, rootFor, runFormatter, shortId, stamp } from './lib/runtime.mjs';
+import { appendMachineEvent, extractFilePaths, readPayload, rootFor, shortId, stamp } from './lib/runtime.mjs';
 
-function description(payload, root) {
+const EDIT_TOOLS = new Set(['apply_patch', 'Edit', 'Write', 'Move']);
+
+function outcome(payload) {
+  const response = payload.tool_response || payload.tool_result;
+  const failed = payload.is_error === true
+    || payload.isError === true
+    || payload.tool_error === true
+    || (response && typeof response === 'object' && (response.isError === true || response.success === false));
+  return failed ? 'failed' : 'ok';
+}
+
+function editDescription(payload, root) {
   const tool = String(payload.tool_name || '');
-  const input = payload.tool_input;
-  const files = extractFilePaths(payload).map((file) => path.relative(root, file).split(path.sep).join('/'));
-  if (files.length) return `${tool.toLowerCase()} ${files.join(', ')}`;
-  const command = typeof input === 'object' ? input.command || input.cmd : input;
-  if (typeof command === 'string') {
-    const safe = /(?:api[_-]?key|password|secret|bearer\s+)/i.test(command) ? '[redacted]' : clip(command);
-    return `${tool.toLowerCase()} "${safe}"`;
-  }
-  return tool ? `${tool.toLowerCase()}` : null;
+  if (!EDIT_TOOLS.has(tool)) return null;
+  const files = extractFilePaths(payload)
+    .map((file) => path.relative(root, file).split(path.sep).join('/'))
+    .filter(Boolean);
+  if (!files.length) return null;
+  return 'EDIT ' + tool + ' ' + files.join(', ') + ' (' + outcome(payload) + ')';
 }
 
 let raw = '';
@@ -20,10 +28,9 @@ process.stdin.on('end', () => {
   try {
     const payload = readPayload(raw);
     const root = rootFor(payload.cwd);
-    const line = description(payload, root);
-    if (line) appendJournal(root, `- ${stamp()} [${shortId(payload)}] ${line}`);
-    for (const file of extractFilePaths(payload).slice(0, 1)) runFormatter(file, root);
+    const line = editDescription(payload, root);
+    if (line) appendMachineEvent(root, '- ' + stamp() + ' [' + shortId(payload) + '] ' + line);
   } catch (error) {
-    process.stderr.write(`codex post-tool-use skipped: ${error.message}\n`);
+    process.stderr.write('codex post-tool-use skipped: ' + error.message + '\n');
   }
 });

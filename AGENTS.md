@@ -32,8 +32,9 @@ command, rule, agent, model switch, or relay configuration applies to a Codex ta
 
 ## Delegation policy
 
-Use the custom agent that matches the bounded task. Its TOML configuration is the native source of
-the model, reasoning effort, and intended sandbox mode; explicit spawn settings must agree with it.
+Use the custom agent that matches the bounded task. Its `.codex/agents/*.toml` configuration is the sole native source of the
+model, reasoning effort, and intended sandbox mode; explicit spawn settings must agree with it. Documentation and tests may validate
+its shape and roles but must not duplicate its exact model or effort values.
 Read the role contract named by the custom agent before working.
 
 | Role | Use |
@@ -46,27 +47,45 @@ Read the role contract named by the custom agent before working.
 | `document-author` | user-facing HTML, documents, and decks |
 | `explorer` | read-only discovery and file mapping |
 
-- Planner and reviewer use `gpt-5.6-terra` with `xhigh` reasoning effort.
-- Executor, debugger, verifier, and document-author use `gpt-5.6-terra` with `ultra`.
-- Explorer uses `gpt-5.6-luna` with `medium`.
 - When delegation is permitted, split independent work into useful bounded scopes and use every available worker slot while reserving the coordinator. Never create duplicate or empty work just to fill capacity.
 - The coordinator owns global fan-out. A worker must not create nested agents unless its dispatch
   explicitly grants part of the available worker allocation.
-- Non-trivial changes require independent review: the author never approves its own change. The
-  first review has independent spec and red-team reads; security-sensitive work adds the security
-  read. Address critical/high findings, then run the verifier. Details are in
-  `.codex/workflows/quality-loop.md`.
+- Non-trivial changes use tiered independent review: the author never approves its own change.
+  Standard work uses one independent reviewer and a fresh verifier. High-risk work involving
+  permissions, secrets, destructive operations, external input, or hook-policy changes uses two
+  independent lenses, a separate security review where applicable, a fresh fusion review, and a
+  fresh verifier. Details are in `.codex/workflows/quality-loop.md`.
 
 ## Skills and session commands
 
 - Use `$codex-harness` for planning, implementation, review, or completion workflows.
-- Use `$save-session` to append the human session report and update the two-line state pointer.
+- Use `$save-session` to append a human session report and update the two-line state pointer.
 - Use `$resume-session` to reconcile records with Git and task history, report the state, and
   wait for direction.
 - These are Codex skills, not slash commands. They may also activate from a matching natural
   language request.
+- Existing and later-migrated native skills inherit the common CODEMAP maintenance contract below;
+  they must not duplicate or weaken it.
 - Use Codex-native skills/tools for image, document, browser, and other task-specific work. Do not
   run a nested Codex process to obtain them.
+
+## Native record contract
+
+- The canonical append-only human journal is `tasks/journal/YYYY-MM/DD.md`. Existing
+  `tasks/journal/YYYY/MM/DD.md` files are read-compatible historical records and are never moved, merged, or rewritten.
+- Native lifecycle and supported edit-path events go only to `tasks/journal/.machine/YYYY-MM/DD.log`.
+- SessionStart supplies bounded state, the latest human report, a compact TODO view, and CODEMAP
+  headings (at most 10 KiB); it does not inject bulk lessons.
+- PostToolUse records supported edit paths only. It never runs a formatter, rewrites files, or logs arbitrary shell command text.
+
+## CODEMAP maintenance
+
+- When a change alters project structure, entrypoints, ownership or responsibilities, or important
+  control flow, update the nearest routed `tasks/codemap.md` in the same change.
+- Content-only edits and behavior-only changes that do not alter those documented relationships do
+  not require CODEMAP churn.
+- At completion, state whether this rule applied and, when it did, verify the relevant CODEMAP
+  headings and path references against the current tree.
 
 ## Path-specific instructions
 
@@ -97,7 +116,10 @@ starts; it does not dynamically reload them for a later file edit.
 ## Verification
 
 - Native Codex agents, skills, workflows, or hooks:
-  `node --test ".codex/hooks/test/*.test.mjs" ".codex/agents/test/*.test.mjs" ".agents/skills/codex-harness/*.test.mjs" ".agents/skills/save-session/*.test.mjs" ".agents/skills/resume-session/*.test.mjs"`
+  `node .codex/scripts/check-native.mjs`
+- After a native hook registration or configuration change, additionally run
+  `codex --strict-config doctor --summary` after reviewing/trusting the hooks and starting or reloading the task.
+  This host-level diagnostic supplements, but does not replace, the native check command.
 - Claude-only configuration changes:
   `node .claude/scripts/validate.mjs`
 - Existing Claude harness regression suite:
