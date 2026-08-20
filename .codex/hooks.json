@@ -1,0 +1,54 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process');let r=process.cwd();for(;;){if(fs.existsSync(p.join(r,'.codex','hooks.json')))break;const n=p.dirname(r);if(n===r)process.exit(1);r=n}process.exit(c.spawnSync(process.execPath,[p.join(r,'.codex','hooks','session-start.mjs')],{stdio:'inherit'}).status??1)\"",
+            "timeout": 10,
+            "statusMessage": "Loading workspace context"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process');let r=process.cwd();for(;;){if(fs.existsSync(p.join(r,'.codex','hooks.json')))break;const n=p.dirname(r);if(n===r)process.exit(1);r=n}process.exit(c.spawnSync(process.execPath,[p.join(r,'.codex','hooks','session-end.mjs')],{stdio:'inherit'}).status??1)\"",
+            "timeout": 5,
+            "statusMessage": "Saving session marker"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(exec_command|Bash|PowerShell|apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process');let r=process.cwd();for(;;){if(fs.existsSync(p.join(r,'.codex','hooks.json')))break;const n=p.dirname(r);if(n===r)process.exit(1);r=n}process.exit(c.spawnSync(process.execPath,[p.join(r,'.codex','hooks','pre-tool-use.mjs')],{stdio:'inherit'}).status??1)\"",
+            "timeout": 10,
+            "statusMessage": "Checking workspace policy"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process');let r=process.cwd();for(;;){if(fs.existsSync(p.join(r,'.codex','hooks.json')))break;const n=p.dirname(r);if(n===r)process.exit(1);r=n}process.exit(c.spawnSync(process.execPath,[p.join(r,'.codex','hooks','post-tool-use.mjs')],{stdio:'inherit'}).status??1)\"",
+            "timeout": 20,
+            "statusMessage": "Recording workspace activity"
+          }
+        ]
+      }
+    ]
+  }
+}

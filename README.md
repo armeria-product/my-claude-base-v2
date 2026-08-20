@@ -1,6 +1,6 @@
 # my-claude-base v2 (Claude Code / Codex)
 
-Claude Code と OpenAI Codex/GPT の両方で使える開発ハーネス（作業環境一式）です。共通方針の正本は `CLAUDE.md`、Codex 向けの読み替えと入口は `AGENTS.md` です。Claude Code では hooks と権限設定も動き、Codex ではネイティブの sandbox・承認・skills を使います。
+Claude Code と OpenAI Codex/GPT の両方で使える開発ハーネス（作業環境一式）です。Claude Code は `CLAUDE.md` と `.claude/`、Codex は `AGENTS.md`・`.codex/`・`.agents/skills/` という、それぞれ独立した実行面を使います。Claude Code では hooks と権限設定が動き、Codex では custom agents・sandbox・承認・skills と、このリポジトリの native hooks を使います。
 
 ---
 
@@ -9,13 +9,15 @@ Claude Code と OpenAI Codex/GPT の両方で使える開発ハーネス（作�
 ```bash
 git clone <this-repo> && cd my-claude-base-v2
 claude   # Claude Code: .claude/settings.json の hooks・権限・記録が有効
-codex    # Codex: AGENTS.md と .agents/skills/ が自動で読み込まれる
+codex    # Codex: AGENTS.md、.codex/agents、.agents/skills/ が読み込まれる
 ```
 
 - 外部モデル連携（clover）を使う場合: `node clover/bin/install.mjs`（詳細は `clover/README.md`）
-- 動作確認: `node .claude/scripts/validate.mjs`（構成の整合性検査。`PASS` が正常）
-- `.claude/settings.json` の hooks は Claude Code 専用です。Codex では同じ hooks が実行されたとは見なさず、`AGENTS.md` の方針と Codex 自身の安全機構に従います。
-- `dev/{name}/` は独立リポジトリなので、まずこのハブのルートから Codex を起動すると共通 `AGENTS.md` を確実に読み込めます。
+- Codexの動作確認: `node --test ".codex/hooks/test/*.test.mjs" ".codex/agents/test/*.test.mjs" ".agents/skills/codex-harness/*.test.mjs" ".agents/skills/save-session/*.test.mjs" ".agents/skills/resume-session/*.test.mjs"`
+- Claude Codeの構成検査: `node .claude/scripts/validate.mjs`（Claude側のみ。`PASS` が正常）
+- `.claude/settings.json` の hooks は Claude Code 専用です。Codex は同じ hooks を実行せず、独立した `.codex/hooks.json` を使います。初回と変更後は Codex の `/hooks` で内容を確認・信頼し、新しい task を開始してから使います。
+- Codex native hooks は、設定したツール経路で journal・開始時注入・単一ファイル整形・危険操作/秘密情報/main直書き/PR関門を扱います。無効化・信頼確認の迂回・外部の端末やエディタは対象外なので、sandbox・承認・Git ホスティング側の保護も併用します。
+- `dev/{name}/` は独立リポジトリです。そこで直接作業する場合は、その製品ルートで Codex を開始して製品側の `AGENTS.md` を読み込みます。custom agents・skills・hooks を含む完全な共通ハーネスが必要な作業はハブルートから開始し、作業前に対象製品の `AGENTS.md` も確認します。
 
 ---
 
@@ -26,14 +28,16 @@ codex    # Codex: AGENTS.md と .agents/skills/ が自動で読み込まれる
 大きな作業では PLAN.md と scope.json に予定ファイル・禁止範囲・タスクを残し、実装後の差分をそこへ照合します。scope.json はレビュー用の境界であり、書き込みを拒否するロックではありません。
 
 ```
-/plan で計画       → 計画書(PLAN.md) + 触る予定範囲(scope.json) を出力
+`/plan`（Claude）または `$codex-harness`（Codex）で計画
+                     → 計画書(PLAN.md) + 触る予定範囲(scope.json) を出力
    ↓
 通常の言葉で開始を確認 → 実装を進める（特別な合言葉は不要）
    ↓
 レビュー           → 変更ファイルを PLAN.md / scope.json のタスクへ照合
                      新しい案は deviations.md に提案として記録する
    ↓
-/save-session      → 実施内容・保留・確認事項・次の一手を報告
+`/save-session`（Claude）または `$save-session`（Codex）
+                     → 実施内容・保留・確認事項・次の一手を報告
 ```
 
 - 1〜2ファイルの小さな修正は、重い計画成果物を作らずに進められます。
@@ -41,21 +45,21 @@ codex    # Codex: AGENTS.md と .agents/skills/ が自動で読み込まれる
 - hooks・設定・validator・provider adapter を変える場合は、ユーザーがハーネス自体を対象に含めたことを確認します。
 - 永続 scope-lock、共有ロック状態、特別な「承認」「解除」コマンドはありません。
 
-### Claude Codeでは作業記録が自動で残り、Codexでも途中から再開できる
+### Claude Code と Codex で作業記録を自動化し、途中から再開できる
 
-Claude Code では、何も指示しなくても操作のたびに機械的な記録が残ります。Codex では Claude の journal hook は動かないため、Codex の task 履歴・git・実在する records を使い、save-session workflow で人間向けレポートと再開ポインタを残します。
+Claude Code と、信頼済みの native hooks を読み込んだ Codex では、操作のたびに機械的な記録が残ります。どちらでも save-session workflow で人間向けレポートと再開ポインタを残し、task 履歴と Git で実態を照合します。
 
 | 層 | 何が残るか | 誰が書くか | いつ |
 |---|---|---|---|
-| 機械ジャーナル `tasks/journal/YYYY-MM/DD.md` | ツール実行・委任・安全イベントの1行ログ | Claude Code hooks（自動） | 操作のたび |
+| 機械ジャーナル `tasks/journal/YYYY-MM/DD.md` | ツール実行・安全イベントの1行ログ | Claude Code hooks / trusted Codex native hooks（自動） | 操作のたび |
 | 人間向けレポート（同ファイル末尾） | 固定4節の平易な日本語まとめ | save-session workflow | 区切りごと |
 | 再開メモ `tasks/session-state.md` | 次の一手への短いポインタ（詳細はジャーナルの最新レポートを参照） | save-session workflow | 区切りごと |
 
 - ジャーナルは追記専用で、ローテーションによる削除はありません。再開メモの2026-08-13より前の版は `tasks/history/` に凍結保存されたまま残ります（同日以降は session-state.md が2行のポインタになり退避が不要になったため、これ以上は増えません）。
-- Claude Code ではセッション開始時に、前回セッションの「レポートがまだ無い」状態を自動検知し、補完を促します（`/save-session 補完` で、ジャーナルから後追いで作成できます）。Codex では自動検知を仮定せず、task 履歴と records を直接照合します。
+- Claude Code と信頼済み Codex native hooks は、セッション開始時に session-state・todo・最新 journal レポート・lessons を注入します。注入が無い task では、task 履歴と records を直接照合します。
 - 会話そのものは利用中のクライアントが保存します。Claude Code では `/rewind`（Esc Esc）や `/export`、Codex では Codex の task 履歴を使います。
 
-再開の手順はシンプルです。Claude Code は同じフォルダで `claude -r`、Codex は同じ task を開くか新しい task を開始します。Claude Code の SessionStart hook は session-state・当日ジャーナルを注入し、どちらの provider でも resume workflow は記録と git の実際の状態を突き合わせて現在地を確認します。
+再開の手順はシンプルです。Claude Code は同じフォルダで `claude -r`、Codex は同じ task を開くか新しい task を開始します。各 provider の専用 SessionStart hook が有効なら記録を注入し、いずれでも resume workflow は記録と git の実際の状態を突き合わせて現在地を確認します。
 
 ### 仕事を専門のサブエージェントに分けて任せられる
 
@@ -83,7 +87,16 @@ Claude Code では、何も指示しなくても操作のたびに機械的な�
 
 native モデル名（fable / opus / sonnet / haiku / inherit）以外を指定すると、clover（外部モデル中継。リポジトリ直下 `clover/` の自己完結サブプロジェクト）経由で他社のモデルも呼び出せます。native Fable は relay に依存せず、外部 alias へ変換されません。別名の正本は `clover/models.json` で、native 名との衝突を防ぐため `fable` で始まる alias は引き続き禁止です。外部連携は `.claude/.relay-status` が `ON` のときだけ有効になり、既定は `OFF`（事故防止のため、意図せず外部へ出ないようにしています）。`OFF` のあいだは中継サーバーそのものが起動せず、接続先（`ANTHROPIC_BASE_URL`）も書き換わりません。中継が立っていると claude.ai 側のバックエンドと対で動く機能（リモコンとそのスラッシュコマンド）が使えなくなるため、切ってあるときは本当に何も立たないようにしてあります。
 
-### スキルとコマンドが一通りそろっている
+### Claude Code と Codex のワークフローが独立している
+
+**Codex native surface**
+
+- **custom agents（7種）** — `.codex/agents/*.toml` に planner / reviewer / executor / debugger / verifier / document-author / explorer を登録する。役割、モデル、思考量、意図したsandboxをCodexのspawn設定として持つ。
+- **native workflows** — `.codex/workflows/` に plan / harness / quality-loop / check / commit / pr の共通契約を置く。
+- **skills（3種）** — **$codex-harness**（計画・実装・レビュー・完了）、**$save-session**、**$resume-session**。Codex CLI/IDE では `$` で明示でき、説明に合う依頼では自動でも選ばれる。
+- **path guidance** — ルートと対象ディレクトリの `AGENTS.md` を使う。Codexは開始時のパスまでしか自動収集しないため、別の独立製品へ移るときは新しい task を開始する。独立製品のルートはローカル指針のみを受け取り、共通agents/skills/hooksはハブルートから開始したtaskで使う。
+
+**Claude Code surface**
 
 **スキル（15種）**
 
@@ -99,7 +112,7 @@ native モデル名（fable / opus / sonnet / haiku / inherit）以外を指定�
 - **preview** — 開発サーバーを起動してスクリーンショットを撮り、コンソールのエラーも合わせて確認する目視チェックのループ
 - **frontend-design / brandkit / image-to-code / imagegen-frontend-web / imagegen-frontend-mobile** — 画面デザイン・ブランド・画像からコードへの変換など、見た目まわりを担当するスキル群
 
-**コマンド（2種）**
+**Claude Code コマンド（2種）**
 
 - **/save-session** — 作業範囲の整合を確認したうえで、ジャーナルへ人間向けの報告を追記し、再開メモ（session-state.md）を更新する。「/save-session 補完」で、報告を作りそびれた過去のセッション分もあとから作成できる
 - **/resume-session** — 記録と git の実際の状態を突き合わせて、現在地を報告してから指示を待つ
@@ -109,13 +122,14 @@ native モデル名（fable / opus / sonnet / haiku / inherit）以外を指定�
 ## 何がどこにあるか
 
 ```
-CLAUDE.md            … 共通運用ルールの正本（§番号は各所から引用される安定APIとして扱う — 改番せず追記のみ）
-AGENTS.md            … Codex/GPT 用 adapter（Claude 固有概念の読み替え・provider 境界）
-.agents/skills/      … Codex が自動検出するハーネス入口
+CLAUDE.md            … Claude Code 用の運用ルール
+AGENTS.md            … Codex/GPT 用の独立した運用ルール・入口
+.agents/skills/      … Codex が自動検出する native skills（codex-harness / save-session / resume-session）
+.codex/              … Codex custom agents・role/workflow 契約・native hooks・製品用テンプレート
 .claude/
   agents/            … サブエージェント定義 7体
   skills/            … スキル 15種（上記）
-  commands/          … /save-session・/resume-session
+  commands/          … Claude Code の /save-session・/resume-session
   hooks/             … Claude Code hooks 18本＋共有ライブラリ（下記「安全装置」）
   rules/             … パスに連動して自動適用されるルール（agents / dev-projects / session-persistence）
   scripts/           … validate.mjs・statusline（ステータスバー表示）・doc変換（html2pdf / html2pptx / deckpack）・fusion-detect
@@ -156,7 +170,11 @@ tmp/                 … 使い捨ての作業ファイル（git 追跡外・使
 
 ## 動かして確かめる
 
-- **構成の整合性検査**: `node .claude/scripts/validate.mjs` — フック配線・記録配線・規範文言の消失検知・面横断の文言一致など多数のチェックと、フックの構文検査（`node --check`）・相対 `require()` の解決確認を行う。`VERDICT: PASS` が正常
+- **Codex native surface**:
+  ```bash
+  node --test ".codex/hooks/test/*.test.mjs" ".codex/agents/test/*.test.mjs" ".agents/skills/codex-harness/*.test.mjs" ".agents/skills/save-session/*.test.mjs" ".agents/skills/resume-session/*.test.mjs"
+  ```
+- **Claude Codeの構成整合性検査**: `node .claude/scripts/validate.mjs` — Claude hooks・記録配線・規範文言の消失検知などを検査する。`VERDICT: PASS` が正常
 - **フックの全テストを1コマンドで実行**（手動実行。上記の整合性検査には配線されていない）:
   ```bash
   node --test ".claude/hooks/lib/*.test.js" ".claude/scripts/*.test.mjs"
