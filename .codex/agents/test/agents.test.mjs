@@ -18,7 +18,7 @@ const expectedNames = [
   "verifier",
 ];
 const requiredKeys = ["name", "description", "developer_instructions", "model", "model_reasoning_effort", "sandbox_mode"];
-const allowedEfforts = new Set(["low", "medium", "high", "xhigh", "max", "ultra"]);
+const allowedEfforts = new Set(["low", "medium", "high", "xhigh", "max"]);
 const allowedSandboxes = new Set(["read-only", "workspace-write"]);
 
 function parseAgentToml(file) {
