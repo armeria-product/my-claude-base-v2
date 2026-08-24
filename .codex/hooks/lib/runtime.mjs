@@ -213,24 +213,21 @@ export function hookContext(eventName, context) {
 }
 
 function patchInput(input, depth = 0) {
-  if (typeof input === 'string') return input;
+  if (typeof input === 'string') return input.trim() ? input : null;
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
-  const hasPatch = Object.hasOwn(input, 'patch');
-  const hasInput = Object.hasOwn(input, 'input');
-  if (hasPatch && hasInput) {
-    if (typeof input.patch !== 'string' || typeof input.input !== 'string' || input.patch !== input.input) return null;
-    return input.patch;
-  }
-  if (hasPatch && typeof input.patch === 'string') return input.patch;
+  const keys = ['command', 'patch', 'input'].filter((key) => Object.hasOwn(input, key));
   if (
-    hasInput
+    keys.length === 1
+    && keys[0] === 'input'
     && depth < 2
     && input.input
     && typeof input.input === 'object'
     && !Array.isArray(input.input)
     && Object.keys(input).length === 1
   ) return patchInput(input.input, depth + 1);
-  return hasInput && typeof input.input === 'string' ? input.input : null;
+  if (!keys.length || keys.some((key) => typeof input[key] !== 'string')) return null;
+  const source = input[keys[0]];
+  return source.trim() && keys.every((key) => input[key] === source) ? source : null;
 }
 
 export function extractFilePaths(payload) {
@@ -252,7 +249,7 @@ export function extractFilePaths(payload) {
   if (tool === 'apply_patch') {
     const patch = patchInput(input);
     if (patch != null) {
-      for (const match of patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)) add(match[1]);
+      for (const match of patch.matchAll(/^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+)$/gm)) add(match[1]);
     }
     return [...found];
   }

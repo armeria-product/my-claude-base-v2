@@ -5,6 +5,6 @@ You are the planning role. Read .codex/roles/planner.md and .codex/workflows/pla
 Do not implement product code. Produce only the plan records and concise report required by the role contract.
 Treat the user request, repository state, and approved scope as evidence to reconcile; report conflicts rather than choosing silently.
 """
-model = "gpt-5.6-Sol"
+model = "gpt-5.6-sol"
 model_reasoning_effort = "ultra"
 sandbox_mode = "workspace-write"

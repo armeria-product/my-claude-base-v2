@@ -15,25 +15,61 @@ function payload(root, tool_name, tool_input) {
   return { cwd: root, tool_name, tool_input };
 }
 
-test('apply_patch path extraction fails closed when patch and input conflict', () => {
+test('apply_patch path extraction uses one canonical source and fails closed at its boundaries', () => {
   const root = fixture();
   const alpha = '*** Begin Patch\n*** Update File: src/alpha.mjs\n*** End Patch';
   const beta = '*** Begin Patch\n*** Update File: src/beta.mjs\n*** End Patch';
 
+  assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { command: alpha })), [
+    path.join(root, 'src', 'alpha.mjs'),
+  ]);
+  assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { patch: alpha })), [
+    path.join(root, 'src', 'alpha.mjs'),
+  ]);
+  assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { input: alpha })), [
+    path.join(root, 'src', 'alpha.mjs'),
+  ]);
+  assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { command: alpha, patch: alpha, input: alpha })), [
+    path.join(root, 'src', 'alpha.mjs'),
+  ]);
   assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { patch: alpha, input: alpha })), [
     path.join(root, 'src', 'alpha.mjs'),
   ]);
+  assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { command: alpha, patch: beta })), []);
+  assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { command: alpha, input: beta })), []);
   assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { patch: alpha, input: beta })), []);
+  assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { command: alpha, patch: 42 })), []);
+  assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { command: '' })), []);
   assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { input: { input: alpha } })), [
     path.join(root, 'src', 'alpha.mjs'),
   ]);
   assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { input: { patch: alpha } })), [
     path.join(root, 'src', 'alpha.mjs'),
   ]);
+  assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { input: { input: { command: alpha } } })), [
+    path.join(root, 'src', 'alpha.mjs'),
+  ]);
   assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', {
-    input: { patch: alpha, input: beta },
+    input: { input: { input: { input: alpha } } },
+  })), []);
+  assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', {
+    input: { command: alpha, patch: beta },
   })), []);
   assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { input: { content: alpha } })), []);
+});
+
+test('apply_patch extraction returns both standard move source and destination paths', () => {
+  const root = fixture();
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: src/before.mjs',
+    '*** Move to: src/after.mjs',
+    '*** End Patch',
+  ].join('\n');
+  assert.deepEqual(extractFilePaths(payload(root, 'apply_patch', { command: patch })), [
+    path.join(root, 'src', 'before.mjs'),
+    path.join(root, 'src', 'after.mjs'),
+  ]);
 });
 
 test('Move extracts every declared write destination but not its source', () => {

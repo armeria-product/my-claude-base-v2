@@ -70,6 +70,21 @@ test('only actual apply_patch payloads contribute patch paths', () => {
   }), [path.join(root, 'fake-from-body.md')]);
 });
 
+test('PostToolUse records canonical apply_patch sources and standard Move to destinations', () => {
+  const root = fixture();
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: src/before.mjs',
+    '*** Move to: nested/after.mjs',
+    '*** End Patch',
+  ].join('\n');
+  const result = invoke(root, 'apply_patch', { command: patch });
+  assert.equal(result.status, 0, result.stderr);
+
+  const log = fs.readFileSync(machineJournalPath(root), 'utf8');
+  assert.match(log, /EDIT apply_patch src\/before\.mjs, nested\/after\.mjs \(ok\)/);
+});
+
 test('PostToolUse logs an explicit Write path but never a fake patch path in its body', () => {
   const root = fixture();
   const fakePatch = '*** Begin Patch\n*** Update File: fake-from-body.md\n*** End Patch';
