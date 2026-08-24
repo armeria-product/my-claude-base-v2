@@ -22,6 +22,16 @@ function fixture() {
   return root;
 }
 
+function nestedRepository(root, name, branch = 'feature/hooks') {
+  const target = path.join(root, 'dev', name);
+  fs.mkdirSync(target, { recursive: true });
+  execFileSync('git', ['init', '-q', target]);
+  execFileSync('git', ['-C', target, 'checkout', '-q', '-b', 'main']);
+  execFileSync('git', ['-C', target, '-c', 'user.name=Codex Test', '-c', 'user.email=codex@example.invalid', 'commit', '--allow-empty', '-q', '-m', 'initial']);
+  if (branch !== 'main') execFileSync('git', ['-C', target, 'checkout', '-q', '-b', branch]);
+  return target;
+}
+
 function payload(root, extra = {}) {
   return {
     cwd: root,
@@ -88,6 +98,89 @@ test('apply_patch accepts the string-argument bridge envelope and fails closed o
   });
   assert.deepEqual(extractFilePaths(contentOnly), []);
   assert.notEqual(checkPolicy(contentOnly), null);
+});
+
+test('apply_patch accepts canonical command input and rejects conflicting patch sources', () => {
+  const root = fixture();
+  const patch = '*** Begin Patch\n*** Update File: src/canonical.mjs\n*** End Patch';
+  for (const tool_input of [
+    { command: patch },
+    { command: patch, patch },
+    { command: patch, input: patch },
+    { command: patch, patch, input: patch },
+  ]) assert.equal(checkPolicy(payload(root, { tool_name: 'apply_patch', tool_input })), null);
+
+  for (const tool_input of [
+    { command: patch, patch: patch + '\n# conflicting' },
+    { command: patch, input: patch + '\n# conflicting' },
+    { patch, input: patch + '\n# conflicting' },
+    { command: patch, patch: 42 },
+    { command: patch, input: { input: patch } },
+  ]) assert.notEqual(checkPolicy(payload(root, { tool_name: 'apply_patch', tool_input })), null);
+
+  assert.match(checkPolicy(payload(root, {
+    tool_name: 'apply_patch',
+    tool_input: { command: '*** Begin Patch\n*** Update File: ../outside.mjs\n*** End Patch' },
+  })), /ワークスペース外またはシンボリックリンク/);
+  assert.match(checkPolicy(payload(root, {
+    tool_name: 'apply_patch',
+    tool_input: { command: '*** Begin Patch\n*** Update File: .env\n*** End Patch' },
+  })), /秘密情報/);
+});
+
+test('canonical apply_patch command rejects symlink paths', (t) => {
+  const root = fixture();
+  const link = path.join(root, 'linked');
+  try {
+    fs.symlinkSync(os.tmpdir(), link, process.platform === 'win32' ? 'junction' : 'dir');
+  } catch (error) {
+    if (['EACCES', 'EPERM'].includes(error?.code)) {
+      t.skip('host does not permit test symlink creation');
+      return;
+    }
+    throw error;
+  }
+  assert.match(checkPolicy(payload(root, {
+    tool_name: 'apply_patch',
+    tool_input: { command: '*** Begin Patch\n*** Update File: linked/escaped.mjs\n*** End Patch' },
+  })), /ワークスペース外またはシンボリックリンク/);
+});
+
+test('apply_patch Move to validates both source and destination paths', (t) => {
+  const root = fixture();
+  const movePatch = (source, destination) => [
+    '*** Begin Patch',
+    `*** Update File: ${source}`,
+    `*** Move to: ${destination}`,
+    '*** End Patch',
+  ].join('\n');
+  assert.equal(checkPolicy(payload(root, {
+    tool_name: 'apply_patch',
+    tool_input: { command: movePatch('src/before.mjs', 'src/after.mjs') },
+  })), null);
+  for (const patch of [
+    movePatch('.env', 'src/after.mjs'),
+    movePatch('src/before.mjs', '.env'),
+    movePatch('src/before.mjs', '../outside.mjs'),
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_name: 'apply_patch',
+    tool_input: { command: patch },
+  })), null);
+
+  const link = path.join(root, 'linked');
+  try {
+    fs.symlinkSync(os.tmpdir(), link, process.platform === 'win32' ? 'junction' : 'dir');
+  } catch (error) {
+    if (['EACCES', 'EPERM'].includes(error?.code)) {
+      t.skip('host does not permit test symlink creation');
+      return;
+    }
+    throw error;
+  }
+  assert.match(checkPolicy(payload(root, {
+    tool_name: 'apply_patch',
+    tool_input: { command: movePatch('src/before.mjs', 'linked/escaped.mjs') },
+  })), /ワークスペース外またはシンボリックリンク/);
 });
 
 test('edit tools require a path, deny secrets, and never classify body text as shell', () => {
@@ -239,6 +332,629 @@ test('alternate repository forms fail closed while compact git -C resolves the w
   ]) assert.notEqual(checkPolicy(commandPayload(work, command)), null, command);
 });
 
+test('literal exec workdir permits a nested feature repository and keeps write safeguards active', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'git commit -m test', workdir },
+  })), null);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'git commit -m test', workdir: work },
+  })), null);
+  assert.notEqual(checkPolicy(commandPayload(root, 'git commit -m test')), null);
+
+  for (const command of [
+    'git commit --no-verify -m test',
+    'git reset --hard',
+    'git push origin feature/hooks:main',
+    'git show HEAD:.env',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+});
+
+test('exec workdir accepts only an existing non-symlink workspace directory on a feature branch', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const protectedWorkdirs = ['main', 'master', 'trunk']
+    .map((branch) => nestedRepository(root, `protected-${branch}`, branch));
+  const nonRepository = path.join(root, 'dev', 'not-a-repository');
+  const file = path.join(root, 'not-a-directory');
+  fs.mkdirSync(nonRepository, { recursive: true });
+  fs.writeFileSync(file, 'file\n');
+  const denied = [
+    path.relative(root, file),
+    'dev/missing',
+    '$REPOSITORY',
+    'dev/*',
+    fixture(),
+    null,
+    42,
+    {},
+    [],
+  ];
+  for (const workdir of denied) assert.match(checkPolicy(payload(root, {
+    tool_input: { cmd: 'git commit -m test', workdir },
+  })), /実行作業ディレクトリ/, String(workdir));
+  for (const workdir of [path.relative(root, nonRepository), ...protectedWorkdirs.map((target) => path.relative(root, target))]) {
+    assert.match(checkPolicy(payload(root, {
+      tool_input: { cmd: 'git commit -m test', workdir },
+    })), /保護ブランチ/);
+  }
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'git commit -m test', workdir: path.relative(root, work) },
+  })), null);
+});
+
+test('explicit exec workdir is validated before Git read and sync early returns', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const commands = ['git status', 'git checkout feature/hooks', 'git pull --ff-only'];
+  for (const workdir of [path.relative(root, work), work]) {
+    for (const cmd of commands) assert.equal(checkPolicy(payload(root, {
+      tool_input: { cmd, workdir },
+    })), null, cmd + ' ' + workdir);
+  }
+
+  const file = path.join(root, 'not-a-directory');
+  fs.writeFileSync(file, 'file\n');
+  for (const workdir of [path.relative(root, file), 'dev/missing', fixture(), null, 42, {}, []]) {
+    assert.match(checkPolicy(payload(root, {
+      tool_input: { cmd: 'git status', workdir },
+    })), /実行作業ディレクトリ/, String(workdir));
+  }
+  for (const cmd of commands) assert.match(checkPolicy(payload(root, {
+    tool_input: { cmd, workdir: 'dev/missing' },
+  })), /実行作業ディレクトリ/, cmd);
+});
+
+test('symlink exec workdir is rejected', (t) => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const link = path.join(root, 'dev', 'linked-reprodocs');
+  try {
+    fs.symlinkSync(work, link, process.platform === 'win32' ? 'junction' : 'dir');
+  } catch (error) {
+    if (['EACCES', 'EPERM'].includes(error?.code)) {
+      t.skip('host does not permit test symlink creation');
+      return;
+    }
+    throw error;
+  }
+  for (const cmd of ['git status', 'git checkout feature/hooks', 'git pull --ff-only', 'git commit -m test']) {
+    assert.match(checkPolicy(payload(root, {
+      tool_input: { cmd, workdir: path.relative(root, link) },
+    })), /実行作業ディレクトリ/, cmd);
+  }
+});
+
+test('git -C writes cannot leave the literal exec workdir repository', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const sibling = nestedRepository(root, 'other-product');
+  const workdir = path.relative(root, work);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'git -C . commit -m test', workdir },
+  })), null);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'git -C . -C . commit -m test', workdir },
+  })), null);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: `git -C "${work}" commit -m test`, workdir },
+  })), null);
+  assert.match(checkPolicy(payload(root, {
+    tool_input: { cmd: `git -C "${sibling}" commit -m test`, workdir },
+  })), /別リポジトリ/);
+  assert.match(checkPolicy(payload(root, {
+    tool_input: { cmd: 'git -C . -C .. commit -m test', workdir },
+  })), /別リポジトリ/);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'git -C . pull --ff-only', workdir },
+  })), null);
+  for (const command of ['git -C .. pull --ff-only', 'git -C "' + sibling + '" pull --ff-only']) {
+    assert.match(checkPolicy(payload(root, {
+      tool_input: { cmd: command, workdir },
+    })), /別リポジトリ/, command);
+  }
+  assert.equal(checkPolicy(commandPayload(root, 'git pull --ff-only')), null);
+});
+
+test('git -C targets are checked for every Git operation', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const sibling = nestedRepository(root, 'other-product');
+  const workdir = path.relative(root, work);
+  for (const operation of [
+    'add tracked.txt',
+    'update-index --add tracked.txt',
+    'stash',
+    'config user.name Codex',
+    'fetch origin',
+    'checkout feature/hooks',
+    'status',
+  ]) {
+    assert.match(checkPolicy(payload(root, {
+      tool_input: { cmd: 'git -C "' + sibling + '" ' + operation, workdir },
+    })), /別リポジトリ/, operation);
+  }
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'git -C . status', workdir },
+  })), null);
+});
+
+test('cwd changes block Git writes even when git -C is explicit', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const change of ['cd ..', 'chdir ..', 'Set-Location ..', 'Push-Location ..', 'pushd ..', 'sl ..']) {
+    assert.match(checkPolicy(payload(root, {
+      tool_input: { cmd: `${change}; git -C . commit -m test`, workdir },
+    })), /作業ディレクトリを途中で切り替える Git 書き込み/);
+  }
+});
+
+test('CWD dispatch variants and dynamic definitions fail closed without classifying inert prose', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    'popd; git -C . commit -m test',
+    'Pop-Location; git -C . commit -m test',
+    'cmd /c "cd.. & git -C . commit -m test"',
+    'cmd /c "cd\\ & git -C . commit -m test"',
+    'bash -lc "builtin cd ..; git -C . commit -m test"',
+  ]) assert.match(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), /作業ディレクトリを途中で切り替える Git 書き込み/, command);
+  for (const command of [
+    'Set-Alias c Set-Location; c ..; git -C . commit -m test',
+    'New-Alias c Set-Location; c ..; git -C . commit -m test',
+    'Set-Item Alias:c Set-Location; c ..; git -C . commit -m test',
+    "alias c='cd ..'; c; git -C . commit -m test",
+    'function c() { cd ..; }; c; git -C . commit -m test',
+  ]) assert.match(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), /(?:安全に検査できない|Git 書き込みと Git 以外|作業ディレクトリを途中で切り替える)/, command);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'git -C . commit -m test', workdir },
+  })), null);
+  for (const command of [
+    'echo "popd; git -C . commit -m test"',
+    'echo "Set-Alias c Set-Location; c ..; git -C . commit -m test"',
+    "echo \"alias c='cd ..'; c; git -C . commit -m test\"",
+  ]) assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+});
+
+test('Git writes reject mixed non-Git execution and hidden control flow while Git-only chains allow', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    'Write-Output pre; git -C . commit -m test',
+    'sal c Set-Location; git -C . commit -m test',
+    'si Alias:c Set-Location; git -C . commit -m test',
+    'ni Alias:c Set-Location; git -C . commit -m test',
+    'Set-Item Function:c { Write-Output pre }; git -C . commit -m test',
+    'Rename-Item before after; git -C . commit -m test',
+    'cmd /c "call git -C . commit -m test"',
+    'cmd /c "call %GIT% commit -m test"',
+    'cmd /c "if 1==1 git -C . commit -m test"',
+    'cmd /c "for %I in (1) do git -C . commit -m test"',
+    'cmd /c "%GIT% commit -m test"',
+    'cmd /c "!GIT! commit -m test"',
+    'bash -lc "echo pre; git -C . commit -m test"',
+    'bash -lc "if true; then git -C . commit -m test; fi"',
+    'bash -lc "function c() { git -C . commit -m test; }; c"',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+  for (const command of [
+    'git status; git -C . commit -m test',
+    'cmd /c "git status"',
+    'cmd /c "call git status"',
+    'cmd /c "git status & git -C . commit -m test"',
+    'bash -lc "git status"',
+    'bash -lc "git status; git -C . commit -m test"',
+    'powershell -Command "git status"',
+  ]) assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+});
+
+test('Git state-changing commands require literal runtime values', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    'git checkout $BRANCH',
+    'git -C !REPOSITORY! commit -m test',
+    'git update-ref refs/heads/feature/hooks $TARGET',
+    'git commit -m %MESSAGE%',
+    'git push origin %SOURCE%:refs/heads/feature/hooks',
+    'git push origin HEAD:!DESTINATION!',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+  for (const command of [
+    'git status $PATH',
+    'echo "git checkout $BRANCH"',
+  ]) assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+});
+
+test('cmd caret escapes normalize executable names, policy options, refs, and wrappers', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    'git checkout ma^in; git commit -m test',
+    'git update-ref refs/heads/ma^in HEAD',
+    'git commit --no-ver^ify -m test',
+    'git reset --ha^rd',
+    'git show HEAD:.e^nv',
+    'c^md /c "git commit --no-verify -m test"',
+    'cmd /c "ca^ll git commit -m test"',
+    'cmd /c "st^art /b git status"',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+  for (const command of [
+    'g^it commit -m test',
+    'g^it push origin HEAD:main',
+  ]) assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'g^it commit -m test', workdir },
+  })), null);
+});
+
+test('PowerShell expressions and execution backticks cannot disguise Git policy values', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  const tick = String.fromCharCode(96);
+  for (const command of [
+    "pwsh -Command { git checkout ('m'+'ain'); git commit -m test }",
+    'pwsh -Command { git -C (Get-Location) commit -m test }',
+    "pwsh -Command { git update-ref refs/heads/feature/hooks ('HEAD') }",
+    "pwsh -Command { git push origin ('HEAD:refs/heads/feature/hooks') }",
+    "pwsh -Command 'git commit --no-ver" + tick + "ify -m test'",
+    "pwsh -Command 'git update-ref refs/heads/ma" + tick + "in HEAD'",
+    "pwsh -Command 'git show HEAD:.e" + tick + "nv'",
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'pwsh -Command { git status }', workdir },
+  })), null);
+});
+
+test('direct expression values fail closed for Git mutations even under mixed parsing', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  fs.mkdirSync(path.join(work, '(.)'));
+  for (const command of [
+    "git checkout ('m'+'ain'); git commit -m test",
+    "git update-ref refs/heads/feature/hooks ('HEAD')",
+    "git push origin ('HEAD:refs/heads/feature/hooks')",
+    'git -C "(.)" commit -m test',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+});
+
+test('cmd runtime-expanded wrapper sources fail closed without a literal Git keyword', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    'cmd /c "%GIT% %WRITE% -m test"',
+    'cmd /c "!GIT! !WRITE! -m test"',
+    'cmd /c "%GIT% %WRITE% origin HEAD:main"',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'cmd /c "git status"', workdir },
+  })), null);
+});
+
+test('cmd compact and grouped execution switches recurse into their command source', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    'cmd /cgit commit -m test',
+    'cmd "/cgit commit -m test"',
+    'cmd /c=git update-ref refs/heads/main HEAD',
+    'cmd /kgit commit -m test',
+    'cmd /s/c git commit -m test',
+    'cmd /d/c git update-ref refs/heads/main HEAD',
+    'cmd /q/c git commit -m test',
+    'cmd /e:on/c git push origin HEAD:main',
+  ]) assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: 'cmd /cgit -C .. commit -m test', workdir },
+  })), null);
+  for (const command of [
+    'cmd /cgit status',
+    'cmd /c=git status',
+    'cmd /s/c git status',
+    'cmd /d/c git status',
+    'cmd /q/c git status',
+    'cmd /e:on/c git status',
+  ]) assert.equal(checkPolicy(commandPayload(root, command)), null, command);
+});
+
+test('POSIX shell backslash escapes normalize executed Git policy tokens', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    'sh -c "g\\it checkout ma\\in; git commit -m test"',
+    'sh -c "git commit --no-ver\\ify -m test"',
+    'sh -c "git reset --ha\\rd"',
+    'sh -c "git show HEAD:.e\\nv"',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'sh -c "g\\it commit -m test"', workdir },
+  })), null);
+});
+
+test('POSIX pathname-glob executable tokens fail closed before they can resolve Git', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    'sh -c "g?t update-ref refs/heads/main HEAD"',
+    'sh -c "[g]it update-ref refs/heads/main HEAD"',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'sh -c "git commit -m test"', workdir },
+  })), null);
+  assert.equal(checkPolicy(commandPayload(root, 'sh -c "git status"')), null);
+});
+
+test('Invoke-Command accepts only a literal balanced ScriptBlock', () => {
+  const root = fixture();
+  for (const command of [
+    'Invoke-Command -ScriptBlock $script',
+    "Invoke-Command -ScriptBlock ('git commit -m test')",
+    'Invoke-Command -ScriptBlock (Get-Command git)',
+  ]) assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  assert.equal(checkPolicy(commandPayload(root, 'Invoke-Command -ScriptBlock { git status }')), null);
+});
+
+test('constructed PowerShell ScriptBlocks fail closed inside literal outer blocks', () => {
+  const root = fixture();
+  for (const command of [
+    "pwsh -Command { $script = [ScriptBlock]::Create('git commit -m test'); $script.Invoke() }",
+    "pwsh -Command { $script = [System.Management.Automation.ScriptBlock]::Create('git update-ref refs/heads/main HEAD'); & $script }",
+    'pwsh -Command { $script.Invoke() }',
+  ]) assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  assert.equal(checkPolicy(commandPayload(root, 'pwsh -Command { git status }')), null);
+});
+
+test('all Git mutation classes require literal values and honor mix and CWD boundaries', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    'git branch $BRANCH',
+    'git tag $TAG',
+    'git notes add $NOTE',
+    'git symbolic-ref HEAD $REF',
+    'git remote add origin $URL',
+    'git worktree add $DIR',
+    'git submodule update $NAME',
+    'git am $PATCH',
+    'git annotate $TAG',
+    'git apply $PATCH',
+    'git bisect start $BAD',
+    'git checkout-index $PATH',
+    'git clean $FLAGS',
+    'git clone $URL',
+    'git gc $FLAGS',
+    'git hash-object -w $PATH',
+    'git init $DIR',
+    'git mv $FROM $TO',
+    'git read-tree $TREE',
+    'git reflog $ARGS',
+    'git rm $PATH',
+    'git sparse-checkout set $DIR',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+  for (const command of [
+    'Write-Output pre; git branch feature/next',
+    'Write-Output pre; git annotate v1',
+    'cd ..; git tag v1',
+    'cmd /c "if 1==1 git branch feature/next"',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'git status $PATH', workdir },
+  })), null);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'Write-Output pre; git hash-object --stdin', workdir },
+  })), null);
+});
+
+test('alias and function definitions fail closed before a visible Git invocation', () => {
+  const root = fixture();
+  for (const command of [
+    'Set-Alias g git',
+    'New-Alias push git',
+    'sal g git',
+    'nal push git',
+    'Set-Item Alias:update-ref git',
+    'si Alias:update-ref git',
+    'New-Item Function:g',
+    'Copy-Item Alias:g Alias:h',
+    'Move-Item Function:g Function:h',
+    'Rename-Item Alias:g update-ref',
+    'Set-Content Function:g "git commit -m test"',
+    'Set-Item Function:g { git -C ../.. commit -m test }',
+    'bash -lc "alias g=git"',
+    'bash -lc "alias g=git; g -C ../.. commit -m test"',
+    'sh -c "g() { :; }"',
+    'cmd /c "doskey g=git $*"',
+  ]) assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  assert.equal(checkPolicy(commandPayload(root, 'bash -lc "alias"')), null);
+});
+
+test('dynamic PowerShell provider targets fail closed before they can define aliases', () => {
+  const root = fixture();
+  for (const command of [
+    "Set-Item ('Alias:' + 'g') git",
+    "Set-Item ('Function:' + 'g') { git commit -m test }",
+  ]) assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  assert.equal(checkPolicy(commandPayload(root, 'Set-Item env:CODEX_HOOK_TEST static')), null);
+});
+
+test('external process launches deny unknown and shell-wrapper targets while helpers remain allowed', () => {
+  const root = fixture();
+  for (const command of [
+    "Start-Process -ArgumentList 'status'",
+    'Start-Process -FilePath zsh',
+    'Start-Process -FilePath dash',
+    'Start-Process -FilePath ksh',
+    'cmd /c "start /b"',
+  ]) assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  assert.equal(checkPolicy(commandPayload(root, 'Start-Process node helper.mjs -WindowStyle Hidden')), null);
+});
+
+test('standard POSIX dispatch prefixes expose literal Git mutations to policy checks', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    'sh -c "command git commit -m test"',
+    'sh -c "env git commit -m test"',
+  ]) assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  for (const command of [
+    'sh -c "exec git update-ref refs/heads/main HEAD"',
+    'sh -c "time git reset --hard"',
+    'sh -c "nohup git push origin HEAD:main"',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+  for (const command of [
+    'sh -c "command git commit -m test"',
+    'sh -c "env git commit -m test"',
+    'sh -c "exec git update-ref refs/heads/feature/hooks HEAD"',
+    'sh -c "time git status"',
+    'sh -c "nohup git push origin HEAD:refs/heads/feature/hooks"',
+  ]) assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+});
+
+test('unknown POSIX utility prefixes cannot hide literal Git mutations', () => {
+  const root = fixture();
+  for (const command of [
+    'sh -c "nice git commit -m test"',
+    'sh -c "timeout 1 git update-ref refs/heads/main HEAD"',
+    'sh -c "stdbuf -oL git reset --hard"',
+    'nice git commit -m test',
+    'timeout 1 git update-ref refs/heads/main HEAD',
+    'stdbuf -oL git reset --hard',
+  ]) assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  for (const command of [
+    'sh -c "nice git status"',
+    'nice git status',
+    'echo git commit',
+  ]) assert.equal(checkPolicy(commandPayload(root, command)), null, command);
+});
+
+test('unknown prefixes cannot nest a known shell dispatcher', () => {
+  const root = fixture();
+  for (const command of [
+    'nice sh -c "git commit -m test"',
+    'nice env -S "git commit -m test"',
+    'nice (Get-Command sh) -c "git commit -m test"',
+  ]) assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  assert.equal(checkPolicy(commandPayload(root, 'nice node helper.mjs')), null);
+});
+
+test('brace-expanded Git mutation values fail closed before they can fan out', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    'sh -c "git push origin HEAD:refs/heads/{feature/hooks,main}"',
+    'git push origin HEAD:refs/heads/{feature/hooks,main}',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'sh -c "git push origin HEAD:refs/heads/feature/hooks"', workdir },
+  })), null);
+});
+
+test('env split-string forms fail closed without changing literal env dispatch', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    'env -S "git commit -m test"',
+    'env -S"git update-ref refs/heads/main HEAD"',
+    'env --split-string "git reset --hard"',
+    'env --split-string="git push origin HEAD:main"',
+  ]) assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  assert.equal(checkPolicy(commandPayload(root, 'env git status')), null);
+  assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: 'env git commit -m test', workdir },
+  })), null);
+});
+
+test('external process dispatch denies Git, shells, scripts, and dynamic targets without blocking helpers', () => {
+  const root = fixture();
+  const work = nestedRepository(root, 'reprodocs');
+  const workdir = path.relative(root, work);
+  for (const command of [
+    "Start-Process -FilePath git -ArgumentList 'commit -m test' -WorkingDirectory .",
+    "Start-Process git -WorkingDirectory . -ArgumentList 'commit -m test'",
+    "start git -ArgumentList 'commit -m test' -WorkingDirectory .",
+    "saps -WorkingDirectory . -FilePath git -ArgumentList 'commit -m test'",
+    "Start-Process -WindowStyle Hidden -FilePath git.exe -ArgumentList 'status'",
+    "Start-Process -FilePath git.cmd -ArgumentList 'status'",
+    "Start-Process -FilePath git.bat -ArgumentList 'status'",
+    "Start-Process -FilePath cmd.exe -ArgumentList '/c git status'",
+    "Start-Process -FilePath powershell.exe -ArgumentList '-Command git status'",
+    "Start-Process -FilePath pwsh -ArgumentList '-Command git status'",
+    "Start-Process -FilePath bash -ArgumentList '-lc git status'",
+    "Start-Process -FilePath sh -ArgumentList '-c git status'",
+    'Start-Process -FilePath tools/runner.cmd',
+    'Start-Process -FilePath tools/runner.bat',
+    'Start-Process -FilePath tools/runner.ps1',
+    'Start-Process -FilePath tools/runner.sh',
+    "Start-Process -FilePath '(Get-Command git)'",
+    'Start-Process -FilePath %GIT%',
+    'Start-Process -FilePath !GIT!',
+    'cmd /c "start "" /b git.exe status"',
+    'cmd /c "start /b git.cmd status"',
+    'cmd /c "start /b powershell.exe -Command git status"',
+  ]) assert.notEqual(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+  for (const command of [
+    'Start-Process node helper.mjs -WindowStyle Hidden',
+    'cmd /c "start /b node helper.mjs"',
+  ]) assert.equal(checkPolicy(payload(root, {
+    tool_input: { cmd: command, workdir },
+  })), null, command);
+});
+
 test('destructive aliases and protected refspecs block with safe counterparts', () => {
   const root = fixture();
   execFileSync('git', ['-C', root, 'checkout', '-q', '-b', 'feature/hooks']);
@@ -266,6 +982,42 @@ test('destructive aliases and protected refspecs block with safe counterparts', 
   }
 });
 
+test('git push requires exactly one explicit non-wildcard source-to-destination refspec', () => {
+  const root = fixture();
+  execFileSync('git', ['-C', root, 'checkout', '-q', '-b', 'feature/hooks']);
+  for (const command of [
+    'git push',
+    'git push origin',
+    'git push -u origin',
+    'git push -u origin feature/hooks',
+    'git push origin feature/hooks',
+    'git push origin :',
+    'git push origin +:',
+    'git push origin HEAD:',
+    'git push origin feature/*:feature/*',
+    'git push --delete origin feature/hooks',
+    'git push --all origin',
+    'git push --mirror origin',
+    'git push --receive-pack receive-pack origin feature/hooks:feature/hooks',
+    'git push origin %SOURCE%:refs/heads/feature/hooks',
+    'git push origin HEAD:!DESTINATION!',
+    'git push origin HEAD:HEAD',
+    'git push origin feature/hooks:feature/hooks feature/other:feature/other',
+    'git push origin HEAD:refs/heads/feature/hooks HEAD:refs/heads/feature/other',
+  ]) {
+    assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  }
+  for (const command of [
+    'git push -u origin feature/hooks:feature/hooks',
+    'git push origin HEAD:refs/heads/feature/hooks',
+  ]) {
+    assert.equal(checkPolicy(commandPayload(root, command)), null, command);
+  }
+  for (const command of ['git push origin HEAD:main', 'git push origin feature/hooks:refs/heads/master']) {
+    assert.notEqual(checkPolicy(commandPayload(root, command)), null, command);
+  }
+});
+
 test('secret path terminators block reads without matching mon.keynote', () => {
   const root = fixture();
   assert.equal(hasSecretPath('docs/mon.keynote'), false);
@@ -290,7 +1042,7 @@ test('direct-main protection resolves an explicit git -C target', () => {
   assert.notEqual(checkPolicy(payload(nested, { tool_input: { cmd: `git -C "${root}" commit -m test` } })), null);
 });
 
-test('cwd-changing Git writes fail closed unless the target uses git -C', () => {
+test('cwd-changing Git writes fail closed', () => {
   const root = fixture();
   assert.notEqual(checkPolicy(commandPayload(root, 'Set-Location scratch; git commit -m test')), null);
 });

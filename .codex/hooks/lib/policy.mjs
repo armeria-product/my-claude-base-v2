@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { extractFilePaths, isSafeWorkspacePath, rootFor } from './runtime.mjs';
 
@@ -15,6 +16,126 @@ const SECRET_PIPELINE_SOURCES = new Set(['get-childitem', 'gci', 'dir', 'ls', 'g
 const SECRET_PIPELINE_ITERATORS = new Set(['foreach-object', '%']);
 const POWERSHELL_ENCODED_COMMAND = 'encodedcommand';
 const BACKTICK = String.fromCharCode(96);
+const CWD_COMMANDS = new Set(['cd', 'chdir', 'set-location', 'push-location', 'pop-location', 'pushd', 'popd', 'sl']);
+const START_PROCESS_COMMANDS = new Set(['start-process', 'start', 'saps']);
+const GIT_MUTATION_SUBCOMMANDS = new Set([
+  ...GIT_WRITE,
+  'add',
+  'am',
+  'annotate',
+  'apply',
+  'bisect',
+  'branch',
+  'checkout',
+  'checkout-index',
+  'clean',
+  'clone',
+  'config',
+  'fetch',
+  'gc',
+  'init',
+  'mv',
+  'notes',
+  'pull',
+  'read-tree',
+  'reflog',
+  'remote',
+  'rm',
+  'sparse-checkout',
+  'stash',
+  'submodule',
+  'switch',
+  'symbolic-ref',
+  'tag',
+  'update-index',
+  'worktree',
+]);
+const LITERAL_GIT_SUBCOMMANDS = new Set([
+  ...GIT_MUTATION_SUBCOMMANDS,
+  'hash-object',
+]);
+const SHELL_DISPATCH_TARGETS = new Set(['bash', 'cmd', 'dash', 'ksh', 'powershell', 'pwsh', 'sh', 'zsh']);
+const TRANSPARENT_DISPATCH_PREFIXES = new Set(['command', 'env', 'exec', 'nohup', 'time']);
+const CMD_CONTROL_COMMANDS = new Set(['call', 'for', 'if', 'start']);
+const SHELL_CONTROL_COMMANDS = new Set(['case', 'do', 'elif', 'else', 'for', 'function', 'if', 'then', 'until', 'while']);
+const NON_PREFIX_EXECUTABLES = new Set([
+  ...SECRET_READ_COMMANDS,
+  ...SHELL_DISPATCH_TARGETS,
+  ...START_PROCESS_COMMANDS,
+  ...SHELL_CONTROL_COMMANDS,
+  'echo',
+  'foreach-object',
+  'gci',
+  'get-childitem',
+  'node',
+  'printf',
+  'py',
+  'python',
+  'python3',
+  'write-host',
+  'write-output',
+  '%',
+]);
+const START_PROCESS_VALUE_OPTIONS = new Set([
+  'argumentlist',
+  'credential',
+  'environment',
+  'filepath',
+  'redirectstandarderror',
+  'redirectstandardinput',
+  'redirectstandardoutput',
+  'verb',
+  'windowstyle',
+  'workingdirectory',
+]);
+const START_PROCESS_SWITCH_OPTIONS = new Set([
+  'confirm',
+  'loaduserprofile',
+  'nonewwindow',
+  'passthru',
+  'usenewenvironment',
+  'wait',
+  'whatif',
+]);
+const POWERSHELL_ALIAS_DEFINITIONS = new Set(['new-alias', 'nal', 'sal', 'set-alias']);
+const POWERSHELL_PROVIDER_WRITERS = new Set([
+  'add-content',
+  'ac',
+  'clear-content',
+  'clear-item',
+  'clear-itemproperty',
+  'clc',
+  'cli',
+  'clp',
+  'copy',
+  'copy-item',
+  'copy-itemproperty',
+  'cpp',
+  'cpi',
+  'cp',
+  'move',
+  'move-item',
+  'move-itemproperty',
+  'mp',
+  'mv',
+  'new-item',
+  'ni',
+  'ren',
+  'rename-item',
+  'rename-itemproperty',
+  'rnp',
+  'rni',
+  'remove-item',
+  'remove-itemproperty',
+  'ri',
+  'rp',
+  'sc',
+  'set-content',
+  'set-item',
+  'set-itemproperty',
+  'sp',
+  'si',
+]);
 
 export function commandFrom(payload) {
   const input = payload.tool_input;
@@ -215,15 +336,279 @@ function normalName(value) {
   return String(value || '').split(/[\\/]/).pop().replace(/\.exe$/i, '').toLowerCase();
 }
 
+function isGitExecutable(value) {
+  return /^(?:git|git\.(?:cmd|bat))$/i.test(normalName(value));
+}
+
+function hasPathnameGlob(value) {
+  return /[*?]|\[[^\]\r\n]*\]/.test(String(value || ''));
+}
+
+function normalizeCmdCaretEscapes(command, dialect) {
+  const source = String(command || '');
+  if (!['cmd', 'mixed'].includes(dialect)) return source;
+  let normalized = '';
+  let quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (dialect === 'mixed' && char === '"') {
+      quoted = !quoted;
+      normalized += char;
+      continue;
+    }
+    if (dialect === 'mixed' && quoted) {
+      normalized += char;
+      continue;
+    }
+    if (char === '^' && index + 1 < source.length) {
+      normalized += source[index + 1];
+      index += 1;
+      continue;
+    }
+    normalized += char;
+  }
+  return normalized;
+}
+
+function normalizePowerShellBacktickEscapes(command) {
+  const source = String(command || '');
+  let normalized = '';
+  let singleQuoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (singleQuoted) {
+      normalized += char;
+      if (char === "'") {
+        if (source[index + 1] === "'") {
+          normalized += source[index + 1];
+          index += 1;
+        } else singleQuoted = false;
+      }
+      continue;
+    }
+    if (char === "'") {
+      singleQuoted = true;
+      normalized += char;
+      continue;
+    }
+    if (char === BACKTICK && index + 1 < source.length) {
+      normalized += source[index + 1];
+      index += 1;
+      continue;
+    }
+    normalized += char;
+  }
+  return normalized;
+}
+
+function normalizeShellBackslashEscapes(command, dialect) {
+  const source = String(command || '');
+  if (dialect !== 'sh') return source;
+  let normalized = '';
+  let quote = '';
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote === "'") {
+      normalized += char;
+      if (char === "'") quote = '';
+      continue;
+    }
+    if (quote === '"') {
+      if (char === '"') {
+        quote = '';
+        normalized += char;
+        continue;
+      }
+      if (char === '\\' && index + 1 < source.length) {
+        const next = source[index + 1];
+        if (/[$"\\`]/.test(next)) {
+          normalized += char + next;
+          index += 1;
+          continue;
+        }
+      }
+      normalized += char;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      normalized += char;
+      continue;
+    }
+    if (char === '\\' && index + 1 < source.length) {
+      const next = source[index + 1];
+      if (!/[\s"';&|()$\\`]/.test(next)) {
+        normalized += next;
+        index += 1;
+        continue;
+      }
+    }
+    normalized += char;
+  }
+  return normalized;
+}
+
+function hasDynamicExpansion(value, dialect = 'mixed') {
+  const source = String(value || '');
+  return /[$%!]/.test(source)
+    || (dialect === 'powershell' && (source.includes(BACKTICK) || /[()]/.test(source)));
+}
+
+function hasDynamicGitValue(value, dialect = 'mixed') {
+  const source = String(value || '');
+  return hasDynamicExpansion(source, dialect) || source.includes(BACKTICK) || /[(){}]/.test(source);
+}
+
+function hasDynamicProviderTarget(value, dialect = 'mixed') {
+  const source = String(value || '');
+  return hasDynamicExpansion(source, dialect) || source.includes(BACKTICK) || /[(){}]/.test(source);
+}
+
+function changesCwd(words) {
+  const source = String(words[0] || '');
+  const executable = normalName(source);
+  if (CWD_COMMANDS.has(executable) || /^cd(?:\.\.|[\\/].*)$/i.test(source)) return true;
+  return executable === 'builtin' && changesCwd(words.slice(1));
+}
+
+function restrictedExternalTarget(value) {
+  const source = String(value || '').trim();
+  const executable = normalName(source);
+  return Boolean(source) && (
+    isGitExecutable(source)
+    || SHELL_DISPATCH_TARGETS.has(executable)
+    || /\.(?:cmd|bat|ps1|sh)$/i.test(source)
+    || hasDynamicExpansion(source)
+    || /[()]/.test(source)
+  );
+}
+
+function nestedDispatcherTarget(value) {
+  const source = String(value || '').trim();
+  const executable = normalName(source);
+  return Boolean(source) && (
+    SHELL_DISPATCH_TARGETS.has(executable)
+    || TRANSPARENT_DISPATCH_PREFIXES.has(executable)
+    || /\.(?:cmd|bat|ps1|sh)$/i.test(source)
+    || hasDynamicExpansion(source)
+    || /[()]/.test(source)
+  );
+}
+
+function startProcessFilePath(words) {
+  let filePath = null;
+  let uninspectable = false;
+  for (let index = 0; index < words.length; index += 1) {
+    const argument = String(words[index]);
+    const option = /^-([A-Za-z][A-Za-z-]*)(?::|=)?(.*)$/.exec(argument);
+    if (!option) {
+      if (filePath === null) filePath = argument;
+      continue;
+    }
+    const name = option[1].toLowerCase();
+    const inline = option[2];
+    if (!START_PROCESS_VALUE_OPTIONS.has(name)) {
+      if (!START_PROCESS_SWITCH_OPTIONS.has(name)) uninspectable = true;
+      continue;
+    }
+    const value = inline || words[index + 1];
+    if (!inline) {
+      if (value == null) {
+        uninspectable = true;
+        continue;
+      }
+      index += 1;
+    }
+    if (name === 'filepath') filePath = value || null;
+  }
+  return { filePath, uninspectable };
+}
+
+function startProcessLaunchesRestrictedTarget(words, dialect) {
+  const executable = normalName(words[0]);
+  if (executable === 'start' && dialect === 'cmd') {
+    const targets = words.slice(1).filter((value) => {
+      const source = String(value || '');
+      return source && !/^[/\-]/.test(source);
+    });
+    return words.slice(1).some(restrictedExternalTarget) || targets.length < 2;
+  }
+  if (!START_PROCESS_COMMANDS.has(executable)) return false;
+  const launch = startProcessFilePath(words.slice(1));
+  return launch.uninspectable || !launch.filePath || restrictedExternalTarget(launch.filePath);
+}
+
+function wordsContainGitMutationIntent(words, dialect) {
+  for (let index = 0; index < words.length; index += 1) {
+    if (!isGitExecutable(words[index])) continue;
+    const invocation = gitInvocation(words.slice(index), {}, dialect);
+    if (invocation && isGitMutation(invocation)) return true;
+  }
+  return false;
+}
+
+function wordsContainGitMutationKeyword(words) {
+  return words.some((word) => {
+    const name = String(word || '').toLowerCase();
+    return GIT_MUTATION_SUBCOMMANDS.has(name) || name === 'hash-object';
+  });
+}
+
+function controlHidesGitMutation(words, dialect) {
+  const executable = normalName(words[0]);
+  const controlled = dialect === 'cmd'
+    ? CMD_CONTROL_COMMANDS.has(executable)
+    : dialect === 'sh' && (
+      SHELL_CONTROL_COMMANDS.has(executable)
+      || (/^[A-Za-z_][A-Za-z0-9_-]*\(\)$/.test(String(words[0] || '')) && String(words[1] || '') === '{')
+  );
+  if (!controlled) return false;
+  return wordsContainGitMutationIntent(words, dialect)
+    || (hasDynamicExpansion(words.slice(1).join(' '), dialect) && wordsContainGitMutationKeyword(words));
+}
+
+function cmdDynamicHidesGitMutation(words, dialect) {
+  return dialect === 'cmd'
+    && hasDynamicExpansion(words.join(' '), dialect)
+    && wordsContainGitMutationKeyword(words);
+}
+
+function isDefinitionProviderPath(value) {
+  return /^(?:alias|function):/i.test(String(value || ''));
+}
+
+function dynamicDefinition(words, dialect) {
+  const executable = normalName(words[0]);
+  const first = String(words[0] || '');
+  if (dialect === 'cmd' && executable === 'doskey') return true;
+  if (POWERSHELL_ALIAS_DEFINITIONS.has(executable)) return true;
+  if (POWERSHELL_PROVIDER_WRITERS.has(executable) && words.slice(1).some((value) => (
+    isDefinitionProviderPath(value) || hasDynamicProviderTarget(value, dialect)
+  ))) return true;
+  if (executable === 'function') return true;
+  if (executable === 'alias' && words.length > 1) return true;
+  if (/^[A-Za-z_][A-Za-z0-9_-]*\(\)\{?$/.test(first)) return true;
+  return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(first)
+    && /^\(\)$/.test(String(words[1] || ''))
+    && String(words[2] || '') === '{';
+}
+
+function nonExecutingStatement(words, dialect) {
+  const executable = String(words[0] || '').trim();
+  if (!executable || executable.startsWith('#') || executable === ':') return true;
+  return dialect === 'cmd' && (/^::/.test(executable) || /^rem$/i.test(executable));
+}
+
 function environmentAssignment(word) {
   const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(String(word || ''));
   return match ? { name: match[1].toUpperCase(), value: match[2] } : null;
 }
 
-function unwrapPrefixes(words) {
+function unwrapPrefixes(words, dialect = 'mixed') {
   const environment = {};
   let cursor = 0;
   let uninspectable = false;
+  let transparentPrefix = false;
   while (cursor < words.length) {
     let assignment = environmentAssignment(words[cursor]);
     while (assignment) {
@@ -233,6 +618,7 @@ function unwrapPrefixes(words) {
     }
     const executable = normalName(words[cursor]);
     if (executable === 'env') {
+      transparentPrefix = true;
       cursor += 1;
       while (cursor < words.length) {
         const option = String(words[cursor]);
@@ -248,16 +634,37 @@ function unwrapPrefixes(words) {
           continue;
         }
         if (!option.startsWith('-')) break;
+        if (
+          lower === '-s'
+          || lower.startsWith('-s')
+          || lower === '--split-string'
+          || lower.startsWith('--split-string=')
+        ) {
+          uninspectable = true;
+          cursor += lower === '-s' || lower === '--split-string' ? 2 : 1;
+          continue;
+        }
         if (lower === '-c' || lower === '--chdir' || lower.startsWith('--chdir=')) {
           uninspectable = true;
           cursor += lower === '-c' || lower === '--chdir' ? 2 : 1;
           continue;
         }
-        cursor += lower === '-u' || lower === '--unset' ? 2 : 1;
+        if (lower === '-u' || lower === '--unset') {
+          if (!words[cursor + 1]) uninspectable = true;
+          cursor += 2;
+          continue;
+        }
+        if (['-0', '-i', '--ignore-environment', '--null'].includes(lower)) {
+          cursor += 1;
+          continue;
+        }
+        uninspectable = true;
+        cursor += 1;
       }
       continue;
     }
     if (executable === 'command') {
+      transparentPrefix = true;
       cursor += 1;
       let lookupOnly = false;
       while (cursor < words.length && String(words[cursor]).startsWith('-')) {
@@ -267,14 +674,27 @@ function unwrapPrefixes(words) {
           break;
         }
         if (option === '-v') lookupOnly = true;
+        else uninspectable = true;
         cursor += 1;
       }
       if (lookupOnly) return { environment, uninspectable, words: [] };
       continue;
     }
+    if (TRANSPARENT_DISPATCH_PREFIXES.has(executable) && executable !== 'command' && executable !== 'env') {
+      transparentPrefix = true;
+      cursor += 1;
+      if (!words[cursor] || String(words[cursor]).startsWith('-')) uninspectable = true;
+      continue;
+    }
     break;
   }
-  return { environment, uninspectable, words: words.slice(cursor) };
+  const unwrapped = words.slice(cursor);
+  if (
+    transparentPrefix
+    && wordsContainGitMutationKeyword(unwrapped)
+    && (!isGitExecutable(unwrapped[0]) || hasDynamicExpansion(unwrapped.join(' '), dialect))
+  ) uninspectable = true;
+  return { environment, uninspectable, words: unwrapped };
 }
 
 function usesAlternateRepositoryEnvironment(environment) {
@@ -285,11 +705,11 @@ function changesRepositoryConfig(value) {
   return /^(?:alias\.[^=\s]+|core\.(?:worktree|bare|hookspath)|extensions\.worktreeconfig)(?:\s*=|=|$)/i.test(String(value || ''));
 }
 
-function gitInvocation(words, environment = {}) {
+function gitInvocation(words, environment = {}, dialect = 'mixed') {
   if (!Array.isArray(words)) {
     words = shellWords(String(words).replace(/^[\s(&]+/, ''));
   }
-  if (normalName(words[0]) !== 'git') return null;
+  if (!isGitExecutable(words[0])) return null;
   let cursor = 1;
   const cwdArgs = [];
   const allArgs = words.slice(1);
@@ -308,7 +728,7 @@ function gitInvocation(words, environment = {}) {
         cursor += 1;
       } else {
         const target = String(words[cursor + 1]);
-        if (!isInspectableCwd(target)) uninspectable = true;
+        if (!isInspectableCwd(target, dialect)) uninspectable = true;
         cwdArgs.push(target);
         cursor += 2;
       }
@@ -316,7 +736,7 @@ function gitInvocation(words, environment = {}) {
     }
     if (option.startsWith('-C') && option.length > 2) {
       const target = option.slice(2).replace(/^=/, '');
-      if (target && isInspectableCwd(target)) cwdArgs.push(target);
+      if (target && isInspectableCwd(target, dialect)) cwdArgs.push(target);
       else uninspectable = true;
       cursor += 1;
       continue;
@@ -372,29 +792,52 @@ function gitInvocation(words, environment = {}) {
     cursor += 1;
   }
   const subcommand = String(words[cursor] || '').toLowerCase();
+  const args = words.slice(cursor + 1);
   if (subcommand && !KNOWN_GIT_SUBCOMMANDS.has(subcommand)) uninspectable = true;
-  return {
+  const invocation = {
     allArgs,
-    args: words.slice(cursor + 1),
+    args,
     cwdArgs,
+    dialect,
     subcommand,
     uninspectable,
   };
+  if (isGitMutation(invocation) && args.some((value) => hasDynamicGitValue(value, dialect))) {
+    invocation.uninspectable = true;
+  }
+  return invocation;
 }
 
-function isInspectableCwd(value) {
+function isInspectableCwd(value, dialect = 'mixed') {
   const source = String(value || '');
-  if (!source || /[\0$%*?]/.test(source) || source.startsWith('~')) return false;
+  if (!source || hasDynamicGitValue(source, dialect) || /[\0*?]/.test(source) || source.startsWith('~')) return false;
   return !(process.platform === 'win32' && /^\/[A-Za-z](?:\/|$)/.test(source));
 }
 
 function resolveInvocationCwd(invocation, cwd) {
   let target = cwd;
   for (const relative of invocation.cwdArgs) {
-    if (!isInspectableCwd(relative)) return null;
+    if (!isInspectableCwd(relative, invocation.dialect)) return null;
     target = path.resolve(target, relative);
   }
   return target;
+}
+
+function hasToolWorkdir(input) {
+  return Boolean(input && typeof input === 'object' && !Array.isArray(input) && Object.hasOwn(input, 'workdir'));
+}
+
+function toolWorkdir(input, cwd) {
+  if (!hasToolWorkdir(input)) return cwd;
+  if (typeof input.workdir !== 'string' || !isInspectableCwd(input.workdir)) return null;
+  const target = path.resolve(cwd, input.workdir);
+  if (!isSafeWorkspacePath(rootFor(cwd), target)) return null;
+  try {
+    const stat = fs.lstatSync(target);
+    return stat.isDirectory() && !stat.isSymbolicLink() ? target : null;
+  } catch {
+    return null;
+  }
 }
 
 function optionIs(args, name) {
@@ -480,37 +923,28 @@ function protectedRef(value) {
 
 function pushWritesProtectedRef(args) {
   const values = [];
-  let deleteMode = false;
-  let broadWrite = false;
-  const valueOptions = new Set(['--repo', '--receive-pack', '--exec', '--push-option', '-o']);
   for (let index = 0; index < args.length; index += 1) {
     const argument = String(args[index]);
     const lower = argument.toLowerCase();
-    if (argument === '--') {
-      values.push(...args.slice(index + 1).map(String));
-      break;
-    }
-    if (lower === '--delete' || lower === '-d') {
-      deleteMode = true;
-      continue;
-    }
-    if (lower === '--all' || lower === '--mirror') {
-      broadWrite = true;
-      continue;
-    }
+    if (argument === '--') return true;
     if (argument.startsWith('-')) {
-      if (valueOptions.has(lower) && !argument.includes('=')) index += 1;
-      continue;
+      if (lower === '-u' || lower === '--set-upstream') continue;
+      return true;
+    }
+    if (!argument || hasDynamicExpansion(argument) || /[*?\[\]]/.test(argument)) {
+      return true;
     }
     values.push(argument);
   }
-  if (broadWrite || values.length < 2) return broadWrite;
+  if (values.length !== 2 || hasDynamicExpansion(values[0]) || /[*?\[\]]/.test(values[0])) return true;
   for (const refspec of values.slice(1)) {
-    const spec = String(refspec).replace(/^\+/, '');
+    const spec = String(refspec);
+    if (spec.startsWith('+') || hasDynamicExpansion(spec) || /[*?\[\]]/.test(spec)) return true;
     const separator = spec.indexOf(':');
-    let target = deleteMode || separator < 0 ? spec : spec.slice(separator + 1);
-    if (!target && separator >= 0) target = spec.slice(0, separator);
-    if (protectedRef(target)) return true;
+    if (separator <= 0 || separator !== spec.lastIndexOf(':')) return true;
+    const source = spec.slice(0, separator);
+    const target = spec.slice(separator + 1);
+    if (!source || !target || /^HEAD$/i.test(target) || protectedRef(target)) return true;
   }
   return false;
 }
@@ -560,6 +994,15 @@ function switchTarget(invocation) {
   return positionalArguments(invocation.args)[0] || null;
 }
 
+function isGitMutation(invocation) {
+  if (invocation.subcommand === 'hash-object') {
+    return hasShortFlag(invocation.args, 'w')
+      || optionIs(invocation.args, '--write')
+      || invocation.args.some((value) => hasDynamicGitValue(value, invocation.dialect));
+  }
+  return LITERAL_GIT_SUBCOMMANDS.has(invocation.subcommand);
+}
+
 function isGitWrite(invocation) {
   return GIT_WRITE.has(invocation.subcommand) || invocation.subcommand === 'pull';
 }
@@ -598,8 +1041,8 @@ function symbolicRefWritesProtectedRef(invocation) {
   return values.length >= 2 && protectedRef(values[1]);
 }
 
-function externalGitWriteTarget(invocation, cwd) {
-  if (!isGitWrite(invocation) || invocation.subcommand === 'pull' || !invocation.cwdArgs.length) return false;
+function externalGitTarget(invocation, cwd) {
+  if (!invocation.cwdArgs.length) return false;
   const target = resolveInvocationCwd(invocation, cwd);
   const currentRepository = repositoryFor(cwd);
   const targetRepository = target ? repositoryFor(target) : null;
@@ -678,7 +1121,7 @@ function inspectSecretDataFlow(command, state, dialect) {
   for (const segment of shellSegmentsWithOperators(command, dialect)) {
     const words = shellWords(stripOuterGroup(segment.source));
     if (!words.length) continue;
-    const prefix = unwrapPrefixes(words);
+    const prefix = unwrapPrefixes(words, dialect);
     for (const [name, value] of Object.entries(prefix.environment)) {
       if (hasSecretSelector(value)) variables.add(name.toLowerCase());
       else variables.delete(name.toLowerCase());
@@ -829,6 +1272,13 @@ function scriptBlockSource(value) {
   return end === source.length - 1 ? source.slice(1, -1) : null;
 }
 
+function literalScriptBlockSource(value) {
+  const source = String(value || '').trim();
+  if (!source.startsWith('{')) return null;
+  const end = matchingIndex(source, 0, '{', '}');
+  return end === source.length - 1 ? source.slice(1, -1) : null;
+}
+
 function hasDynamicShellSource(value) {
   const source = String(value || '');
   let quote = '';
@@ -887,7 +1337,57 @@ function hasDynamicPowerShellSource(value) {
   return false;
 }
 
-function wrapperSource(words) {
+function constructedPowerShellScriptBlock(value) {
+  const source = String(value || '');
+  let code = '';
+  let quote = '';
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote) {
+      code += ' ';
+      if (quote === "'") {
+        if (char === "'") {
+          if (source[index + 1] === "'") {
+            code += ' ';
+            index += 1;
+          } else quote = '';
+        }
+        continue;
+      }
+      if (char === BACKTICK && index + 1 < source.length) {
+        code += ' ';
+        index += 1;
+        continue;
+      }
+      if (char === '"') quote = '';
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      code += ' ';
+      continue;
+    }
+    code += char;
+  }
+  return /\[\s*(?:system\s*\.\s*management\s*\.\s*automation\s*\.\s*)?scriptblock\s*\]\s*::\s*(?:create|new)\s*\(/i.test(code)
+    || /\.\s*invoke(?:returnasiss*)?\s*\(/i.test(code);
+}
+
+function cmdExecutionSource(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const option = String(args[index] || '');
+    if (!option.startsWith('/')) continue;
+    const match = /\/[ck](?:(?:=)?(.*))?$/i.exec(option);
+    if (!match) continue;
+    const source = [match[1], ...args.slice(index + 1)]
+      .filter((value) => String(value || ''))
+      .join(' ');
+    return source ? { source, dialect: 'cmd' } : { uninspectable: true };
+  }
+  return null;
+}
+
+function wrapperSource(words, dialect = 'mixed') {
   const executable = normalName(words[0]);
   const args = words.slice(1).map(String);
   if (['sh', 'bash', 'zsh', 'dash', 'ksh'].includes(executable)) {
@@ -936,15 +1436,17 @@ function wrapperSource(words) {
   }
   if (executable === '.' || executable === 'source') return { uninspectable: true };
   if (executable === 'cmd') {
-    const index = args.findIndex((arg) => /^\/(?:c|k)$/i.test(arg));
-    if (index < 0) return null;
-    const source = args.slice(index + 1).join(' ');
-    return source ? { source, dialect: 'cmd' } : { uninspectable: true };
+    return cmdExecutionSource(args);
+  }
+  if (dialect === 'cmd' && executable === 'call') {
+    const source = args.join(' ');
+    if (!source || hasDynamicExpansion(source)) return { uninspectable: true };
+    return { source, dialect: 'cmd' };
   }
   if (executable === 'invoke-command') {
     const index = args.findIndex((arg) => /^-scriptblock$/i.test(arg));
     if (index < 0) return null;
-    const source = scriptBlockSource(args.slice(index + 1).join(' '));
+    const source = literalScriptBlockSource(args.slice(index + 1).join(' '));
     return source ? { source, dialect: 'powershell' } : { uninspectable: true };
   }
   return null;
@@ -984,7 +1486,12 @@ function inspectCommand(command, state, depth = 0, dialect = 'mixed') {
     state.uninspectable = true;
     return;
   }
-  const source = maskPowerShellLiteralHereStrings(normalizeContinuations(command));
+  let source = maskPowerShellLiteralHereStrings(normalizeContinuations(command));
+  source = normalizeCmdCaretEscapes(source, dialect);
+  source = normalizeShellBackslashEscapes(source, dialect);
+  if (dialect === 'powershell') source = normalizePowerShellBacktickEscapes(source);
+  if (dialect === 'powershell' && constructedPowerShellScriptBlock(source)) state.uninspectable = true;
+  if (dialect === 'cmd' && /[%!]/.test(source)) state.uninspectable = true;
   if (dialect !== 'powershell' && (hasExecutableBacktick(source)
     || /[<>]\(/.test(source) || /(?:^|[;|&\s])&\s*(?:\$|\()/.test(source))) state.uninspectable = true;
   const substitutions = commandSubstitutions(source, dialect);
@@ -998,26 +1505,40 @@ function inspectCommand(command, state, depth = 0, dialect = 'mixed') {
   for (const segment of shellSegmentsWithOperators(source, dialect)) {
     const words = shellWords(stripOuterGroup(segment.source));
     if (!words.length) continue;
-    const prefix = unwrapPrefixes(words);
+    const prefix = unwrapPrefixes(words, dialect);
     if (prefix.uninspectable) state.uninspectable = true;
     if (!prefix.words.length) continue;
+    if (dialect === 'sh' && hasPathnameGlob(prefix.words[0])) state.uninspectable = true;
     const executable = normalName(prefix.words[0]);
+    if (!isGitExecutable(prefix.words[0]) && !NON_PREFIX_EXECUTABLES.has(executable) && (
+      wordsContainGitMutationIntent(prefix.words, dialect)
+      || prefix.words.slice(1).some(nestedDispatcherTarget)
+    )) {
+      state.uninspectable = true;
+    }
     if (
       powerShellAlternateRepositoryAssignment(prefix.words)
       || cmdAlternateRepositoryAssignment(executable, prefix.words)
       || exportAlternateRepositoryAssignment(executable, prefix.words)
     ) state.uninspectable = true;
-    if (['cd', 'chdir', 'set-location', 'pushd'].includes(executable)) state.changesCwd = true;
+    if (
+      startProcessLaunchesRestrictedTarget(prefix.words, dialect)
+      || controlHidesGitMutation(prefix.words, dialect)
+      || cmdDynamicHidesGitMutation(prefix.words, dialect)
+    ) state.uninspectable = true;
+    if (dynamicDefinition(prefix.words, dialect)) state.uninspectable = true;
+    if (changesCwd(prefix.words)) state.changesCwd = true;
     if (destructiveFilesystem(prefix.words) || deletesSecretPath(prefix.words)) state.destructiveFilesystem = true;
     if (secretRead(prefix.words)) state.secretRead = true;
     if (opaqueInterpreterExecution(prefix.words)) state.uninspectable = true;
-    const wrapper = wrapperSource(prefix.words);
+    const wrapper = wrapperSource(prefix.words, dialect);
     if (wrapper) {
       if (wrapper.uninspectable) state.uninspectable = true;
       else inspectCommand(wrapper.source, state, depth + 1, wrapper.dialect);
       continue;
     }
-    if (executable === 'git') state.invocations.push(gitInvocation(prefix.words, prefix.environment));
+    if (isGitExecutable(prefix.words[0])) state.invocations.push(gitInvocation(prefix.words, prefix.environment, dialect));
+    else if (!nonExecutingStatement(prefix.words, dialect)) state.nonGitExecution = true;
   }
 }
 
@@ -1042,10 +1563,15 @@ export function checkPolicy(payload) {
     return '安全ポリシーのコマンド指定が競合しているため実行を止めました。';
   const command = commandFrom(payload);
   if (!command) return '安全ポリシーのコマンドを解釈できないため実行を止めました。';
+  const cwd = payload.cwd || process.cwd();
+  const executionCwd = toolWorkdir(input, cwd);
+  if (hasToolWorkdir(input) && !executionCwd)
+    return '実行作業ディレクトリを安全に検査できないため止めました。';
   const state = {
     changesCwd: false,
     destructiveFilesystem: false,
     invocations: [],
+    nonGitExecution: false,
     secretRead: false,
     uninspectable: false,
   };
@@ -1069,8 +1595,11 @@ export function checkPolicy(payload) {
   if (invocations.some(branchOperationWritesProtectedRef))
     return '保護ブランチまたは保護参照への直接書き込みを止めました。作業ブランチと PR を使ってください。';
 
-  if (state.changesCwd && invocations.some((item) => isGitWrite(item) && !item.cwdArgs.length))
-    return '作業ディレクトリを途中で切り替える Git 書き込みは安全に検証できないため止めました。git -C <path> を使ってください。';
+  if (state.changesCwd && invocations.some(isGitMutation))
+    return '作業ディレクトリを途中で切り替える Git 書き込みは安全に検証できないため止めました。';
+
+  if (state.nonGitExecution && invocations.some(isGitMutation))
+    return 'Git 書き込みと Git 以外の実行文を同じコマンド列で混在させる操作を止めました。';
 
   if (
     invocations.some((item) => item.subcommand === 'pull')
@@ -1086,15 +1615,21 @@ export function checkPolicy(payload) {
     && invocations.some(isGitWrite)
   ) return '同じコマンド列で保護ブランチへ切り替えて書き込む Git 操作を止めました。';
 
-  const cwd = payload.cwd || process.cwd();
   for (const invocation of invocations) {
-    if (!isGitWrite(invocation) || invocation.subcommand === 'pull') continue;
-    const targetCwd = resolveInvocationCwd(invocation, cwd);
+    const targetCwd = resolveInvocationCwd(invocation, executionCwd);
     if (!targetCwd)
       return '安全に検査できないコマンドまたは別リポジトリ指定を止めました。';
-    if (externalGitWriteTarget(invocation, cwd))
-      return '別リポジトリを対象にする Git 書き込みは止めました。';
-    if (PROTECTED_BRANCH.test(branchFor(targetCwd)))
+    if (externalGitTarget(invocation, executionCwd))
+      return '別リポジトリを対象にする Git 操作は止めました。';
+  }
+
+  const writes = invocations.filter(isGitWrite);
+  if (!writes.length) return null;
+  for (const invocation of writes) {
+    const targetCwd = resolveInvocationCwd(invocation, executionCwd);
+    if (!targetCwd)
+      return '安全に検査できないコマンドまたは別リポジトリ指定を止めました。';
+    if (invocation.subcommand !== 'pull' && PROTECTED_BRANCH.test(branchFor(targetCwd)))
       return '保護ブランチへ直接書き込む Git 操作を止めました。作業ブランチと PR を使ってください。';
   }
   return null;

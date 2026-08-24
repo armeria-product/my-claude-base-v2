@@ -56,6 +56,7 @@ test("all seven native agent TOML files satisfy the role contract without duplic
     assert.equal(parsed.name, name);
     assert.ok(parsed.description.length > 20, name + ".description");
     assert.match(parsed.model, /^\S+$/, name + ".model");
+    assert.equal(parsed.model, parsed.model.toLowerCase(), name + ".model must use a lowercase model ID");
     assert.ok(allowedEfforts.has(parsed.model_reasoning_effort), name + ".model_reasoning_effort");
     assert.ok(allowedSandboxes.has(parsed.sandbox_mode), name + ".sandbox_mode");
     assert.match(parsed.developer_instructions, new RegExp("\\.codex/roles/" + name + "\\.md"));
