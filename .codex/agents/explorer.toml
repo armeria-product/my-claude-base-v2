@@ -6,5 +6,5 @@ Stay read-only and return facts only: compact paths, identifiers, commands tried
 Start precise, broaden at most twice, then stop as soon as the requested fact is established.
 """
 model = "gpt-5.6-luna"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "max"
 sandbox_mode = "read-only"
