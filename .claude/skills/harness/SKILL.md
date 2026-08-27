@@ -100,10 +100,20 @@ Each handoff between agents must include:
 
 ## Parallel Execution
 Steps with no dependencies run in parallel:
-- feature: after planner completes, launch multiple executors in parallel for independent tasks
+- feature: after planner completes, launch multiple executors in parallel for independent tasks — each into its own worktree (below)
 - research: explorer (codebase) and the built-in web search (external) can proceed in parallel
 - bugfix: when the root cause is unclear, fan out N debuggers in parallel (one per hypothesis, cap 3); pick the survivor by discriminating probe before fixing
 - aggregate the results of parallel agents before moving to the next step
+
+### Separate worktrees for parallel implementation
+The same supply convention quality-loop's Loop Contract step [2] already uses to hand a review seat a disposable worktree — extended here to implementation, not a second scheme:
+- The conductor creates one git worktree per task, at `tmp/worktrees/<slug>-<task>`, before dispatch — never the worker. One task, one tree; two workers never write into the same tree.
+- The tree's path travels in the dispatch prompt, exactly as quality-loop step [2] passes a worktree path to a review seat.
+- The conductor integrates each finished diff back into the main tree and removes that worktree once it's merged (`git worktree remove`, same cwd-safety sequencing as step [2]: confirm the shell isn't inside the target first, `cd` to the absolute main root if it is). The worker does neither.
+- If a worktree can't be provisioned (creation fails, no disk, etc.), drop that task to serial dispatch in the main tree — never route two workers into one tree just to keep the parallel plan alive.
+- Parallel dispatch under an armed scope lock is safe because `scope-decision.js` rebases a linked-worktree path onto the repo root before deciding: a path inside a worktree is judged by the same allow/forbid rules as the identical path in the main tree. If that rebasing is ever absent or fails to resolve a path, the path falls outside the lock's allow/forbid check, and parallel dispatch under an armed lock is off until it works again.
+- **A worker measures its own acceptance baseline inside its own tree, before its first edit** — never a number carried over from the main tree or another worker's tree. A linked worktree of this repo is missing `dev/` and `plans/` (both gitignored, so absent from a worktree's checkout), so `validate.mjs` reports a different finding/warning count there than in the main tree. Handing a worker a main-tree ceiling number makes it misjudge its own work.
+- **Product-code verification stays in the main tree**: anything reading `dev/**` (build/type/lint/test for a `dev/{name}` product) needs `dev/`, which a harness worktree doesn't carry — only harness-file verification (`validate.mjs`) travels with one.
 
 ## Quality Gate
 - Verify evidence at the completion of each step

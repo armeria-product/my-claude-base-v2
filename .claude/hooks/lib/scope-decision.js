@@ -7,6 +7,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { matches, normalizeRel } = require('./scope-match');
+const { rebaseIntoMainTree } = require('./git-worktree');
 
 // The lock's own enforcement chain — implicitly forbidden while locked, allow cannot override.
 // Consequence (stated in CLAUDE.md §7 / README): a plan whose target IS the harness runs unlocked.
@@ -42,9 +43,16 @@ function readLock(root) {
   }
 }
 
+// PR-B (2026-08-28, plans/parallel-dev-speedup/PLAN.md): rebaseIntoMainTree() (lib/git-worktree.js)
+// maps a path inside a linked worktree of this repo onto the equivalent path in the main tree
+// BEFORE the chain below runs, so allow/forbid judge it exactly as they would the identical file
+// in the main tree — regardless of where that worktree sits on disk. See that module's header for
+// the fail-open contract and what this fixed (a worktree parked under tmp/ used to fall through
+// the tmp/** always-allow rule below untouched; one parked outside the repo used to hit the
+// blanket 'outside-project' deny regardless of the actual file).
 // null = allowed; otherwise { rel, why: 'outside-project'|'enforcement-chain'|'forbid'|'not-in-allow' }
 function decide(root, lock, p) {
-  const { rel, outside, abs } = normalizeRel(root, p);
+  const { rel, outside, abs } = normalizeRel(root, rebaseIntoMainTree(root, p));
   if (outside) {
     // Session scratchpads and OS temp live outside the repo and stay writable
     if (/[\\/](tmp|temp)[\\/]/i.test(abs)) return null;

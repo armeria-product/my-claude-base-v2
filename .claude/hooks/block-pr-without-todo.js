@@ -143,6 +143,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { segments } = require('./lib/parse-cmd');
 const { findSubcmdIndex } = require('./lib/git-parse');
+const { resolveGitDir, resolveCommonGitDir } = require('./lib/git-worktree');
 
 // Mirrors block-direct-to-main.js's own local GH_GLOBAL_VALUE_FLAGS (gh's global value-consuming
 // flags) — duplicated here rather than shared via a lib export, following that file's existing
@@ -307,64 +308,10 @@ function findRepoRoot(startDir) {
   }
 }
 
-// Bound check for a resolved absolute path read from an attacker-writable pointer file (a `.git`
-// file's `gitdir:` line, or a linked worktree's `commondir` file): reject a resolved location that
-// escapes both repoRoot's own tree AND every PATH containing a ".git" segment. A legitimate
-// `gitdir:`/`commondir` value always resolves to somewhere under a directory literally named
-// ".git" — either repoRoot's own (the normal, non-worktree case, which never reaches this check
-// since resolveGitDir() returns early for it), or the MAIN checkout's `.git/worktrees/<name>` and
-// `.git` themselves for the linked-worktree case. This is a NAME check on the resolved path's
-// components (`.split(path.sep).includes('.git')`), not a check that real git structure actually
-// exists there — it does not call fs.existsSync or read anything, so a path that merely contains a
-// ".git" segment but points at nothing on disk still passes here (verified 2026-08-08: a made-up,
-// nonexistent path under a `.git` directory returns true); an actually-missing target then fails
-// later, in resolveGitDir()/resolveCommonGitDir()'s own readFileSync calls, not here. This does NOT
-// prevent pointing at a different, unrelated repo's real `.git` directory either (also out of scope
-// for this check — the value still names a real git internal directory, just the wrong one); it
-// only rejects a resolved path with no ".git" path segment at all (e.g. `gitdir:
-// ../../../../etc`), which is the escape 2026-08-07's review flagged (see hook-probes.samples.json
-// S-pr-todo/pt-allow-gitdir-escape-outside-repo).
-function isWithinRepoTree(resolvedPath, repoRoot) {
-  const rel = path.relative(repoRoot, resolvedPath);
-  if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) return true;
-  return resolvedPath.split(path.sep).includes('.git');
-}
-
-// The actual git directory for `repoRoot`. For a normal checkout `.git` is a directory and this
-// is just `<repoRoot>/.git`. For a linked worktree or a submodule checkout, `.git` is instead a
-// FILE whose content is `gitdir: <path>` (the path is relative to the directory containing that
-// file) — read and resolve it. Throws (does not return null) on anything that doesn't match this
-// shape, INCLUDING a resolved path that fails isWithinRepoTree() above; the caller's own try/catch
-// is what turns that into fail-open, same convention as every other resolution step in this file
-// (see header).
-function resolveGitDir(repoRoot) {
-  const gitPath = path.join(repoRoot, '.git');
-  if (fs.statSync(gitPath).isDirectory()) return gitPath;
-  const content = fs.readFileSync(gitPath, 'utf8');
-  const m = content.match(/^gitdir:\s*(.+?)\s*$/m);
-  if (!m) throw new Error('unrecognized .git file content');
-  const resolved = path.resolve(repoRoot, m[1]);
-  if (!isWithinRepoTree(resolved, repoRoot)) throw new Error('gitdir escapes the repo tree');
-  return resolved;
-}
-
-// The git dir that actually holds refs/heads and their reflogs. For a normal checkout, or for a
-// submodule's own module dir (`.git/modules/<name>`, fully self-contained), this is `gitDir`
-// itself. For a LINKED WORKTREE, `gitDir` is instead the per-worktree admin directory
-// (`<main-repo>/.git/worktrees/<name>`) — refs/heads and their reflogs are NOT duplicated there;
-// they live in the main repo's git dir, which the admin directory's own `commondir` file points at
-// (its content is a path, typically relative, e.g. "../.."). Absence of a `commondir` file means
-// `gitDir` is already the common dir (the normal-checkout and submodule cases). `repoRoot` is only
-// used for the isWithinRepoTree() bound check (same anchor resolveGitDir() uses above), not for
-// resolving `rel` itself, which stays relative to `gitDir` per git's own convention.
-function resolveCommonGitDir(gitDir, repoRoot) {
-  const commondirPath = path.join(gitDir, 'commondir');
-  if (!fs.existsSync(commondirPath)) return gitDir;
-  const rel = fs.readFileSync(commondirPath, 'utf8').trim();
-  const resolved = path.resolve(gitDir, rel);
-  if (!isWithinRepoTree(resolved, repoRoot)) throw new Error('commondir escapes the repo tree');
-  return resolved;
-}
+// isWithinRepoTree / resolveGitDir / resolveCommonGitDir moved to lib/git-worktree.js
+// (2026-08-28, PR-B) — shared with scope-decision.js's worktree rebase. See that module's header
+// for the threat model (gitdir escape, S-pr-todo/pt-allow-gitdir-escape-outside-repo) and the
+// exact behavior of each function; unchanged here beyond the move.
 
 // A branch name is only trusted when it is a single path segment: it is used verbatim as the last
 // path.join() argument building the reflog path in branchCreatedMs() below, and path.join()

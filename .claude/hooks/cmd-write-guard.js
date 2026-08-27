@@ -77,6 +77,7 @@ const { extractTargets, extractStateCandidates } = require('./lib/cmd-targets');
 const { stamp, id8, projectRoot, appendLine } = require('./lib/journal-util');
 const { readLock, decide, denyReason } = require('./lib/scope-decision');
 const { normalizeRel } = require('./lib/scope-match');
+const { rebaseIntoMainTree } = require('./lib/git-worktree');
 const { stripHeredocs } = require('./lib/parse-cmd');
 
 const STATE_RE = /\.claude[\\/]+state/i;
@@ -117,9 +118,12 @@ function denyStateProtect(root, payload, command) {
   deny(STATE_PROTECT_REASON);
 }
 
-// isStateDir: is the resolved absolute path t inside <root>/.claude/state ?
+// isStateDir: is the resolved absolute path t inside <root>/.claude/state, OR the equivalent
+// path inside a linked worktree of this repo (rebaseIntoMainTree, lib/git-worktree.js — 2026-08-28
+// follow-up: a worktree carries no .claude/state of its own until something writes one there,
+// which is exactly the case this unconditional check exists to stop, lock state irrelevant)?
 function isStateDir(root, t) {
-  const { rel, outside } = normalizeRel(root, t);
+  const { rel, outside } = normalizeRel(root, rebaseIntoMainTree(root, t));
   if (outside) return false;
   const r = rel.toLowerCase();
   return r === '.claude/state' || r.startsWith('.claude/state/');
@@ -137,9 +141,11 @@ function denyFableStatusProtect(root, payload, command) {
   deny(FABLE_STATUS_PROTECT_REASON);
 }
 
-// isFableStatusFile: is the resolved absolute path t exactly <root>/.claude/.fable-status ?
+// isFableStatusFile: is the resolved absolute path t exactly <root>/.claude/.fable-status, OR the
+// equivalent path inside a linked worktree of this repo (rebaseIntoMainTree, same follow-up as
+// isStateDir() above — CLAUDE.md §1.11 gives Claude no lock-state qualifier for this file at all)?
 function isFableStatusFile(root, t) {
-  const { rel, outside } = normalizeRel(root, t);
+  const { rel, outside } = normalizeRel(root, rebaseIntoMainTree(root, t));
   if (outside) return false;
   return rel.toLowerCase() === '.claude/.fable-status';
 }
