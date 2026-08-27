@@ -1,84 +1,29 @@
 ---
 name: resume-session
-description: Reconcile a Codex task's records, Git state, and active plan before continuing. Use for `$resume-session`, “resume this session”, or an explicitly requested safe handoff recovery.
+description: Reconcile a Codex task's saved records with Git and report the safe restart point. Use for `$resume-session`, “resume this session”, or an explicitly requested handoff recovery.
 ---
 
-# Resume a Codex Session
+# Resume Session
 
-Use this standalone Codex workflow through `$resume-session`. It reports the verified current state
-first and then waits for the user's direction; do not begin implementation by itself.
+This is a read-only reconciliation workflow. Do not start agents or implementation after the report;
+wait for the user’s direction.
 
-## Non-negotiable record rules
+1. Select the record context using an explicit user choice, then the one `dev/{name}` with the
+   strongest changed-path evidence, then workspace root. Ask if two products tie.
+2. Read the selected `tasks/session-state.md`, the canonical human journal report it points to,
+   active TODO/PLAN/scope records, and relevant recent `.machine` markers. Historical
+   `tasks/journal/YYYY/MM/DD.md` pointers remain readable but are never normalized in place.
+3. Inspect the owning repository with `git branch --show-current`, `git status --short`,
+   `git log -1 --oneline`, and a diff when needed. Unexpected changes may belong to another task;
+   do not touch them.
+4. Treat `SESSION START` without `SESSION END` or `SAVE` only as a possible interrupted or parallel
+   task. Offer `$save-session 補完` only when a real interval and ID exist.
+5. Report these four concise items and stop:
 
-- The canonical human journal is the workspace-root `tasks/journal/YYYY-MM/DD.md`, including product work.
-- Existing native `tasks/journal/YYYY/MM/DD.md` files remain read-compatible historical records.
-  Treat only their `## HH:MM` sections as human reports; do not move, merge, rewrite, or append to them.
-- Lifecycle and supported edit-path machine events live separately in `tasks/journal/.machine/YYYY-MM/DD.log`.
-- `session-state.md` is a two-line pointer, not a second copy of next actions or blockers.
-- A native SessionStart context is useful only when actually present. When it is absent, read real
-  records, Codex task history, and Git directly.
-- Never manufacture a machine event, session ID, save marker, or claim that hooks were active.
-- Unexpected changes can belong to a parallel task. Do not modify them while reconciling.
+   1. **現在地** — branch, latest SHA, and active plan if any.
+   2. **前回の到達点** — latest report heading and its next action.
+   3. **記録と現実** — mismatches, or `一致`.
+   4. **推奨する次の一手** — one action.
 
-## Invocation
-
-- Use `$resume-session` for a current or newly opened Codex task.
-- Do not present this as a slash command.
-- Use the same root-versus-product context selection as the save workflow: explicit user location,
-  strongest changed-path/recent-activity evidence under `dev/{name}/`, then root; a tie requires a
-  plain-language question before selecting a product record set.
-
-## 1. Read the record trail
-
-Read the selected `session-state.md` first, then the human journal report it points to. If a historical
-pointer targets `tasks/journal/YYYY/MM/DD.md`, read it for compatibility but do not rewrite it merely
-to normalize the layout. Read the prior journal day when the latest report is incomplete or points there.
-Also inspect the active todo and, when relevant, roadmap and codemap.
-
-If native SessionStart context already supplied a latest report and a real journal ID, do not repeat
-that read merely to duplicate context. Still verify Git and the plan. Without such context, use
-Codex task history, existing records, and Git directly.
-
-Scan real recent machine-event markers (or equivalent historical legacy markers) when useful:
-
-- `SESSION START` without a corresponding `SESSION END` or `SAVE` is a possible interrupted or
-  still-parallel task.
-- `SESSION END` without `SAVE` is an ended task without a human report.
-
-Treat both as observations, not proof of a crash. Offer `$save-session 補完` only if an actual marker
-interval and ID exist.
-
-## 2. Reconcile records with reality
-
-Use the repository that owns the selected context and inspect:
-
-| Check | Evidence | What to compare |
-|---|---|---|
-| Branch | `git branch --show-current` | The pointer's recorded branch |
-| Uncommitted work | `git status --porcelain` | Unrecorded paths and possible parallel work |
-| Latest commit | `git log -1 --oneline` | The pointer's SHA and report claims |
-| Plan and scope | Active PLAN/scope artifacts, if any | Task list, allow/forbid paths, and unresolved deviations |
-
-Do not silently repair a mismatch. Mark it clearly as a mismatch, preserve the evidence, and ask the
-user what to do if the decision changes the work.
-
-## 3. Report and stop
-
-Report in plain Japanese, then wait. Include exactly these four concise items:
-
-1. **現在地** — branch, latest SHA, and active plan name when one exists.
-2. **前回の到達点** — the latest report heading and its next action.
-3. **記録と現実** — each mismatch, or `一致`.
-4. **推奨する次の一手** — one action; when supported by real markers, include the optional
-   `$save-session 補完` choice.
-
-After this report, do not edit files, update records, start agents, or continue implementation until
-the user gives a new direction.
-
-## Limits disclosure
-
-Trusted native hooks can inject at most 10 KiB of state, the latest human report, a compact TODO view,
-and CODEMAP headings. They journal lifecycle and supported edit-path machine events only; they never
-run a formatter, rewrite files, or retain arbitrary shell command text. They do not prove complete
-history and do not cover disabled hooks, trust bypass, external terminals/editors, or other task
-activity. Keep the report grounded in the observable records and Git state.
+Hooks are supporting evidence, not a complete audit trail: disabled or untrusted hooks, trust bypass,
+hosted tools, external terminals/editors, and unsupported tool paths remain outside their coverage.

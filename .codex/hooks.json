@@ -1,4 +1,5 @@
 {
+  "description": "Minimal Codex-native hooks for safety, session context, and path-only journaling.",
   "hooks": {
     "SessionStart": [
       {
@@ -6,20 +7,21 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process'),s='session-start.mjs',ok=(b,x)=>{try{const r=p.relative(b,x);if(!r||r==='..'||r.startsWith('..'+p.sep)||p.isAbsolute(r))return false;let q=b;for(const n of r.split(p.sep)){q=p.join(q,n);const t=fs.lstatSync(q);if(t.isSymbolicLink())return false}return fs.statSync(x).isFile()}catch{return false}};let r;try{r=fs.realpathSync(process.cwd())}catch{process.exit(1)}let h='';for(;;){const q=p.join(r,'.codex','hooks.json'),x=p.join(r,'.codex','hooks',s),a=p.join(r,'AGENTS.md');if(ok(r,q)&&ok(r,x)&&ok(r,a))h=x;const n=p.dirname(r);if(n===r)break;r=n}if(!h)process.exit(1);process.exit(c.spawnSync(process.execPath,[h],{stdio:'inherit'}).status??1)\"",
-            "timeout": 10,
-            "additionalContextLimit": 2500,
-            "statusMessage": "Loading workspace context"
+            "command": "node --input-type=module -e \"import fs from'node:fs';import path from'node:path';import{pathToFileURL}from'node:url';let d=process.cwd(),h='';for(;;){const f=path.join(d,'.codex','hooks','hook.mjs');if(fs.existsSync(path.join(d,'.codex','hooks.json'))&&fs.existsSync(path.join(d,'AGENTS.md'))&&fs.existsSync(f)&&!fs.lstatSync(f).isSymbolicLink())h=f;const p=path.dirname(d);if(p===d)break;d=p}if(!h)process.exit(1);await (await import(pathToFileURL(h).href)).runHook()\"",
+            "timeout": 5,
+            "additionalContextLimit": 2200,
+            "statusMessage": "Loading concise workspace context"
           }
         ]
       }
     ],
     "SessionEnd": [
       {
+        "matcher": "other",
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process'),s='session-end.mjs',ok=(b,x)=>{try{const r=p.relative(b,x);if(!r||r==='..'||r.startsWith('..'+p.sep)||p.isAbsolute(r))return false;let q=b;for(const n of r.split(p.sep)){q=p.join(q,n);const t=fs.lstatSync(q);if(t.isSymbolicLink())return false}return fs.statSync(x).isFile()}catch{return false}};let r;try{r=fs.realpathSync(process.cwd())}catch{process.exit(1)}let h='';for(;;){const q=p.join(r,'.codex','hooks.json'),x=p.join(r,'.codex','hooks',s),a=p.join(r,'AGENTS.md');if(ok(r,q)&&ok(r,x)&&ok(r,a))h=x;const n=p.dirname(r);if(n===r)break;r=n}if(!h)process.exit(1);process.exit(c.spawnSync(process.execPath,[h],{stdio:'inherit'}).status??1)\"",
+            "command": "node --input-type=module -e \"import fs from'node:fs';import path from'node:path';import{pathToFileURL}from'node:url';let d=process.cwd(),h='';for(;;){const f=path.join(d,'.codex','hooks','hook.mjs');if(fs.existsSync(path.join(d,'.codex','hooks.json'))&&fs.existsSync(path.join(d,'AGENTS.md'))&&fs.existsSync(f)&&!fs.lstatSync(f).isSymbolicLink())h=f;const p=path.dirname(d);if(p===d)break;d=p}if(!h)process.exit(1);await (await import(pathToFileURL(h).href)).runHook()\"",
             "timeout": 3,
             "statusMessage": "Saving session marker"
           }
@@ -28,26 +30,27 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^(exec_command|Bash|PowerShell|apply_patch|Edit|Write|Move)$",
+        "matcher": "^(Bash|PowerShell|exec_command|apply_patch|Edit|Write)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process'),s='pre-tool-use.mjs',ok=(b,x)=>{try{const r=p.relative(b,x);if(!r||r==='..'||r.startsWith('..'+p.sep)||p.isAbsolute(r))return false;let q=b;for(const n of r.split(p.sep)){q=p.join(q,n);const t=fs.lstatSync(q);if(t.isSymbolicLink())return false}return fs.statSync(x).isFile()}catch{return false}};let r;try{r=fs.realpathSync(process.cwd())}catch{process.exit(1)}let h='';for(;;){const q=p.join(r,'.codex','hooks.json'),x=p.join(r,'.codex','hooks',s),a=p.join(r,'AGENTS.md');if(ok(r,q)&&ok(r,x)&&ok(r,a))h=x;const n=p.dirname(r);if(n===r)break;r=n}if(!h)process.exit(1);process.exit(c.spawnSync(process.execPath,[h],{stdio:'inherit'}).status??1)\"",
-            "timeout": 10,
-            "statusMessage": "Checking workspace policy"
+            "command": "node --input-type=module -e \"import fs from'node:fs';import path from'node:path';import{pathToFileURL}from'node:url';let d=process.cwd(),h='';for(;;){const f=path.join(d,'.codex','hooks','hook.mjs');if(fs.existsSync(path.join(d,'.codex','hooks.json'))&&fs.existsSync(path.join(d,'AGENTS.md'))&&fs.existsSync(f)&&!fs.lstatSync(f).isSymbolicLink())h=f;const p=path.dirname(d);if(p===d)break;d=p}if(!h)process.exit(1);await (await import(pathToFileURL(h).href)).runHook()\"",
+            "timeout": 5,
+            "statusMessage": "Checking repository safety boundary"
           }
         ]
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "^(apply_patch|Edit|Write|Move)$",
+        "matcher": "^(apply_patch|Edit|Write)$",
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"const fs=require('node:fs'),p=require('node:path'),c=require('node:child_process'),s='post-tool-use.mjs',ok=(b,x)=>{try{const r=p.relative(b,x);if(!r||r==='..'||r.startsWith('..'+p.sep)||p.isAbsolute(r))return false;let q=b;for(const n of r.split(p.sep)){q=p.join(q,n);const t=fs.lstatSync(q);if(t.isSymbolicLink())return false}return fs.statSync(x).isFile()}catch{return false}};let r;try{r=fs.realpathSync(process.cwd())}catch{process.exit(1)}let h='';for(;;){const q=p.join(r,'.codex','hooks.json'),x=p.join(r,'.codex','hooks',s),a=p.join(r,'AGENTS.md');if(ok(r,q)&&ok(r,x)&&ok(r,a))h=x;const n=p.dirname(r);if(n===r)break;r=n}if(!h)process.exit(1);process.exit(c.spawnSync(process.execPath,[h],{stdio:'inherit'}).status??1)\"",
-            "timeout": 20,
-            "statusMessage": "Recording workspace activity"
+            "command": "node --input-type=module -e \"import fs from'node:fs';import path from'node:path';import{pathToFileURL}from'node:url';let d=process.cwd(),h='';for(;;){const f=path.join(d,'.codex','hooks','hook.mjs');if(fs.existsSync(path.join(d,'.codex','hooks.json'))&&fs.existsSync(path.join(d,'AGENTS.md'))&&fs.existsSync(f)&&!fs.lstatSync(f).isSymbolicLink())h=f;const p=path.dirname(d);if(p===d)break;d=p}if(!h)process.exit(1);await (await import(pathToFileURL(h).href)).runHook()\"",
+            "timeout": 5,
+            "async": true,
+            "statusMessage": "Recording edited paths"
           }
         ]
       }
