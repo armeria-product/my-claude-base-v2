@@ -118,4 +118,9 @@ Steps with no dependencies run in parallel:
   and when the trigger condition is met an external co-reviewer joins as a third seat; if unmet, the
   red-team second seat still attends — only the external third seat is skipped
 - **bugfix** runs its fix→verify as the same Loop Contract: debugger/executor worker, verifier as the evidence gate, max 3 cycles, **internal** (no user between cycles); the regression-test step (4) additionally covers any observation point the fix touches (M1/M2, executor.md Detection power)
-- Not APPROVE within 3 cycles → escalate to the user
+- Cycle 3 of a code-review step does not escalate to the user by default: it runs
+  **review-only** per quality-loop's `## Cycle-3 Carryover` — CRITICAL gets a single, unreviewed
+  fix pass, HIGH-and-below carries into `tasks/todo.md` Backlog, and the flow proceeds to the
+  verifier step. A BLOCK verdict still escalates immediately at any cycle, unaffected by this
+  (reviewer.md "BLOCK severity"). This bullet governs the code-review steps only — bugfix's own
+  fix→verify escalation (step 6 above) is unchanged

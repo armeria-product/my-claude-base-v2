@@ -601,6 +601,18 @@ const INVARIANTS = [
   // T2.4(c2): the hook header's own 3-part disclosure (fail-open guarantee, threat-model line, A8
   // sentence) — same structural-phrases-only rule as (c1) above.
   ['.claude/hooks/deliberation-gate.js', /Fail-open, unconditionally[\s\S]*No payload-derived value[\s\S]*is EVER interpolated[\s\S]*フックが出なかったことは「問題なし」の意味ではない/, 'deliberation-gate.js header must keep its 3-part disclosure (fail-open guarantee, threat-model no-interpolation line, A8 sentence) — losing any one silently drops that guarantee from the one place a reader of the hook itself would see it'],
+  // --- PR-A cycle-3 carryover (parallel-dev-speedup plan, 2026-08-27 ruling): cycle 3 of the
+  // Loop Contract runs review-only instead of escalating to the user; only CRITICAL gets an
+  // unreviewed fix pass, HIGH-and-below carries into tasks/todo.md Backlog, and BLOCK's
+  // early-escalation rule (reviewer.md "BLOCK severity") stays in force at any cycle. ---
+  ['.claude/skills/quality-loop/SKILL.md', /^## Cycle-3 Carryover$/m, 'quality-loop must keep the "## Cycle-3 Carryover" heading itself (anchored to a standalone heading line, not just an inline mention) — cycle 3 review-only handling (PR-A, 2026-08-27 ruling) has no other definition'],
+  ['.claude/skills/quality-loop/SKILL.md', /only CRITICAL findings \(reviewer\.md Severity Levels:\s*\n?\s*"Bug or\s*\n?\s*security issue that will cause production failure"[\s\S]{0,80}get a single fix pass\. The fix is \*\*not re-reviewed\*\*/, 'quality-loop "## Cycle-3 Carryover" must keep the CRITICAL-only unreviewed-fix-pass exception (reviewer.md\'s existing severity definition, not a new axis) — PR-A O1 ruling'],
+  ['.claude/skills/quality-loop/SKILL.md', /\[cycle3\] <指摘> — <file:line> \/ 出所: <plan or PR>/, 'quality-loop "## Cycle-3 Carryover" must keep the exact carried-item line format ("[cycle3] <指摘> — <file:line> / 出所: <plan or PR>") — without it, cycle-3 backlog items lose their machine-recognizable prefix'],
+  ['.claude/skills/quality-loop/SKILL.md', /never be silently absorbed\s*\n?\s*into an APPROVE-shaped report/, 'quality-loop "## Cycle-3 Carryover" must keep the disclosure duty (an unreviewed cycle-3 CRITICAL fix must never read as an APPROVE) — dropping it lets the unreviewed status hide from both the report and the reader'],
+  ['.claude/skills/quality-loop/SKILL.md', /this carve-out only relaxes REQUEST_CHANGES\s*\n?\s*handling at cycle 3, never BLOCK/, 'quality-loop "## Cycle-3 Carryover" must keep stating that BLOCK is unaffected by the cycle-3 carve-out — the reviewer.md early-escalation safety valve must not read as disabled'],
+  ['.claude/skills/harness/SKILL.md', /Cycle 3 of a code-review step does not escalate to the user by default/, 'harness "## Quality Gate" must keep the cycle-3 review-only follow-along line (PR-A, tracks quality-loop\'s "## Cycle-3 Carryover")'],
+  ['.claude/skills/harness/SKILL.md', /bugfix's own\s*\n?\s*fix→verify escalation \(step 6 above\) is unchanged/, 'harness "## Quality Gate" must keep stating that the cycle-3 carve-out governs code-review steps only — bugfix\'s own fix→verify escalation (### bugfix step 6) must not silently start following the same review-only carve-out'],
+  ['.claude/agents/reviewer.md', /BLOCK verdict, under any target, the same as REQUEST_CHANGES plus immediate user escalation — do not wait for cycle 3\./, 'reviewer.md must keep the BLOCK-severity early-escalation rule — the PR-A cycle-3 carryover rule (2026-08-27 ruling) must not silently disable it; previously unpinned in validate.mjs'],
 ];
 for (const [relPath, must, why] of INVARIANTS) {
   const p = path.join(ROOT, relPath);
