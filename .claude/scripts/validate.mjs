@@ -1558,6 +1558,12 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
         fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" is missing the F5 scope clause (authority/code-review cycles only) — fusion-cycle1 F5');
       if (!/does\s+not\s+extend\s+to\s+bugfix's\s+own\s+internal\s+fix→verify\s+loop/.test(co))
         fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" is missing the F5 bugfix-out-of-scope clause — fusion-cycle1 F5');
+      // Restored (cycle3-carryover, 2026-08-28): ed88e21 pinned this exact O1 boundary — "only
+      // CRITICAL findings" tied to reviewer.md's existing severity definition, not a new axis —
+      // but 8c18c09's rewrite into the F1-F14 section-scoped checks above dropped it without a
+      // replacement, leaving the ruling's central "only CRITICAL, not HIGH" line unguarded.
+      if (!/only\s+CRITICAL\s+findings\s+\(reviewer\.md\s+Severity\s+Levels:\s+"Bug\s+or\s+security\s+issue\s+that\s+will\s+cause\s+production\s+failure"/.test(co))
+        fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" must keep the O1 ruling\'s CRITICAL-only fix-pass boundary ("only CRITICAL findings", tied to reviewer.md\'s existing severity definition "...production failure") — widening this to include HIGH silently erodes the 2026-08-27 user ruling');
       // F7/F8: the cycle-3 CRITICAL fix pass stays bound by [3]'s scope constraint, carries a
       // per-CRITICAL justification line, and still requires M2 evidence even though the pass
       // itself is not re-reviewed.
