@@ -33,7 +33,7 @@ Vague request → clarify/plan before executing (skip when concrete anchors exis
 Every claim needs evidence (test output, diff, log, grep). Unprovable → say "unverified". Before "done": **would a senior engineer approve this diff?**
 
 ### 1.3 Writer/Reviewer Separation
-Never approve your own code. Non-trivial changes run the `quality-loop` skill's Loop Contract (authority = frontier tier, max 3 cycles); after APPROVE the verifier runs the evidence check. Exception: trivial 1-2 line obvious fixes.
+Never approve your own code. Non-trivial changes run the `quality-loop` skill's Loop Contract (authority = frontier tier, max 3 cycles); after APPROVE — or after a cycle-3 carryover (quality-loop's `## Cycle-3 Carryover`) — the verifier runs the evidence check. Exception: trivial 1-2 line obvious fixes.
 
 ### 1.4 Session Continuity
 Hooks journal every edit/command mechanically — don't duplicate that by hand. At logical boundaries (before /compact, before ending a work block): run `/save-session` (human report + session-state.md). Suggest compact at boundaries, never mid-implementation.

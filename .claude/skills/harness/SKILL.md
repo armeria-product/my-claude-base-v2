@@ -111,7 +111,7 @@ Steps with no dependencies run in parallel:
   the authority allowlist is native `fable | opus` (CLAUDE.md §2 ¹; quality-loop is the operational SOT):
   Opus by default, or Fable only while the CLAUDE.md §1.11 gate is ON; lower tiers,
   unknown/external authority ids, mixed standing pairs, and silent fallback are forbidden; send-back →
-  fix → re-review runs for up to 3 cycles
+  fix → re-review runs for up to 3 cycles (cycle 3 differs — see the cycle-3 review-only bullet below)
 - plan/design/architecture authority reviews (planner self-review, and `reviewer target:architecture` —
   e.g. in the refactor/research paths) and normal code review (`reviewer target:code`) additionally
   follow quality-loop's Authority Co-Review: a same-tier red-team second seat always attends cycle 1,
@@ -123,4 +123,4 @@ Steps with no dependencies run in parallel:
   fix pass, HIGH-and-below carries into `tasks/todo.md` Backlog, and the flow proceeds to the
   verifier step. A BLOCK verdict still escalates immediately at any cycle, unaffected by this
   (reviewer.md "BLOCK severity"). This bullet governs the code-review steps only — bugfix's own
-  fix→verify escalation (step 6 above) is unchanged
+  fix→verify escalation (the bugfix workflow's step 6, above in this file) is unchanged

@@ -84,9 +84,12 @@ of CLAUDE.md §1.3 Writer/Reviewer Separation.
     exists). Every HIGH-and-below finding from the cycle-3 review is carried into
     `tasks/todo.md`'s Backlog per `## Cycle-3 Carryover` instead of blocking on a 3rd
     escalation, and the loop proceeds to [5] without stopping for the user. **This does not
-    touch the BLOCK rule**: a BLOCK verdict at cycle 3 still escalates immediately, exactly as
-    it does at any other cycle (reviewer.md "BLOCK severity") — that early-escalation safety
-    valve is unaffected by this cycle-3 carve-out, which only relaxes REQUEST_CHANGES handling.
+    touch the BLOCK rule**: a BLOCK verdict at cycle 3 **stops the loop before [5] and escalates
+    immediately**, exactly as it does at any other cycle (reviewer.md "BLOCK severity") — BLOCK
+    takes precedence over the CRITICAL fix-pass trigger above, so even when the cycle-3 finding
+    set also contains a CRITICAL, a BLOCK verdict halts before any fix pass runs. That
+    early-escalation safety valve is unaffected by this cycle-3 carve-out, which only relaxes
+    REQUEST_CHANGES handling.
       - If the fix touched a test or an oracle (scorer/validator/gate), **or touched the
         compute/decide side or any consumption site of an observation point**
         (mutation-observation-points), the re-review requires mutation evidence: break the
@@ -96,7 +99,8 @@ of CLAUDE.md §1.3 Writer/Reviewer Separation.
       - When a probe cannot be run (no worktree available), mark the affected claim explicitly
         `unverified` and require the authority to rule explicitly on the residual risk in the
         verdict — a silent APPROVE is not allowed
-        ↓ APPROVE (cycles 1-2) / ↓ proceeds regardless once any CRITICAL is fixed (cycle 3)
+        ↓ APPROVE (cycles 1-2) / ↓ proceeds unconditionally at cycle 3 (any CRITICAL found gets
+        one fix pass first — see below)
 [5] Verifier runs evidence-based verification (tests, diff, logs) → final PASS/FAIL/INCOMPLETE
       - INCOMPLETE is treated the same as not-PASS (SOT: verifier.md "INCOMPLETE is an honest answer")
 ```
@@ -104,33 +108,42 @@ of CLAUDE.md §1.3 Writer/Reviewer Separation.
 ## Cycle-3 Carryover
 
 Applies only to cycle 3 of the Loop Contract above (cycles 1-2 are unchanged: send back → fix →
-re-review, same as before this 2026-08-27 ruling). Reason: 「とりあえず動く形にしないと人間実機レビューが出来ない」
-— stopping to escalate on cycle 3 strands the work where nobody can exercise it on real hardware.
+re-review, same as before this 2026-08-27 ruling), and only to authority/code-review cycles —
+it does not extend to bugfix's own internal fix→verify loop (harness/SKILL.md `### bugfix` step
+3, escalation step 6), which keeps its existing §1.5/§6.2 user-facing escalation unchanged.
+Reason: 「とりあえず動く形にしないと人間実機レビューが出来ない」— stopping to escalate on cycle 3 strands the work
+where nobody can exercise it on real hardware.
 
 - **What still gets fixed at cycle 3**: only CRITICAL findings (reviewer.md Severity Levels:
   "Bug or security issue that will cause production failure" — the existing definition, no new
-  severity axis) get a single fix pass. The fix is **not re-reviewed** — the loop proceeds to
-  [5] on the strength of that unreviewed fix alone. This fact must never be silently absorbed
-  into an APPROVE-shaped report: state it explicitly in both the Quality Loop Report (Output
-  Format below) and the carried-over backlog item, so an unreviewed cycle-3 fix always reads as
+  severity axis) get a single fix pass, bound by [3]'s constraint (fix only the cited spot, no
+  scope expansion), with one line of justification recorded for each cycle-3 CRITICAL call. The
+  fix is **not re-reviewed** — the loop proceeds to [5] on the strength of that unreviewed fix
+  alone, but still requires the same M2 evidence (every consumption site mutated, RED confirmed)
+  as any other observation-point-touching fix. This fact must never be silently absorbed into an
+  APPROVE-shaped report: state it explicitly in both the Quality Loop Report (Output Format
+  below) and the carried-over backlog item, so an unreviewed cycle-3 fix always reads as
   unreviewed, never as an APPROVE.
 - **What gets carried, not fixed**: every HIGH/MEDIUM/LOW finding still open after the cycle-3
-  review, one line each, appended to `tasks/todo.md`'s Backlog (dev mode: `dev/{name}/tasks/todo.md`
-  — CLAUDE.md §0 Dev Mode Routing; contract: `.claude/rules/session-persistence.md` §6.1). This
-  location was chosen because SessionStart injects it automatically (`session-start.js`) into
-  every future session, while `plans/{slug}/` moves to `done/` on completion and drops out of
-  view.
-- **Line format**: `[cycle3] <指摘> — <file:line> / 出所: <plan or PR>`
-- **Does not touch BLOCK**: a BLOCK verdict at cycle 3 still escalates immediately, same as any
-  other cycle (reviewer.md "BLOCK severity") — this carve-out only relaxes REQUEST_CHANGES
-  handling at cycle 3, never BLOCK.
+  review, one line each, appended **by the conductor** (the reviewer never writes — CLAUDE.md
+  §2) to `tasks/todo.md`'s Backlog (dev mode: `dev/{name}/tasks/todo.md` — CLAUDE.md §0 Dev Mode
+  Routing; contract: `.claude/rules/session-persistence.md` §6.1). This location was chosen
+  because SessionStart injects it automatically (`session-start.js`) into every future session,
+  while `plans/{slug}/` moves to `done/` on completion and drops out of view.
+- **Line format**: wraps `.claude/rules/session-persistence.md` §6.1's Backlog skeleton, keeping
+  the `[cycle3]` prefix verbatim: `- [ ] [cycle3] <指摘> — <file:line> / 出所: <plan or PR>
+  (priority: <high|med|low>)`
+- **Does not touch BLOCK**: a BLOCK verdict at cycle 3 **stops the loop before proceeding to
+  [5]** and escalates immediately, same as any other cycle (reviewer.md "BLOCK severity") —
+  BLOCK takes precedence over the CRITICAL fix-pass trigger above; this carve-out only relaxes
+  REQUEST_CHANGES handling at cycle 3, never BLOCK.
 - **Verifier still runs unchanged**: step [5] is the same Loop Contract step as cycles 1-2 — it,
   not the skipped cycle-3 re-review, is what actually proves the carried-forward output reaches
   a runnable state (「動く形」).
 
 ## Stall handling (different-angle retry, cost-flat)
 
-If a cycle's authority review shows little improvement over the previous one (≈ the same count/severity of findings — the worker is stuck on one approach), the **next** attempt must change *framing* (the §1.5 angle change) instead of re-submitting the same approach. This stays **one worker → one authority review per cycle** — no parallel double-review — so the authority-review cost per cycle stays flat (cycle 1 of plan/design/architecture reviews and normal code review is a deliberate exception — co-review, including the standing red-team seat, runs 2–3 reviews + 1 fusion, see the Authority Co-Review section below). The 3-cycle cap (§1.5) is unchanged; if the angle change hasn't converged by cycle 3, the loop follows `## Cycle-3 Carryover` above (review-only, CRITICAL fixed unreviewed, HIGH-and-below carried to the backlog) rather than escalating to the user — unless the cycle-3 verdict is BLOCK, which still escalates immediately regardless of cycle.
+If a cycle's authority review shows little improvement over the previous one (≈ the same count/severity of findings — the worker is stuck on one approach), the **next** attempt must change *framing* (the §1.5 angle change) instead of re-submitting the same approach. This stays **one worker → one authority review per cycle** — no parallel double-review — so the authority-review cost per cycle stays flat (cycle 1 of plan/design/architecture reviews and normal code review is a deliberate exception — co-review, including the standing red-team seat, runs 2–3 reviews + 1 fusion, see the Authority Co-Review section below). The 3-cycle cap (§1.5) is unchanged; if the angle change hasn't converged by cycle 3, the loop follows `## Cycle-3 Carryover` above (review-only, CRITICAL fixed unreviewed, HIGH-and-below carried to the backlog) rather than escalating to the user — unless the cycle-3 verdict is BLOCK, which still escalates immediately regardless of cycle. This Stall handling → Cycle-3 Carryover pairing governs authority/code-review cycles only; it does not extend to bugfix's own internal fix→verify loop (harness/SKILL.md `### bugfix` step 6), which keeps its own §1.5/§6.2 escalation unchanged.
 
 ## Recurring-Category Tally
 
@@ -258,8 +271,10 @@ All thresholds and caps live in one place (the module above) and are re-tuned ag
 - Co-review: external + red-team (fused, N=3) | red-team only (fused, N=2) | none (reason)
 - Security track: seated (auto: <signal> | user | lock flag) | not seated (no risk signals)
 - Cycles: N / 3
-- Cycle-3 carryover (## Cycle-3 Carryover): N/A (resolved by cycle ≤2) | M item(s) → tasks/todo.md
-  Backlog, CRITICAL fix unreviewed: yes/no
+- Cycle-3 carryover (## Cycle-3 Carryover): N/A (resolved by cycle ≤2) | ran, 0 item(s) carried |
+  ran, M item(s) → tasks/todo.md Backlog
+- Cycle-3 CRITICAL fix unreviewed: N/A (resolved by cycle ≤2, or no CRITICAL found at cycle 3) |
+  yes | no
 
 | Cycle | Verdict | CRITICAL | HIGH | MEDIUM/LOW | Action |
 |---|---|---|---|---|---|
@@ -267,6 +282,7 @@ All thresholds and caps live in one place (the module above) and are re-tuned ag
 | 2 | APPROVE | - | - | - | - |
 
 - Verifier: PASS/FAIL — [evidence]
-- Final: APPROVED | ESCALATED (reason and remaining issues) | PROCEEDED (cycle-3 carryover — see
-  the Cycle-3 carryover line above; unreviewed CRITICAL fix, if any, is called out there too)
+- Final: APPROVED | ESCALATED (reason and remaining issues) | PROCEEDED — unreviewed CRITICAL
+  fix: yes/no (cycle-3 carryover — this field is unconditional, present even when the carried-item
+  count above is 0; see the Cycle-3 carryover line above for the carried item count)
 ```

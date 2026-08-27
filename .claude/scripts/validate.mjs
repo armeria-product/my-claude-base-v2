@@ -604,14 +604,13 @@ const INVARIANTS = [
   // --- PR-A cycle-3 carryover (parallel-dev-speedup plan, 2026-08-27 ruling): cycle 3 of the
   // Loop Contract runs review-only instead of escalating to the user; only CRITICAL gets an
   // unreviewed fix pass, HIGH-and-below carries into tasks/todo.md Backlog, and BLOCK's
-  // early-escalation rule (reviewer.md "BLOCK severity") stays in force at any cycle. ---
-  ['.claude/skills/quality-loop/SKILL.md', /^## Cycle-3 Carryover$/m, 'quality-loop must keep the "## Cycle-3 Carryover" heading itself (anchored to a standalone heading line, not just an inline mention) — cycle 3 review-only handling (PR-A, 2026-08-27 ruling) has no other definition'],
-  ['.claude/skills/quality-loop/SKILL.md', /only CRITICAL findings \(reviewer\.md Severity Levels:\s*\n?\s*"Bug or\s*\n?\s*security issue that will cause production failure"[\s\S]{0,80}get a single fix pass\. The fix is \*\*not re-reviewed\*\*/, 'quality-loop "## Cycle-3 Carryover" must keep the CRITICAL-only unreviewed-fix-pass exception (reviewer.md\'s existing severity definition, not a new axis) — PR-A O1 ruling'],
-  ['.claude/skills/quality-loop/SKILL.md', /\[cycle3\] <指摘> — <file:line> \/ 出所: <plan or PR>/, 'quality-loop "## Cycle-3 Carryover" must keep the exact carried-item line format ("[cycle3] <指摘> — <file:line> / 出所: <plan or PR>") — without it, cycle-3 backlog items lose their machine-recognizable prefix'],
-  ['.claude/skills/quality-loop/SKILL.md', /never be silently absorbed\s*\n?\s*into an APPROVE-shaped report/, 'quality-loop "## Cycle-3 Carryover" must keep the disclosure duty (an unreviewed cycle-3 CRITICAL fix must never read as an APPROVE) — dropping it lets the unreviewed status hide from both the report and the reader'],
-  ['.claude/skills/quality-loop/SKILL.md', /this carve-out only relaxes REQUEST_CHANGES\s*\n?\s*handling at cycle 3, never BLOCK/, 'quality-loop "## Cycle-3 Carryover" must keep stating that BLOCK is unaffected by the cycle-3 carve-out — the reviewer.md early-escalation safety valve must not read as disabled'],
+  // early-escalation rule (reviewer.md "BLOCK severity") stays in force at any cycle.
+  // Cycle-2 fix pass (fusion-cycle1.md F1/F2/F3/F5/F6/F7/F8/F9/F10/F11/F14): the 5 flat
+  // whole-file presence pins that used to live here are replaced by the section-scoped,
+  // positionally-anchored block at "---- 17.5" below — see that block's header comment for why.
+  // ---
   ['.claude/skills/harness/SKILL.md', /Cycle 3 of a code-review step does not escalate to the user by default/, 'harness "## Quality Gate" must keep the cycle-3 review-only follow-along line (PR-A, tracks quality-loop\'s "## Cycle-3 Carryover")'],
-  ['.claude/skills/harness/SKILL.md', /bugfix's own\s*\n?\s*fix→verify escalation \(step 6 above\) is unchanged/, 'harness "## Quality Gate" must keep stating that the cycle-3 carve-out governs code-review steps only — bugfix\'s own fix→verify escalation (### bugfix step 6) must not silently start following the same review-only carve-out'],
+  ['.claude/skills/harness/SKILL.md', /bugfix's own\s*\n?\s*fix→verify escalation \(the bugfix workflow's step 6, above in this file\) is unchanged/, 'harness "## Quality Gate" must keep stating that the cycle-3 carve-out governs code-review steps only — bugfix\'s own fix→verify escalation (bugfix workflow step 6) must not silently start following the same review-only carve-out (fusion-cycle1 F16: referent named explicitly, was the ambiguous "step 6 above"; phrased without a literal "### bugfix" substring so this pin does not itself trip the "### bugfix" anchor-count===1 check in section 17 below)'],
   ['.claude/agents/reviewer.md', /BLOCK verdict, under any target, the same as REQUEST_CHANGES plus immediate user escalation — do not wait for cycle 3\./, 'reviewer.md must keep the BLOCK-severity early-escalation rule — the PR-A cycle-3 carryover rule (2026-08-27 ruling) must not silently disable it; previously unpinned in validate.mjs'],
 ];
 for (const [relPath, must, why] of INVARIANTS) {
@@ -1436,6 +1435,162 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
     // vanish either — it is the one place this repo states pins are tamper-evidence, not tamper-proof.
     if (!/tamper-EVIDENCE against accidental\/careless drift, not tamper-PROOF against an adversarial editor/.test(agentsRuleText))
       fail('.claude/rules/agents.md is missing the T4.4 pin threat-model disclosure ("tamper-EVIDENCE ... not tamper-PROOF") — mutation-observation-points T4.4 fix pass (C1/T3 durable home)');
+  }
+}
+
+// ---- 17.5. PR-A cycle-3 carryover — operative-site + section-scoped pins (cycle-2 fix pass,
+// fusion-cycle1.md findings F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F13, F14) -------------
+// Cycle-1's 5 flat pins (former lines 608-612, now removed) were whole-file `must.test(read(p))`
+// presence checks bound only to prose INSIDE "## Cycle-3 Carryover" — the section that *explains*
+// the rule — while the text an executing agent actually follows lives in Loop Contract step [4]
+// and the Output Format template, neither of which any pin touched (F1: step [4] could be
+// reverted byte-exact to the pre-change "stop and escalate" wording with every Carryover pin
+// still green — reproduced below as "probe A"). A presence-only check is also defeated by a
+// "superseding" sentence inserted right after a heading while every pinned substring stays
+// byte-identical further down (F2) — NEUTER_MARKER_RE only catches a fixed 5-word blocklist
+// (withdrawn/repealed/retired/not-operative/撤回済み), so an inversion phrased with other
+// vocabulary is not caught by vocabulary alone (do not try to out-enumerate this — see the
+// fusion's F2 remedy; reproduced below as "probe E"). This block:
+//   (a) adds an operative-site pin bound to step [4] itself. The opening-sentence check is
+//       POSITIONALLY anchored (`^...` against the step-4 capture, not "somewhere in the file")
+//       so a contradicting preface inserted ahead of the sentence — the placement probe E
+//       actually used — pushes the required text out of the anchored position and breaks the
+//       match, without needing new blocklist words;
+//   (b) rewrites the Cycle-3 Carryover pins against a dedicated capture of that section (heading
+//       to next "## " heading), with its own anchor-count===1 assertion, its own
+//       NEUTER_MARKER_RE guard, AND a heading-adjacency anchor requiring the section's own first
+//       sentence to sit immediately after the heading (not just present anywhere in the section)
+//       — instead of inheriting Stall handling's accidental scope (F10);
+//   (c) pins the Output Format's carryover fields + PROCEEDED token, scoped to the Output Format
+//       block (F3, paired with the F4 content redesign that made the unreviewed-CRITICAL fact an
+//       unconditional field independent of the carried-item count, and added a third rendering
+//       for "cycle 3 ran, zero items carried");
+//   (d) normalizes inter-word whitespace (`\s+` / `\s*\n?\s*`) throughout so an innocent reflow
+//       does not fire a false finding (F11).
+// Residual, disclosed (fusion "Residual risk"): a superseding annotation placed OUTSIDE these
+// anchored windows (e.g. before step [4] itself, or between two unrelated bullets rather than
+// right after a heading) is not caught by this pass. Text pins can prove a rule is STATED, never
+// that it is FOLLOWED, and a rewrite that updates the pins alongside the prose stays green by
+// construction — this pass closes the two placements the cited probes actually used, not every
+// conceivable placement.
+{
+  const qlPath = path.join(ROOT, '.claude', 'skills', 'quality-loop', 'SKILL.md');
+  if (!fs.existsSync(qlPath)) fail('.claude/skills/quality-loop/SKILL.md missing — cannot verify PR-A cycle-3 carryover pins (fusion-cycle1 F1/F2/F3/F5/F6/F7/F8/F9/F10/F11/F14)');
+  else {
+    const qlText = read(qlPath);
+
+    // (a) F1/F2/F6 operative-site pin on step [4] itself, tightly scoped to the Loop Contract
+    // body BEFORE the Cycle-3 Carryover heading (narrower than the existing :1289 loopSection
+    // above, which continues on to "## Stall handling" and is unaffected by this addition).
+    const step4Section = qlText.match(/\[4\] Re-review \(→ \[2\]\)[\s\S]*?(?=\n## Cycle-3 Carryover)/);
+    if (!step4Section) fail('.claude/skills/quality-loop/SKILL.md: Loop Contract step "[4] Re-review (→ [2])" not found (or unterminated before "## Cycle-3 Carryover") — fusion-cycle1 F1');
+    else {
+      const s4 = step4Section[0];
+      // Positionally anchored to the very start of step [4]: a contradicting preface inserted
+      // ahead of the sentence (probe E's technique) breaks this match even though the sentence
+      // itself stays byte-identical elsewhere in the file; a byte-exact revert to the pre-change
+      // "stop and escalate to the user" wording (probe A) also has no match here at all.
+      if (!/^\[4\]\s+Re-review\s+\(→\s+\[2\]\)\s+for\s+cycles\s+1-2,\s+unchanged\s+\(send\s+back\s+→\s+fix\s+→\s+re-review\)\.\s+\*\*Cycle\s+3\s+is\s+review-only\*\*/.test(s4))
+        fail('.claude/skills/quality-loop/SKILL.md Loop Contract step [4] no longer OPENS with the "Cycle 3 is review-only" sentence — a preface inserted ahead of it (e.g. a "superseded" annotation) or a reversion to the pre-change wording both trip this — fusion-cycle1 F1/F2');
+      if (!/no\s+further\s+fix→re-review\s+round/.test(s4))
+        fail('.claude/skills/quality-loop/SKILL.md Loop Contract step [4] is missing the "no further fix→re-review round" clause — fusion-cycle1 F1');
+      if (!/the\s+loop\s+proceeds\s+to\s+\[5\]\s+without\s+stopping\s+for\s+the\s+user/.test(s4))
+        fail('.claude/skills/quality-loop/SKILL.md Loop Contract step [4] is missing the "proceeds to [5] without stopping for the user" clause — fusion-cycle1 F1');
+      // F6: the BLOCK halt must be stated explicitly (not just "still escalates"), with explicit
+      // precedence over the CRITICAL fix-pass trigger — reviewer.md:383's "escalation" alone
+      // does not say the loop actually STOPS.
+      if (!/BLOCK\s+verdict\s+at\s+cycle\s+3\s+\*\*stops\s+the\s+loop\s+before\s+\[5\]\s+and\s+escalates\s*\n?\s*immediately\*\*/.test(s4))
+        fail('.claude/skills/quality-loop/SKILL.md Loop Contract step [4] no longer states that a cycle-3 BLOCK STOPS the loop (not just "escalates") — fusion-cycle1 F6');
+      if (!/BLOCK\s+takes\s+precedence\s+over\s+the\s+CRITICAL\s+fix-pass\s+trigger/.test(s4))
+        fail('.claude/skills/quality-loop/SKILL.md Loop Contract step [4] is missing BLOCK\'s precedence over the CRITICAL fix-pass trigger — fusion-cycle1 F6');
+      if (NEUTER_MARKER_RE.test(s4))
+        fail('.claude/skills/quality-loop/SKILL.md Loop Contract step [4] contains a neutering marker (withdrawn/repealed/retired/not-operative/撤回済み, case-insensitive) inside the pinned operative span — fusion-cycle1 F1/F2');
+    }
+
+    // (b) Cycle-3 Carryover section, captured on its own (heading to the next "## " heading —
+    // deliberately NOT inherited from the existing :1289 loopSection's accidental placement
+    // between "## Loop Contract" and "## Stall handling", per F10).
+    const carryoverAnchorCount = (qlText.match(/^## Cycle-3 Carryover$/gm) || []).length;
+    if (carryoverAnchorCount !== 1)
+      fail(`.claude/skills/quality-loop/SKILL.md: expected exactly 1 occurrence of the "## Cycle-3 Carryover" heading, found ${carryoverAnchorCount} — a decoy heading could hijack which span gets checked (fusion-cycle1 F10)`);
+    const carryoverSection = qlText.match(/^## Cycle-3 Carryover$[\s\S]*?(?=\n## )/m);
+    if (!carryoverSection) fail('.claude/skills/quality-loop/SKILL.md: "## Cycle-3 Carryover" section not found (or unterminated before the next "## " heading) — fusion-cycle1 F1/F3/F5/F9/F10/F14');
+    else {
+      const co = carryoverSection[0];
+      // F2/F10: heading-adjacency anchor — the section's own opening sentence must sit
+      // IMMEDIATELY after the heading (only whitespace between), not merely present somewhere
+      // in the section. A "superseding" paragraph inserted between the heading and this sentence
+      // (probe E's actual technique, replayed against this section) breaks this match even
+      // though every pinned substring below stays byte-identical.
+      if (!/^## Cycle-3 Carryover\s*\n+Applies only to cycle 3 of the Loop Contract above/.test(co))
+        fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" heading is not immediately followed by its opening sentence ("Applies only to cycle 3...") — a superseding paragraph inserted between them defeats every presence-only pin below without deleting a single pinned substring — fusion-cycle1 F2/F10');
+      // F5: scope clause — the carve-out is authority/code-review only, bugfix's fix→verify
+      // loop is explicitly out of scope (matches the parallel clause in "## Stall handling"
+      // below).
+      if (!/only\s+to\s+authority\/code-review\s+cycles/.test(co))
+        fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" is missing the F5 scope clause (authority/code-review cycles only) — fusion-cycle1 F5');
+      if (!/does\s+not\s+extend\s+to\s+bugfix's\s+own\s+internal\s+fix→verify\s+loop/.test(co))
+        fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" is missing the F5 bugfix-out-of-scope clause — fusion-cycle1 F5');
+      // F7/F8: the cycle-3 CRITICAL fix pass stays bound by [3]'s scope constraint, carries a
+      // per-CRITICAL justification line, and still requires M2 evidence even though the pass
+      // itself is not re-reviewed.
+      if (!/bound\s+by\s+\[3\]'s\s+constraint\s+\(fix\s+only\s+the\s+cited\s+spot,\s+no\s*\n?\s*scope\s+expansion\)/.test(co))
+        fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" is missing the F8 scope-constraint clause on the cycle-3 fix pass — fusion-cycle1 F8');
+      if (!/one\s+line\s+of\s+justification\s+recorded\s+for\s+each\s+cycle-3\s+CRITICAL\s+call/.test(co))
+        fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" is missing the F8 per-CRITICAL justification clause — fusion-cycle1 F8');
+      if (!/still\s+requires\s+the\s+same\s+M2\s+evidence[\s\S]{0,80}as\s+any\s+other\s*\n?\s*observation-point-touching\s+fix/.test(co))
+        fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" is missing the F7 M2-evidence binding on the unreviewed cycle-3 fix pass — fusion-cycle1 F7');
+      if (!/never\s+be\s+silently\s+absorbed\s*\n?\s*into\s+an\s+APPROVE-shaped\s+report/.test(co))
+        fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" must keep the disclosure duty (an unreviewed cycle-3 CRITICAL fix must never read as an APPROVE)');
+      // F9: named actor for the backlog append — the reviewer never writes (CLAUDE.md §2), so
+      // the append is the conductor's.
+      if (!/appended\s+\*\*by\s+the\s+conductor\*\*/.test(co))
+        fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" is missing the F9 named-actor clause (appended by the conductor) — fusion-cycle1 F9');
+      // F14: the carried-item line format wraps session-persistence.md §6.1's checkbox+priority
+      // skeleton, keeping the `[cycle3]` prefix verbatim — do not touch session-persistence.md
+      // itself (carry-not-fix list).
+      if (!/-\s*\[\s*\]\s*\[cycle3\]\s*<指摘>\s*—\s*<file:line>\s*\/\s*出所:\s*<plan\s+or\s+PR>\s*\n?\s*\(priority:\s*<high\|med\|low>\)/.test(co))
+        fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" line format no longer wraps the session-persistence.md §6.1 checkbox+priority skeleton around the [cycle3] prefix — fusion-cycle1 F14');
+      // F6: the "Does not touch BLOCK" bullet must state the halt explicitly too (not just
+      // "still escalates"), matching step [4]'s statement above.
+      if (!/BLOCK\s+verdict\s+at\s+cycle\s+3\s+\*\*stops\s+the\s+loop\s+before\s+proceeding\s+to\s*\n?\s*\[5\]\*\*/.test(co))
+        fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" "Does not touch BLOCK" bullet no longer states the halt explicitly — fusion-cycle1 F6');
+      if (NEUTER_MARKER_RE.test(co))
+        fail('.claude/skills/quality-loop/SKILL.md "## Cycle-3 Carryover" contains a neutering marker (withdrawn/repealed/retired/not-operative/撤回済み, case-insensitive) inside the pinned duty span — fusion-cycle1 F10');
+    }
+
+    // F5 (Stall handling half): the same authority/code-review scoping must also be stated
+    // where Stall handling hands off to Cycle-3 Carryover.
+    const stallSection = qlText.match(/## Stall handling \(different-angle retry, cost-flat\)[\s\S]*?(?=\n## Recurring-Category Tally)/);
+    if (!stallSection) fail('.claude/skills/quality-loop/SKILL.md: "## Stall handling (different-angle retry, cost-flat)" section not found (or unterminated before "## Recurring-Category Tally") — fusion-cycle1 F5');
+    else if (!/does not extend to bugfix's own internal fix→verify loop/.test(stallSection[0]))
+      fail('.claude/skills/quality-loop/SKILL.md "## Stall handling" is missing the F5 scope clause (does not extend to bugfix\'s fix→verify loop) — fusion-cycle1 F5');
+
+    // (c) Output Format block — F3 (section-scoped pin) + F4 (unconditional unreviewed-CRITICAL
+    // field, PROCEEDED token carries it, third rendering for "ran, 0 items carried").
+    const outputFormatSection = qlText.match(/## Output Format[\s\S]*$/);
+    if (!outputFormatSection) fail('.claude/skills/quality-loop/SKILL.md: "## Output Format" section not found — fusion-cycle1 F3/F4');
+    else {
+      const of = outputFormatSection[0];
+      if (!/Cycle-3\s+CRITICAL\s+fix\s+unreviewed:\s*N\/A[\s\S]{0,60}\|\s*\n?\s*yes\s*\|\s*no/.test(of))
+        fail('.claude/skills/quality-loop/SKILL.md "## Output Format" is missing the unconditional "Cycle-3 CRITICAL fix unreviewed: N/A | yes | no" field — fusion-cycle1 F3/F4');
+      if (!/PROCEEDED\s+—\s+unreviewed\s+CRITICAL\s*\n?\s*fix:\s*yes\/no/.test(of))
+        fail('.claude/skills/quality-loop/SKILL.md "## Output Format" is missing the PROCEEDED token carrying "unreviewed CRITICAL fix: yes/no" — fusion-cycle1 F4');
+      if (!/ran,\s*0\s*item\(s\)\s*carried/.test(of))
+        fail('.claude/skills/quality-loop/SKILL.md "## Output Format" is missing the third carryover rendering ("ran, 0 item(s) carried") — fusion-cycle1 F4');
+      if (NEUTER_MARKER_RE.test(of))
+        fail('.claude/skills/quality-loop/SKILL.md "## Output Format" contains a neutering marker inside the pinned template span — fusion-cycle1 F3');
+    }
+  }
+
+  // harness/SKILL.md F13 (adjacent-bullet contradiction: the bullet above the cycle-3 review-only
+  // bullet still stated the unqualified "3 cycles" rule with no deferral).
+  const harnessPath2 = path.join(ROOT, '.claude', 'skills', 'harness', 'SKILL.md');
+  if (!fs.existsSync(harnessPath2)) fail('.claude/skills/harness/SKILL.md missing — cannot verify fusion-cycle1 F13');
+  else {
+    const harnessText2 = read(harnessPath2);
+    if (!/send-back\s+→\s*\n?\s*fix\s+→\s+re-review\s+runs\s+for\s+up\s+to\s+3\s+cycles\s*\n?\s*\(cycle\s+3\s+differs/.test(harnessText2))
+      fail('.claude/skills/harness/SKILL.md "## Quality Gate" first bullet is missing the F13 deferral clause ("cycle 3 differs — see below") — fusion-cycle1 F13');
   }
 }
 
