@@ -1,6 +1,6 @@
 # my-claude-base v2 (Claude Code / Codex)
 
-Claude Code と OpenAI Codex/GPT の両方で使える開発ハーネス（作業環境一式）です。Claude Code は `CLAUDE.md` と `.claude/`、Codex は `AGENTS.md`・`.codex/`・`.agents/skills/` という、それぞれ独立した実行面を使います。Claude Code では hooks と権限設定が動き、Codex では custom agents・sandbox・承認・skills と、このリポジトリの native hooks を使います。
+Claude Code と OpenAI Codex/GPT の両方で使える開発ハーネス（作業環境一式）です。Claude Code は `CLAUDE.md` と `.claude/`、Codex は `AGENTS.md`・`.codex/`・`.agents/skills/` という、それぞれ独立した実行面を使います。Claude Code では hooks と権限設定が動き、Codex では Main agent・sandbox・承認・最小限の skills と native hooks を使います。
 
 ---
 
@@ -9,35 +9,28 @@ Claude Code と OpenAI Codex/GPT の両方で使える開発ハーネス（作�
 ```bash
 git clone <this-repo> && cd my-claude-base-v2
 claude   # Claude Code: .claude/settings.json の hooks・権限・記録が有効
-codex    # Codex: AGENTS.md、.codex/agents、.agents/skills/ が読み込まれる
+codex    # Codex: AGENTS.md、.codex/hooks.json、.agents/skills/ が読み込まれる
 ```
 
 - 外部モデル連携（clover）を使う場合: `node clover/bin/install.mjs`（詳細は `clover/README.md`）
-- Codexの動作確認: `node .codex/scripts/check-native.mjs`（ローカルとCIで共通）
+- Codexの動作確認: `node .codex/scripts/check-native.mjs`（ローカル検証）
 - Claude Codeの構成検査: `node .claude/scripts/validate.mjs`（Claude側のみ。`PASS` が正常）
 - `.claude/settings.json` の hooks は Claude Code 専用です。Codex は同じ hooks を実行せず、独立した `.codex/hooks.json` を使います。初回と変更後は Codex の `/hooks` で内容を確認・信頼し、新しい task を開始してから使います。
-- Codex native hooks は、設定したツール経路でライフサイクルと対応する編集パスを機械イベントとして記録し、SessionStart に state・最新の人間向けレポート・TODO・CODEMAP見出しを合計10 KiB以内で渡します。PostToolUse は自動整形・書き換え・任意のshellコマンド記録を行いません。PreToolUse は秘密情報、`--no-verify`、破壊的操作、保護ブランチへの書き込みを扱いますが、更新時刻だけを見るPR関門は持ちません。無効化・信頼確認の迂回・外部の端末やエディタは対象外なので、sandbox・承認・Git ホスティング側の保護も併用します。
-- `dev/{name}/` は独立リポジトリです。そこで直接作業する場合は、その製品ルートで Codex を開始して製品側の `AGENTS.md` を読み込みます。custom agents・skills・hooks を含む完全な共通ハーネスが必要な作業はハブルートから開始し、作業前に対象製品の `AGENTS.md` も確認します。
+- Codex native hooks は、設定したツール経路でライフサイクルと対応する編集パスを機械イベントとして記録し、SessionStart に state・最新の人間向けレポート・TODO の Now・CODEMAP見出しを合計8 KiB以内で渡します。PostToolUse は自動整形・書き換え・任意のshellコマンド記録を行いません。PreToolUse は秘密情報、`--no-verify`、高確度の破壊的操作、保護ブランチへの直接書き込みを扱います。無効化・信頼確認の迂回・外部の端末やエディタは対象外なので、sandbox・承認・Git ホスティング側の保護も併用します。
+- `dev/{name}/` は独立リポジトリです。そこで直接作業する場合は、その製品ルートで Codex を開始して製品側の `AGENTS.md` を読み込みます。共通 skills・hooks を含むハブ面が必要な作業はハブルートから開始し、作業前に対象製品の `AGENTS.md` も確認します。
 
 ---
 
 ## できること
 
-### 計画した範囲をレビューしながら自走させられる
+### 必要な分だけ計画して自走させられる
 
-大きな作業では PLAN.md と scope.json に予定ファイル・禁止範囲・タスクを残し、実装後の差分をそこへ照合します。scope.json はレビュー用の境界であり、書き込みを拒否するロックではありません。
+Claude Code は既存の `/plan`、Codex は Main agent の通常の会話内計画を使います。Codex に専用 orchestrator や scope-lock はなく、調査・計画・実装・テスト・差分確認を Main agent が連続して担当します。既存の `PLAN.md` / `scope.json` を使う作業では、その計画へ差分を照合します。
 
 ```
-`/plan`（Claude）または `$codex-harness`（Codex）で計画
-                     → 計画書(PLAN.md) + 触る予定範囲(scope.json) を出力
-   ↓
-通常の言葉で開始を確認 → 実装を進める（特別な合言葉は不要）
-   ↓
-レビュー           → 変更ファイルを PLAN.md / scope.json のタスクへ照合
-                     新しい案は deviations.md に提案として記録する
-   ↓
-`/save-session`（Claude）または `$save-session`（Codex）
-                     → 実施内容・保留・確認事項・次の一手を報告
+依頼 → Main agent が必要な調査・計画・実装・検証を担当
+     → 構造変更なら tasks/codemap.md を同じ変更で更新
+     → 区切りで `/save-session`（Claude）または `$save-session`（Codex）
 ```
 
 - 1〜2ファイルの小さな修正は、重い計画成果物を作らずに進められます。
@@ -60,35 +53,19 @@ Claude Code と、信頼済みの native hooks を読み込んだ Codex では�
 
 - ジャーナルは追記専用で、ローテーションによる削除はありません。再開メモの2026-08-13より前の版は `tasks/history/` に凍結保存されたまま残ります（同日以降は session-state.md が2行のポインタになり退避が不要になったため、これ以上は増えません）。
 - Claude Code は、セッション開始時に session-state・todo・最新 journal レポート・lessons を注入します。
-- 信頼済み Codex native hooks は、SessionStart に state・最新の人間向けレポート・TODO・CODEMAP見出しを合計10 KiB以内で渡し、lessons は注入しません。
+- 信頼済み Codex native hooks は、SessionStart に state・最新の人間向けレポート・TODO の Now・CODEMAP見出しを合計8 KiB以内で渡し、lessons は注入しません。
 - 注入が無い task では、task 履歴と records を直接照合します。
 - 会話そのものは利用中のクライアントが保存します。Claude Code では `/rewind`（Esc Esc）や `/export`、Codex では Codex の task 履歴を使います。
 
 再開の手順はシンプルです。Claude Code は同じフォルダで `claude -r`、Codex は同じ task を開くか新しい task を開始します。各 provider の専用 SessionStart hook が有効なら記録を注入し、いずれでも resume workflow は記録と git の実際の状態を突き合わせて現在地を確認します。
 
-### 仕事を専門のサブエージェントに分けて任せられる
+### Codex は Main agent が仕事を完結させる
 
-メインセッション（指揮者）は自分でコードを書かず、役割ごとに専門化したサブエージェントへ調査・実装・レビュー・検証を委任します。委任先には難度に応じたモデル階層（tier）が割り当たり、モデルのバージョンが上がっても階層名を書き換える必要はありません。
+通常の Codex 作業は Main agent が直接行います。サブエージェントは、独立コンテキストが明確に効く調査、並列化できる読み取り、独立レビュー、セキュリティ観点、明確に分離できる実装を依頼された場合だけ任意で使います。初期構成に standing agents、固定 role chain、quality loop は置きません。
 
-| Agent | Tier | 役割 |
-|---|---|---|
-| planner | heavy（Opus既定 / Fableは§1.11ゲートON時のみ, effort xhigh） | 計画立案・計画の自己レビュー |
-| executor | standard（sonnet, effort xhigh） | 実装（指示されていない追加や無断リファクタはしない） |
-| reviewer | heavy（Opus既定 / Fableは§1.11ゲートON時のみ, effort xhigh） | code / security / architecture の統合レビュー。権威席は native Fable または Opus のみ |
-| verifier | standard（sonnet, effort xhigh） | 証拠（テスト結果・diff・ログ）に基づく検証 |
-| debugger | standard（sonnet, effort xhigh） | 再現→仮説→反証の手順で行うデバッグ |
-| explorer | light（haiku, effort指定なし） | コードベースの探索・事実収集 |
-| document-author | standard（sonnet, effort xhigh） | 自己完結HTML成果物・図解・スライドの作成 |
+Claude Code 側の agents・quality loop・model gate は `.claude/` に残る provider 固有機能です。Codex はそれらを継承せず、必要な委任だけ native collaboration で行います。
 
-### 実装した本人がそのまま合格を出さない品質ループ
-
-実装者（書き手）と審査役を別インスタンス・独立コンテキストに分離します。権威モデルの許可集合は native `fable | opus` だけで変わりませんが、既定は Opus です。Fable を使うのは `.claude/.fable-status` が `ON` のとき（CLAUDE.md §1.11）だけで、OFF の間は起動先モデルが Fable と分かった時点でサブエージェントの起動を `block-fable-when-off.js` が拒否します（権威ロールに限らず全ロール共通）。判定は「ちょうど `ON` という一語かどうか」だけを見ます ―― 前後の空白や大文字小文字の違いは無視しますが、それ以外は `"ON"`（引用符付き）や `ONLINE` のような別の言葉も含めて全て OFF 扱いです。sonnet / haiku / inherit / unknown / 外部 clover id への降格や無言の切替は `block-review-floor.js` が拒否します。ただしこの仕組みが止められるのは「起動先モデルが分かるサブエージェントの起動」だけです。あなた自身のセッションが Fable で動いている場合（`/model` で選んだモデル）は対象外ですし、モデル名を指定せずに起動してセッションのモデルがそのまま引き継がれた場合は、この仕組みから見えないことがあります。
-
-- **quality-loop**: 書き手と審査役を分けた自己改善ループ。サイクル1の仕様適合席と「赤チーム」席は通常 Opus×2、§1.11 ゲートが ON のときだけ Fable×2 で一緒に動き、混在させません。条件が揃えば別枠の外部モデル同席や、シンプルさ・利用者視点・効率・互換性・テスト検出力といった観点（レンズ）ごとの同席も加えられます（同時最大4席）。
-- **セキュリティ観点は自動で同席**: 変更が API・DB・認証・決済・秘密情報などに触れると、指示しなくてもセキュリティ観点のレビューが自動で並走し、指摘は1回にまとめて統合されます。
-- 承認（APPROVE）が出るまで往復し、そのあと `verifier` が証拠ベースで最終確認します。
-
-### モデルを使い分けて外部へも振れる
+### Claude Code ではモデルを使い分けて外部へも振れる
 
 native モデル名（fable / opus / sonnet / haiku / inherit）以外を指定すると、clover（外部モデル中継。リポジトリ直下 `clover/` の自己完結サブプロジェクト）経由で他社のモデルも呼び出せます。native Fable は relay に依存せず、外部 alias へ変換されません。別名の正本は `clover/models.json` で、native 名との衝突を防ぐため `fable` で始まる alias は引き続き禁止です。外部連携は `.claude/.relay-status` が `ON` のときだけ有効になり、既定は `OFF`（事故防止のため、意図せず外部へ出ないようにしています）。`OFF` のあいだは中継サーバーそのものが起動せず、接続先（`ANTHROPIC_BASE_URL`）も書き換わりません。中継が立っていると claude.ai 側のバックエンドと対で動く機能（リモコンとそのスラッシュコマンド）が使えなくなるため、切ってあるときは本当に何も立たないようにしてあります。
 
@@ -96,12 +73,11 @@ native モデル名（fable / opus / sonnet / haiku / inherit）以外を指定�
 
 **Codex native surface**
 
-- **custom agents（7種）** — `.codex/agents/*.toml` に planner / reviewer / executor / debugger / verifier / document-author / explorer を登録する。TOML が役割・モデル・思考量・意図したsandboxの唯一の正本で、文書やテストはその値を重複して持たない。
-- **native workflows** — `.codex/workflows/` に plan / harness / quality-loop / check / commit / pr の共通契約を置く。標準の非自明作業は独立reviewer 1名とverifier、高リスク作業は二つの独立レンズ・必要時の独立security・fusion・verifierを使う。
-- **skills（11種）** — **$codex-harness**、**$save-session**、**$resume-session** に加え、**brandkit**、**frontend-design**、**imagegen-frontend-web**、**imagegen-frontend-mobile**、**image-to-code**、**doc**、**preview**、**code-cleaner** を `.agents/skills/` から検出する。Codex CLI/IDE では `$` で明示でき、説明に合う依頼では自動でも選ばれる。
-- **skills / workflows の境界** — skills はユーザーが呼ぶ能力、`.codex/workflows/` は `$codex-harness` が読む内部の工程契約。plan / harness / quality-loop / check / commit / pr を薄い別skillsとして重複させない。Claude/clover固有の provider routing である **relay はCodexへ移行しない**。
+- **Main-first** — 調査・計画・実装・テスト・差分確認は通常 Main agent が直接担当する。初期構成に `.codex/agents/` と `.codex/workflows/` は置かない。
+- **skills（2種）** — **$save-session** と **$resume-session** だけを `.agents/skills/` から検出する。計画・実装・レビュー・commit・PR は通常会話と native tool で扱う。
+- **optional delegation** — サブエージェントは独立コンテキストや並列性に明確な価値がある場合だけ使い、固定 role chain や自動 quality loop は作らない。
 - **native records** — 人間向けの追記専用記録は `tasks/journal/YYYY-MM/DD.md` が正本。旧 `tasks/journal/YYYY/MM/DD.md` は読むだけの互換経路で、ライフサイクルと編集パスの機械イベントは `.machine/YYYY-MM/DD.log` に分離する。
-- **native hooks** — SessionStart は state・最新人間レポート・TODO・CODEMAP を10 KiB以内で渡す。PostToolUse は編集パスだけを機械記録し、自動整形・書き換え・任意のshellコマンド記録はしない。
+- **native hooks** — SessionStart は state・最新人間レポート・TODO の Now・CODEMAP見出しを8 KiB以内で渡す。PreToolUse は狭い安全境界を検査し、PostToolUse は編集パスだけを機械記録する。自動整形・書き換え・任意のshellコマンド記録はしない。
 - **path guidance** — ルートと対象ディレクトリの `AGENTS.md` を使う。Codexは開始時のパスまでしか自動収集しないため、別の独立製品へ移るときは新しい task を開始する。独立製品のルートはローカル指針のみを受け取り、共通agents/skills/hooksはハブルートから開始したtaskで使う。
 
 **Claude Code surface**
@@ -132,8 +108,8 @@ native モデル名（fable / opus / sonnet / haiku / inherit）以外を指定�
 ```
 CLAUDE.md            … Claude Code 用の運用ルール
 AGENTS.md            … Codex/GPT 用の独立した運用ルール・入口
-.agents/skills/      … Codex が自動検出する native skills（運用3種＋移行した能力8種。relayは含めない）
-.codex/              … Codex custom agents・role/workflow 契約・native hooks・製品用テンプレート
+.agents/skills/      … Codex の session 保存・再開 skills 2種
+.codex/              … Codex native hooks と最小 validator
 .claude/
   agents/            … サブエージェント定義 7体
   skills/            … スキル 15種（上記）
@@ -178,11 +154,10 @@ tmp/                 … 使い捨ての作業ファイル（git 追跡外・使
 
 ## 動かして確かめる
 
-- **Codex native surface**（ローカルとCIで共通）:
+- **Codex native surface**（ローカル検証）:
   ```bash
   node .codex/scripts/check-native.mjs
   ```
-- **Codex native records診断**: 必要時だけ、読み取り専用の `node .codex/scripts/records-doctor.mjs` を使う。
 - **Codex native hookの確認**: hook設定を変えたときは `/hooks` で確認・信頼してtaskを再開始またはreloadし、`codex --strict-config doctor --summary` も実行する。これはnative checkの代わりにはならない。
 - **Claude Codeの構成整合性検査**: `node .claude/scripts/validate.mjs` — Claude hooks・記録配線・規範文言の消失検知などを検査する。`VERDICT: PASS` が正常
 - **フックの全テストを1コマンドで実行**（手動実行。上記の整合性検査には配線されていない）:

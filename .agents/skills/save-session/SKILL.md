@@ -1,95 +1,20 @@
 ---
 name: save-session
-description: Save the current Codex task with an evidence-backed Japanese handoff report, a two-line resume pointer, and an optional real machine-event SAVE marker. Use for `$save-session`, `$save-session 補完`, “save this session”, or an explicitly requested work-boundary handoff.
+description: Save the current Codex task as a concise Japanese handoff report and two-line resume pointer. Use for `$save-session`, `$save-session 補完`, “save this session”, or an explicitly requested work boundary.
 ---
 
-# Save a Codex Session
+# Save Session
 
-Use this standalone Codex workflow only through `$save-session` (current task) or
-`$save-session 補完` (an evidenced prior task interval). It is an agent-run workflow, not an
-automatic end-of-session action.
+Run only when explicitly requested or at a user-approved work boundary. This skill does not start
+agents, review loops, commits, pushes, or new implementation.
 
-## Non-negotiable record rules
-
-- The canonical human journal is always the workspace-root `tasks/journal/YYYY-MM/DD.md`; it never
-  moves into `dev/{name}/tasks/`.
-- Existing native `tasks/journal/YYYY/MM/DD.md` files are read-compatible historical records only.
-  Never move, merge, rewrite, or append a new human report to them; only `## HH:MM` sections are reports.
-- Lifecycle, SAVE, and supported edit-path machine events live in `tasks/journal/.machine/YYYY-MM/DD.log`,
-  separate from human reports.
-- Journal and history records are append-only. Never rewrite or delete past records.
-- `session-state.md` is exactly a two-line pointer. Next actions, holds, and user questions live
-  only in the canonical human journal report.
-- Use only observed native-hook records, Codex task history, Git, and existing task files. Missing
-  evidence is `未検証`; never invent a session ID, hook activity, machine event, or test result.
-- A trusted native-hook context can be useful evidence. Untrusted, disabled, bypassed, or absent
-  hooks require the same workflow using task history, Git, and real files instead.
-
-## Invocation and mode
-
-- `$save-session` saves the current task.
-- `$save-session 補完` may backfill a prior task only when its real journal interval and ID can be
-  identified. Otherwise explain that completion cannot be produced safely.
-- Suggest this skill at a logical boundary, before a requested compaction, or before ending work;
-  do not run it merely because a turn happens to end.
-
-## 1. Resolve the record location
-
-Select the first applicable context:
-
-1. An explicit user-selected save location.
-2. One product with the strongest evidence in changed files and recent tool activity under
-   `dev/{name}/`.
-3. Workspace root when no product is identified.
-
-If two products tie, ask one plain-language question before writing records. For a selected product,
-write state files under `dev/{name}/tasks/`; otherwise use root `tasks/`. If a selected product has
-no task directory, create only the missing directory and these missing files:
-
-```markdown
-# TODO — {product}
-
-## Now
-## Backlog
-## Recently Done
-```
-
-```markdown
-# Session State — {product}
-## START HERE — [YYYY-MM-DD HH:MM] — <branch・latest SHA> → tasks/journal/YYYY-MM/DD.md の HH:MM レポート
-```
-
-```markdown
-# Lessons — {product}
-```
-
-Do not bootstrap root task records, `roadmap.md`, or `codemap.md`.
-
-## 2. Reconcile planned scope when one exists
-
-When a current PLAN/scope artifact governs the work, run `git status --porcelain` in the repository
-that owns the changed files and compare its paths with the declared allow/forbid patterns and task
-list. List mismatches as proposed deviations in **確認してほしいこと**. Do not broaden scope or
-implement the deviation while saving the session.
-
-## 3. Gather evidence
-
-Inspect, in this order where available:
-
-1. The current task's observed `.machine` lifecycle/edit-path events, plus legacy journal markers
-   only when resolving historical context.
-2. Codex task history.
-3. `git status --porcelain`, `git diff`, and `git log -1 --oneline` in the owning repository.
-4. Existing task records, including the latest report and active todo/roadmap entries.
-
-The journal is a global timeline even for product work. If a claim cannot be supported by those
-sources, state `未検証` rather than inferring it.
-
-## 4. Append the human report
-
-Append one report to the canonical current root human journal. Write plain Japanese: the heading is
-a one-line conclusion beginning exactly `## HH:MM`, each field stays concise, and detailed file lists
-remain in Git and machine events.
+1. Select the record context: an explicit user choice first; otherwise the one `dev/{name}` owning
+   the current changes; otherwise workspace root. When two products tie, ask before writing.
+2. Read observable evidence: current task history, today’s
+   `tasks/journal/.machine/YYYY-MM/DD.log`, `git status --short`, `git diff`, `git log -1 --oneline`,
+   and any active PLAN/scope records. Never invent a test result, event, or session ID.
+3. Append one human report to the workspace-root canonical
+   `tasks/journal/YYYY-MM/DD.md`. Historical `tasks/journal/YYYY/MM/DD.md` files are read-only.
 
 ```markdown
 ## HH:MM セッションレポート — <結論1行>
@@ -100,41 +25,15 @@ remain in Git and machine events.
 **次にやること**: <最初の一手から最大5行>
 ```
 
-If an applicable plan has an existing deviations record, summarize only genuinely useful,
-unapproved ideas as proposals in **確認してほしいこと**. Never treat a proposed deviation as work
-already authorized.
-
-## 5. Update the resume pointer
-
-Overwrite the selected `session-state.md` with exactly two lines:
+4. Replace the selected root or product `tasks/session-state.md` with exactly two lines. Put next
+   actions only in the report, never duplicate them here.
 
 ```markdown
-# Session State — {context}
+# Session State — <context>
 ## START HERE — [YYYY-MM-DD HH:MM] — <branch・latest SHA> → tasks/journal/YYYY-MM/DD.md の HH:MM レポート
 ```
 
-Do not put next steps, blockers, scope notes, or a duplicate report in this file.
-
-## 6. Add a machine SAVE marker only when real
-
-Append this one line to the current day's `tasks/journal/.machine/YYYY-MM/DD.log` only when the current
-native context supplied a real ID, or `$save-session 補完` identified a real prior ID:
-
-```markdown
-- HH:MM:SS [xxxxxxxx] SAVE
-```
-
-This is a machine event, never a human report. Without that evidence, omit the marker.
-Never create a plausible-looking ID.
-
-## 7. Keep task records tidy
-
-Append a lesson only when a session produced a hard-won, repository-specific rule with Trigger,
-Mistake, Fix, and Rule. Keep todo items one line each; keep unfinished work in `## Now` or
-`## Backlog`, and cap `## Recently Done` at ten entries.
-
-## Completion report
-
-Tell the user what was saved, the evidence source used, whether a SAVE marker was written, and any
-scope mismatch or decision still needed. Do not claim that native hooks ran unless their real output
-or records were observed.
+5. Append `- HH:MM:SS [xxxxxxxx] SAVE` to today’s `.machine` log only when the current hook context
+   supplied a real ID, or 補完 mode identifies a real prior interval and ID. Otherwise omit it.
+6. Preserve all journal/history entries. Report what was saved, the evidence used, whether a SAVE
+   marker was written, and any unverified item or scope mismatch.

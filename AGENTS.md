@@ -1,127 +1,74 @@
-# Codex Harness
+# Codex Repository Guidance
 
-This file is the self-contained operating policy for Codex in this repository. It does not import
-Claude Code instructions. Codex reads this file once when a task starts; start a new task after
-changing it.
+This repository has separate Claude Code and Codex surfaces. Codex follows this file and the
+repository-local `.codex/` and `.agents/` files; it does not inherit `.claude/**` as an execution
+contract.
 
-## Native Codex surface
+## Main-first operation
 
-| Need | Native location |
-|---|---|
-| Named delegated roles | `.codex/agents/*.toml` with supporting `.codex/roles/*.md` |
-| Planning, implementation, review, and completion contracts | `.codex/workflows/*.md` |
-| Reusable workflows | `.agents/skills/*/SKILL.md` |
-| Path-specific guidance | This file plus nested `AGENTS.md` files |
-| Journal, session context, formatting, and safety gates | `.codex/hooks.json` and `.codex/hooks/**` |
+- Main Codex owns ordinary investigation, planning, implementation, tests, and diff review.
+- Finish normal work in the current task. Do not create a subagent merely because work is large,
+  difficult, spans many files, or needs build, lint, or test commands.
+- Use subagents only when independent context materially helps: parallel independent research,
+  read-only review separate from Main's implementation, adversarial security analysis, or clearly
+  separable large work. Do not create duplicate work or a standing Planner/Executor/Reviewer/
+  Verifier chain.
+- This repository does not force the user's global model or reasoning settings. The intended Main
+  baseline is GPT-5.6 Sol with xhigh reasoning and Fast mode enabled by the user.
+- Do not recursively launch `codex exec` from a Codex task. Use the current task and native tools.
 
-The Claude Code configuration remains provider-specific. Do not assume that a Claude hook,
-command, rule, agent, model switch, or relay configuration applies to a Codex task.
+## Safety boundary
 
-## Provider and safety boundary
+- Preserve unrelated user changes. Inspect `git status --short` before broad edits, including in a
+  nested `dev/{name}` repository.
+- Treat answer, explanation, review, diagnosis, and planning requests as read-only unless the user
+  also asks for a change.
+- Ask before destructive operations, writes outside the selected workspace, external side effects,
+  purchases, or material scope expansion.
+- Never read or edit likely secrets such as `.env`, credentials, private keys, or secret stores.
+- Repository hooks supplement Codex sandboxing, approvals, and repository protection; they are not
+  a host security boundary. Disabled, untrusted, or bypassed hooks and external tools remain outside
+  their coverage.
+- Review changed project hooks with `/hooks`, trust the exact definitions, and start or reload the
+  task before relying on them.
 
-- Review and trust changed project hooks through `/hooks`, then start or reload a Codex task
-  before relying on them.
-- Native hooks are not a host security boundary. Disabled or untrusted hooks,
-  `--dangerously-bypass-hook-trust`, external terminals/editors, and actions outside the configured
-  tool paths are not covered. Keep using Codex sandboxing, approval prompts, repository protection,
-  and normal user confirmation.
-- There is no scope-lock mechanism, persistent lock state, or magic approval command.
-  `plans/{slug}/scope.json` is an advisory review artifact, not a write lock.
-- Do not recursively launch `codex exec` from inside a Codex task. Use the current task and its
-  native collaboration tools.
+## Working and verification rules
 
-## Delegation policy
+- Prefer the smallest defensible implementation. Do not add compatibility layers or workflow files
+  for behavior Main Codex already provides.
+- Lead with evidence. Support completion claims with relevant command output, tests, diffs, or file
+  references; label anything else unverified.
+- Run proportionate build, typecheck, lint, and test commands for product changes, then inspect the
+  final diff. A failed check is not a passing result.
+- For this Codex harness, run `node .codex/scripts/check-native.mjs`. After hook registration changes,
+  also run `codex --strict-config doctor --summary`; report host-level failures separately from
+  repository validation.
 
-Use the custom agent that matches the bounded task. Its `.codex/agents/*.toml` configuration is the sole native source of the
-model, reasoning effort, and intended sandbox mode; explicit spawn settings must agree with it. Documentation and tests may validate
-its shape and roles but must not duplicate its exact model or effort values.
-Read the role contract named by the custom agent before working.
+## Session records
 
-| Role | Use |
-|---|---|
-| `planner` | plans, architecture, risks, scope, and independent plan review |
-| `reviewer` | code, security, architecture, red-team, and fusion review |
-| `executor` | implementation and focused refactors |
-| `debugger` | reproduction, root-cause analysis, and minimal repairs |
-| `verifier` | evidence-based final checks |
-| `document-author` | user-facing HTML, documents, and decks |
-| `explorer` | read-only discovery and file mapping |
-
-- When delegation is permitted, split independent work into useful bounded scopes and use every available worker slot while reserving the coordinator. Never create duplicate or empty work just to fill capacity.
-- The coordinator owns global fan-out. A worker must not create nested agents unless its dispatch
-  explicitly grants part of the available worker allocation.
-- Non-trivial changes use tiered independent review: the author never approves its own change.
-  Standard work uses one independent reviewer and a fresh verifier. High-risk work involving
-  permissions, secrets, destructive operations, external input, or hook-policy changes uses two
-  independent lenses, a separate security review where applicable, a fresh fusion review, and a
-  fresh verifier. Details are in `.codex/workflows/quality-loop.md`.
-
-## Skills and session commands
-
-- Use `$codex-harness` for planning, implementation, review, or completion workflows.
-- Use `$save-session` to append a human session report and update the two-line state pointer.
-- Use `$resume-session` to reconcile records with Git and task history, report the state, and
-  wait for direction.
-- These are Codex skills, not slash commands. They may also activate from a matching natural
-  language request.
-- Existing and later-migrated native skills inherit the common CODEMAP maintenance contract below;
-  they must not duplicate or weaken it.
-- Use Codex-native skills/tools for image, document, browser, and other task-specific work. Do not
-  run a nested Codex process to obtain them.
-
-## Native record contract
-
-- The canonical append-only human journal is `tasks/journal/YYYY-MM/DD.md`. Existing
-  `tasks/journal/YYYY/MM/DD.md` files are read-compatible historical records and are never moved, merged, or rewritten.
-- Native lifecycle and supported edit-path events go only to `tasks/journal/.machine/YYYY-MM/DD.log`.
-- SessionStart supplies bounded state, the latest human report, a compact TODO view, and CODEMAP
-  headings (at most 10 KiB); it does not inject bulk lessons.
-- PostToolUse records supported edit paths only. It never runs a formatter, rewrites files, or logs arbitrary shell command text.
+- Human reports are append-only at `tasks/journal/YYYY-MM/DD.md`. Historical
+  `tasks/journal/YYYY/MM/DD.md` files remain read-compatible and are never moved or rewritten.
+- Native lifecycle and direct-edit events go only to
+  `tasks/journal/.machine/YYYY-MM/DD.log`. Hooks do not record arbitrary shell text.
+- Use `$save-session` only at an explicit or useful work boundary. Use `$resume-session` to reconcile
+  the state pointer, journal, Git, and any active plan before continuing.
+- `session-state.md` is a two-line pointer, not a duplicate report or task list. Never invent a
+  session ID, marker, test result, or historical event.
 
 ## CODEMAP maintenance
 
-- When a change alters project structure, entrypoints, ownership or responsibilities, or important
-  control flow, update the nearest routed `tasks/codemap.md` in the same change.
-- Content-only edits and behavior-only changes that do not alter those documented relationships do
-  not require CODEMAP churn.
-- At completion, state whether this rule applied and, when it did, verify the relevant CODEMAP
-  headings and path references against the current tree.
+- Update the nearest routed `tasks/codemap.md` when a change alters structure, entrypoints,
+  ownership/responsibilities, or important control flow.
+- Content-only and behavior-only edits that leave those relationships unchanged do not require
+  CODEMAP churn.
+- At completion, state whether this rule applied. When it did, verify the relevant headings and path
+  references against the current tree.
 
 ## Path-specific instructions
 
-Codex loads nested `AGENTS.md` files only from the project root to the directory where the task
-starts; it does not dynamically reload them for a later file edit.
-
-- Every `dev/{name}` may be its own Git repository. Before changing one, read its own
-  `AGENTS.md`; launch or restart Codex from that product root when its local instructions must
-  load automatically. The shared custom agents, skills, and hooks belong to this hub project, so
-  start from the hub root when that complete surface is required. Use the template in
-  `.codex/templates/` when bootstrapping a new product.
-- Preserve user changes in a dirty worktree. Inspect the relevant repository's `git status --short`
-  before broad edits.
-
-## Working rules
-
-- Treat a user request to answer, explain, review, diagnose, or plan as read-only unless it also
-  asks for a change. For requested local changes, make in-scope edits and run non-destructive
-  validation. Ask before destructive actions, external writes, purchases, or material scope
-  expansion.
-- For planned work, trace each changed file to `PLAN.md` and `scope.json`. Record new ideas in
-  `deviations.md` and ask before expanding the intended scope.
-- Lead with evidence. A claim needs a test result, command output, diff, or file reference; call
-  unproven claims unverified.
-- Prefer the smallest defensible implementation. Preserve records, do not invent session IDs or
-  evidence, and never silently weaken a quality or safety requirement.
-
-## Verification
-
-- Native Codex agents, skills, workflows, or hooks:
-  `node .codex/scripts/check-native.mjs`
-- After a native hook registration or configuration change, additionally run
-  `codex --strict-config doctor --summary` after reviewing/trusting the hooks and starting or reloading the task.
-  This host-level diagnostic supplements, but does not replace, the native check command.
-- Claude-only configuration changes:
-  `node .claude/scripts/validate.mjs`
-- Existing Claude harness regression suite:
-  `node --test ".claude/hooks/lib/*.test.js" ".claude/scripts/*.test.mjs"`
-- Product changes: run the product's build, typecheck, lint, and test commands.
+- Codex loads nested `AGENTS.md` files only along the path where a task starts; editing a different
+  directory later does not dynamically load its instructions.
+- Each `dev/{name}` may be an independent Git repository. Read its own `AGENTS.md` before changing it,
+  and start a task from that product root when its local instructions must apply automatically.
+- Keep product-specific task state in that product's `tasks/` directory. The hub human journal stays
+  at the workspace root.
