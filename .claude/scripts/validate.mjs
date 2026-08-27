@@ -609,9 +609,14 @@ const INVARIANTS = [
   // whole-file presence pins that used to live here are replaced by the section-scoped,
   // positionally-anchored block at "---- 17.5" below — see that block's header comment for why.
   // ---
-  ['.claude/skills/harness/SKILL.md', /Cycle 3 of a code-review step does not escalate to the user by default/, 'harness "## Quality Gate" must keep the cycle-3 review-only follow-along line (PR-A, tracks quality-loop\'s "## Cycle-3 Carryover")'],
-  ['.claude/skills/harness/SKILL.md', /bugfix's own\s*\n?\s*fix→verify escalation \(the bugfix workflow's step 6, above in this file\) is unchanged/, 'harness "## Quality Gate" must keep stating that the cycle-3 carve-out governs code-review steps only — bugfix\'s own fix→verify escalation (bugfix workflow step 6) must not silently start following the same review-only carve-out (fusion-cycle1 F16: referent named explicitly, was the ambiguous "step 6 above"; phrased without a literal "### bugfix" substring so this pin does not itself trip the "### bugfix" anchor-count===1 check in section 17 below)'],
-  ['.claude/agents/reviewer.md', /BLOCK verdict, under any target, the same as REQUEST_CHANGES plus immediate user escalation — do not wait for cycle 3\./, 'reviewer.md must keep the BLOCK-severity early-escalation rule — the PR-A cycle-3 carryover rule (2026-08-27 ruling) must not silently disable it; previously unpinned in validate.mjs'],
+  // Cycle-3 fix pass (MEDIUM / F11 remainder, cycle-2 send-back): these 3 pins were still hard-
+  // single-space literals — only the gap after "bugfix's own" had been normalized. An innocent
+  // re-wrap of the source line (different width, or a manually moved line break) shifts a space
+  // to a newline and false-fires. Normalize every inter-word gap to \s+ (matches any run of
+  // whitespace, newlines included), same idiom as section 17.5 below.
+  ['.claude/skills/harness/SKILL.md', /Cycle\s+3\s+of\s+a\s+code-review\s+step\s+does\s+not\s+escalate\s+to\s+the\s+user\s+by\s+default/, 'harness "## Quality Gate" must keep the cycle-3 review-only follow-along line (PR-A, tracks quality-loop\'s "## Cycle-3 Carryover")'],
+  ['.claude/skills/harness/SKILL.md', /bugfix's\s+own\s+fix→verify\s+escalation\s+\(the\s+bugfix\s+workflow's\s+step\s+6,\s+above\s+in\s+this\s+file\)\s+is\s+unchanged/, 'harness "## Quality Gate" must keep stating that the cycle-3 carve-out governs code-review steps only — bugfix\'s own fix→verify escalation (bugfix workflow step 6) must not silently start following the same review-only carve-out (fusion-cycle1 F16: referent named explicitly, was the ambiguous "step 6 above"; phrased without a literal "### bugfix" substring so this pin does not itself trip the "### bugfix" anchor-count===1 check in section 17 below)'],
+  ['.claude/agents/reviewer.md', /BLOCK\s+verdict,\s+under\s+any\s+target,\s+the\s+same\s+as\s+REQUEST_CHANGES\s+plus\s+immediate\s+user\s+escalation\s+—\s+do\s+not\s+wait\s+for\s+cycle\s+3\./, 'reviewer.md must keep the BLOCK-severity early-escalation rule — the PR-A cycle-3 carryover rule (2026-08-27 ruling) must not silently disable it; previously unpinned in validate.mjs'],
 ];
 for (const [relPath, must, why] of INVARIANTS) {
   const p = path.join(ROOT, relPath);
@@ -1354,6 +1359,15 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
       if (!/run it as an observation point too — M1\/M2 per executor\.md's Detection power duty/.test(bugfixSection[0]))
         fail('.claude/skills/harness/SKILL.md "### bugfix" step 4 is missing the observation-point M1/M2 pointer — mutation-observation-points T4.4 fix pass (K1 pin 1 / O5)');
 
+      // Cycle-2 fix pass (HIGH-2 / PLAN.md Observation Point 6, cycle-2 send-back): PLAN.md's
+      // Observation Points roster requires step 6's OWN escalation regulation to survive — before
+      // this pin, only the "## Quality Gate" bullet asserting bugfix is unchanged was pinned (see
+      // the boundary-statement pin below), never the rule it describes. Inverting step 6 itself
+      // (e.g. "carry the remaining findings to the backlog and proceed", or "proceed without
+      // consulting the user") left every existing pin green — probe OP6.
+      if (!/If the 3rd cycle still fails, surface to the user \*\*exactly once\*\* via a single batched `AskUserQuestion`/.test(bugfixSection[0]))
+        fail('.claude/skills/harness/SKILL.md "### bugfix" step 6 is missing the "surface to the user exactly once" escalation regulation — cycle-2 send-back HIGH-2 (PLAN.md Observation Point 6)');
+
       // T4.4 tightening pass (A2): count===1 decoy-anchor hardening + the negative-invariant
       // neutering-marker guard, same rationale/mechanism as sections 14-16 (red-team P6 proved a
       // decoy re-host of the pinned sentence into an earlier "### bugfix"-headed span works here
@@ -1505,6 +1519,19 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
         fail('.claude/skills/quality-loop/SKILL.md Loop Contract step [4] is missing BLOCK\'s precedence over the CRITICAL fix-pass trigger — fusion-cycle1 F6');
       if (NEUTER_MARKER_RE.test(s4))
         fail('.claude/skills/quality-loop/SKILL.md Loop Contract step [4] contains a neutering marker (withdrawn/repealed/retired/not-operative/撤回済み, case-insensitive) inside the pinned operative span — fusion-cycle1 F1/F2');
+
+      // Cycle-3 fix pass (HIGH-1, cycle-2 send-back): count===1 decoy-anchor guard, same idiom as
+      // the other 11 sites in this file. Without it, a verbatim decoy copy of this step-4 block
+      // hosted earlier in the file (e.g. right after "## Loop Contract") hijacks match()'s
+      // extraction: match() with no /g flag always returns the FIRST occurrence, and the lazy
+      // [\s\S]*? then runs from that decoy all the way to the real "## Cycle-3 Carryover"
+      // heading, sweeping the (now-reverted) real step [4] text into the SAME captured span. Every
+      // .test(s4) check above only asks whether its phrase is present ANYWHERE in that span, so
+      // the decoy's correct wording satisfies them all even while the real operative text further
+      // down has been reverted to the pre-change wording — this is exactly the D1 probe.
+      const step4AnchorCount = (qlText.match(/\[4\] Re-review \(→ \[2\]\)/g) || []).length;
+      if (step4AnchorCount !== 1)
+        fail(`.claude/skills/quality-loop/SKILL.md: expected exactly 1 occurrence of the "[4] Re-review (→ [2])" anchor, found ${step4AnchorCount} — a decoy block could hijack which span gets checked (cycle-2 send-back HIGH-1)`);
     }
 
     // (b) Cycle-3 Carryover section, captured on its own (heading to the next "## " heading —
@@ -1563,13 +1590,42 @@ const NEUTER_MARKER_RE = /\b(?:withdrawn|repealed|retired|not-operative)\b|撤�
     // where Stall handling hands off to Cycle-3 Carryover.
     const stallSection = qlText.match(/## Stall handling \(different-angle retry, cost-flat\)[\s\S]*?(?=\n## Recurring-Category Tally)/);
     if (!stallSection) fail('.claude/skills/quality-loop/SKILL.md: "## Stall handling (different-angle retry, cost-flat)" section not found (or unterminated before "## Recurring-Category Tally") — fusion-cycle1 F5');
-    else if (!/does not extend to bugfix's own internal fix→verify loop/.test(stallSection[0]))
-      fail('.claude/skills/quality-loop/SKILL.md "## Stall handling" is missing the F5 scope clause (does not extend to bugfix\'s fix→verify loop) — fusion-cycle1 F5');
+    else {
+      if (!/does not extend to bugfix's own internal fix→verify loop/.test(stallSection[0]))
+        fail('.claude/skills/quality-loop/SKILL.md "## Stall handling" is missing the F5 scope clause (does not extend to bugfix\'s fix→verify loop) — fusion-cycle1 F5');
+
+      // Cycle-3 fix pass (HIGH-1, cycle-2 send-back): count===1 decoy-anchor guard, same idiom as
+      // step4Section above and the other 11 sites in this file — this section previously had none
+      // (probe D3: a decoy "## Stall handling (...)" heading placed earlier sweeps the real,
+      // inverted stall rule into the same first-match capture and the presence check above stays
+      // green off the decoy alone).
+      const stallAnchorCount = (qlText.match(/## Stall handling \(different-angle retry, cost-flat\)/g) || []).length;
+      if (stallAnchorCount !== 1)
+        fail(`.claude/skills/quality-loop/SKILL.md: expected exactly 1 occurrence of the "## Stall handling (different-angle retry, cost-flat)" anchor, found ${stallAnchorCount} — a decoy heading could hijack which span gets checked (cycle-2 send-back HIGH-1)`);
+    }
 
     // (c) Output Format block — F3 (section-scoped pin) + F4 (unconditional unreviewed-CRITICAL
     // field, PROCEEDED token carries it, third rendering for "ran, 0 items carried").
-    const outputFormatSection = qlText.match(/## Output Format[\s\S]*$/);
-    if (!outputFormatSection) fail('.claude/skills/quality-loop/SKILL.md: "## Output Format" section not found — fusion-cycle1 F3/F4');
+    // Cycle-3 fix pass (HIGH-1, cycle-2 send-back): (i) count===1 decoy-anchor guard, same idiom
+    // as the other 11 sites (probe D2: a decoy "## Output Format" heading elsewhere in the file
+    // hijacks match()'s first-match extraction the same way D1/D3 do). (ii) Stop matching
+    // heading-to-EOF unconditionally — the shape this file's own comment at :1368-1380 (above)
+    // documents as known-bad and already fixed for qualityGateSection. This section can't reuse
+    // that fix's exact heading-lookahead bound (`(?=\n#{1,6} |$)`) verbatim, though: its entire
+    // operative body is ONE fenced ```markdown block, and that block's own EXAMPLE content
+    // includes a literal "## Quality Loop Report: [deliverable]" line — a heading-lookahead bound
+    // would misfire on that literal example heading and truncate the capture before the real
+    // PROCEEDED/carryover fields below it, breaking this check on the real, unmutated file.
+    // Bounding to the closing code-fence delimiter instead captures the whole operative block
+    // (this section has exactly one fenced block, so the first "```" after the opening one is
+    // unambiguously the close) and still excludes anything appended after the fence — e.g. a
+    // re-hosted "## Appendix" copy of the deleted clause — closing the same unbounded-to-EOF gap
+    // without being tripped by the block's own example heading.
+    const outputFormatAnchorCount = (qlText.match(/## Output Format/g) || []).length;
+    if (outputFormatAnchorCount !== 1)
+      fail(`.claude/skills/quality-loop/SKILL.md: expected exactly 1 occurrence of the "## Output Format" anchor, found ${outputFormatAnchorCount} — a decoy heading could hijack which span gets checked (cycle-2 send-back HIGH-1)`);
+    const outputFormatSection = qlText.match(/## Output Format[\s\S]*?```[\s\S]*?```/);
+    if (!outputFormatSection) fail('.claude/skills/quality-loop/SKILL.md: "## Output Format" section not found (or its fenced code block is unterminated) — fusion-cycle1 F3/F4');
     else {
       const of = outputFormatSection[0];
       if (!/Cycle-3\s+CRITICAL\s+fix\s+unreviewed:\s*N\/A[\s\S]{0,60}\|\s*\n?\s*yes\s*\|\s*no/.test(of))
