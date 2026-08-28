@@ -111,11 +111,16 @@ Steps with no dependencies run in parallel:
   the authority allowlist is native `fable | opus` (CLAUDE.md §2 ¹; quality-loop is the operational SOT):
   Opus by default, or Fable only while the CLAUDE.md §1.11 gate is ON; lower tiers,
   unknown/external authority ids, mixed standing pairs, and silent fallback are forbidden; send-back →
-  fix → re-review runs for up to 3 cycles
+  fix → re-review runs for up to 3 cycles (cycle 3 differs — see the cycle-3 review-only bullet below)
 - plan/design/architecture authority reviews (planner self-review, and `reviewer target:architecture` —
   e.g. in the refactor/research paths) and normal code review (`reviewer target:code`) additionally
   follow quality-loop's Authority Co-Review: a same-tier red-team second seat always attends cycle 1,
   and when the trigger condition is met an external co-reviewer joins as a third seat; if unmet, the
   red-team second seat still attends — only the external third seat is skipped
 - **bugfix** runs its fix→verify as the same Loop Contract: debugger/executor worker, verifier as the evidence gate, max 3 cycles, **internal** (no user between cycles); the regression-test step (4) additionally covers any observation point the fix touches (M1/M2, executor.md Detection power)
-- Not APPROVE within 3 cycles → escalate to the user
+- Cycle 3 of a code-review step does not escalate to the user by default: it runs
+  **review-only** per quality-loop's `## Cycle-3 Carryover` — CRITICAL gets a single, unreviewed
+  fix pass, HIGH-and-below carries into `tasks/todo.md` Backlog, and the flow proceeds to the
+  verifier step. A BLOCK verdict still escalates immediately at any cycle, unaffected by this
+  (reviewer.md "BLOCK severity"). This bullet governs the code-review steps only — bugfix's own
+  fix→verify escalation (the bugfix workflow's step 6, above in this file) is unchanged
