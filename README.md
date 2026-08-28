@@ -1,6 +1,6 @@
 # my-claude-base v2 (Claude Code / Codex)
 
-Claude Code と OpenAI Codex/GPT の両方で使える開発ハーネス（作業環境一式）です。Claude Code は `CLAUDE.md` と `.claude/`、Codex は `AGENTS.md`・`.codex/`・`.agents/skills/` という、それぞれ独立した実行面を使います。Claude Code では hooks と権限設定が動き、Codex では Main agent・sandbox・承認・最小限の skills と native hooks を使います。
+Claude Code と OpenAI Codex/GPT の両方で使える開発ハーネス（作業環境一式）です。Claude Code は `CLAUDE.md` と `.claude/`、Codex は `AGENTS.md`・`.codex/`・`.agents/skills/` という、それぞれ独立した実行面を使います。Claude Code では hooks と権限設定が動き、Codex では Main Sol が調査・設計・計画・レビューを担い、Luna Max が実装し、sandbox・承認・最小限の skills と native hooks を使います。
 
 ---
 
@@ -25,15 +25,17 @@ codex    # Codex: AGENTS.md、.codex/hooks.json、.agents/skills/ が読み込�
 
 ### 必要な分だけ計画して自走させられる
 
-Claude Code は既存の `/plan`、Codex は Main agent の通常の会話内計画を使います。Codex に専用 orchestrator や scope-lock はなく、調査・計画・実装・テスト・差分確認を Main agent が連続して担当します。既存の `PLAN.md` / `scope.json` を使う作業では、その計画へ差分を照合します。
+Claude Code は既存の `/plan`、Codex は Main Sol の通常の会話内計画を使います。Codex に専用 orchestrator や scope-lock はなく、Main Sol が調査・設計・計画を行い、1つの Luna Max が実装し、Main Sol がreview・検証します。既存の `PLAN.md` / `scope.json` を使う作業では、その計画へ差分を照合します。
 
 ```
-依頼 → Main agent が必要な調査・計画・実装・検証を担当
+依頼 → Main Sol が調査・設計・計画
+     → 1つの Luna Max が実装
+     → Main Sol が差分をreview・検証 → 必要なら同じ Luna Max が修正
      → 構造変更なら tasks/codemap.md を同じ変更で更新
      → 区切りで `/save-session`（Claude）または `$save-session`（Codex）
 ```
 
-- 1〜2ファイルの小さな修正は、重い計画成果物を作らずに進められます。
+- 小さな修正も難しい修正も Luna Max に渡します。難しい判断・設計は Main Sol が先に決めます。
 - 計画のない追加機能や依存関係は「動くおまけ」ではなく scope drift として報告します。
 - hooks・設定・validator・provider adapter を変える場合は、ユーザーがハーネス自体を対象に含めたことを確認します。
 - プロジェクト構造・entrypoint・所有/責務・重要な制御フローが変わるときは、同じ変更で現在の作業コンテキストにルーティングされた最寄りの `tasks/codemap.md` を更新します。内容だけの編集や、その関係を変えない振る舞いだけの変更では地図を無駄に更新せず、完了時に適用可否と見出し・パスの正確さを確認します。
@@ -59,23 +61,31 @@ Claude Code と、信頼済みの native hooks を読み込んだ Codex では�
 
 再開の手順はシンプルです。Claude Code は同じフォルダで `claude -r`、Codex は同じ task を開くか新しい task を開始します。各 provider の専用 SessionStart hook が有効なら記録を注入し、いずれでも resume workflow は記録と git の実際の状態を突き合わせて現在地を確認します。
 
-### Codex は Main agent が仕事を完結させる
+### Codex は Main Sol が決め、Luna Max が実装する
 
-通常の Codex 作業は Main agent が直接行います。サブエージェントは、独立コンテキストが明確に効く調査、並列化できる読み取り、独立レビュー、セキュリティ観点、明確に分離できる実装を依頼された場合だけ任意で使います。初期構成に standing agents、固定 role chain、quality loop は置きません。
+Codex の流れは、Main Sol が依頼を調査し、根本原因・要件・設計・実装方針を決めてから、1つの Luna Max が `gpt-5.6-luna` / `max` で bounded handoff の範囲を実装し、Main Sol が差分・要件適合・検証をreviewする形です。問題があれば同じ Luna Max thread に戻して修正し、Main Sol が再reviewします。小さな変更も難しい変更もこの所有分担を変えません。
 
-Claude Code 側の agents・quality loop・model gate は `.claude/` に残る provider 固有機能です。Codex はそれらを継承せず、必要な委任だけ native collaboration で行います。
+Luna、custom agent、model/effort、spawn が失敗したら Main Sol は停止して失敗理由と no-fallback を報告し、Main が実装を引き取ることはありません。Codex に standing chain はなく、追加の委任は独立した読み取り調査・レビュー・セキュリティ分析などに限ります。
+
+Claude Code 側の agents・quality loop・model gate は `.claude/` に残る provider 固有機能です。Codex はそれらを継承せず、実装writerは `.codex/agents/luna-max.toml` に固定します。
+
+Product Design/UI/UX、Skill、Pluginの作業もこの分担を変えません。Main Solがcurrent-state/UX分析、information architecture/design判断、実装計画を担い、Luna MaxがReact/CSS/component/layout/responsive/accessibility/testを編集し、Main Solがbrowser/screenshot/UX/diff/final verificationを行います。
 
 ### Claude Code ではモデルを使い分けて外部へも振れる
 
 native モデル名（fable / opus / sonnet / haiku / inherit）以外を指定すると、clover（外部モデル中継。リポジトリ直下 `clover/` の自己完結サブプロジェクト）経由で他社のモデルも呼び出せます。native Fable は relay に依存せず、外部 alias へ変換されません。別名の正本は `clover/models.json` で、native 名との衝突を防ぐため `fable` で始まる alias は引き続き禁止です。外部連携は `.claude/.relay-status` が `ON` のときだけ有効になり、既定は `OFF`（事故防止のため、意図せず外部へ出ないようにしています）。`OFF` のあいだは中継サーバーそのものが起動せず、接続先（`ANTHROPIC_BASE_URL`）も書き換わりません。中継が立っていると claude.ai 側のバックエンドと対で動く機能（リモコンとそのスラッシュコマンド）が使えなくなるため、切ってあるときは本当に何も立たないようにしてあります。
 
+ただしこの仕組みが止められるのは「起動先モデルが分かるサブエージェントの起動」だけです。あなた自身のセッションが Fable で動いている場合（`/model` で選んだモデル）は対象外ですし、モデル名を指定せずに起動してセッションのモデルがそのまま引き継がれた場合は、この仕組みから見えないことがあります。
+
 ### Claude Code と Codex のワークフローが独立している
 
 **Codex native surface**
 
-- **Main-first** — 調査・計画・実装・テスト・差分確認は通常 Main agent が直接担当する。初期構成に `.codex/agents/` と `.codex/workflows/` は置かない。
-- **skills（2種）** — **$save-session** と **$resume-session** だけを `.agents/skills/` から検出する。計画・実装・レビュー・commit・PR は通常会話と native tool で扱う。
-- **optional delegation** — サブエージェントは独立コンテキストや並列性に明確な価値がある場合だけ使い、固定 role chain や自動 quality loop は作らない。
+- **Sol-led / Luna-implemented** — Main Sol が調査・設計・計画・要件・リスク判断とreviewを担い、Luna Max が小さな変更も難しい変更も実装する。実装の既定は `gpt-5.6-luna` / `max`。
+- **native implementation agent** — `.codex/config.toml` がsubagentの既定値を設定し、`.codex/agents/luna-max.toml` が唯一のCodex custom implementation agentを定義する。
+- **single-writer correction loop** — Main Sol → 1つの Luna Max → Main Sol のreview・検証 → 必要なら同じ Luna Max、という単一writerの流れ。standing role chain、`.codex/roles/`、`.codex/workflows/` は置かない。Lunaの失敗時は停止し、Mainの実装fallbackはしない。
+- **skills（2種）** — **$save-session** と **$resume-session** だけを `.agents/skills/` から検出する。これらは保存・再開の narrow workflow であり、実装を開始しない。
+- **optional read-only delegation** — 独立コンテキストの調査・読み取りreview・security分析などに限る。実装writerを増やさず、固定 role chain や自動 quality loop は作らない。
 - **native records** — 人間向けの追記専用記録は `tasks/journal/YYYY-MM/DD.md` が正本。旧 `tasks/journal/YYYY/MM/DD.md` は読むだけの互換経路で、ライフサイクルと編集パスの機械イベントは `.machine/YYYY-MM/DD.log` に分離する。
 - **native hooks** — SessionStart は state・最新人間レポート・TODO の Now・CODEMAP見出しを8 KiB以内で渡す。PreToolUse は狭い安全境界を検査し、PostToolUse は編集パスだけを機械記録する。自動整形・書き換え・任意のshellコマンド記録はしない。
 - **path guidance** — ルートと対象ディレクトリの `AGENTS.md` を使う。Codexは開始時のパスまでしか自動収集しないため、別の独立製品へ移るときは新しい task を開始する。独立製品のルートはローカル指針のみを受け取り、共通agents/skills/hooksはハブルートから開始したtaskで使う。
@@ -109,7 +119,11 @@ native モデル名（fable / opus / sonnet / haiku / inherit）以外を指定�
 CLAUDE.md            … Claude Code 用の運用ルール
 AGENTS.md            … Codex/GPT 用の独立した運用ルール・入口
 .agents/skills/      … Codex の session 保存・再開 skills 2種
-.codex/              … Codex native hooks と最小 validator
+.codex/
+  config.toml         … Luna Max（gpt-5.6-luna / max）の既定値
+  agents/luna-max.toml … 唯一のCodex implementation agent
+  hooks.json・hooks/  … Codex native hooks
+  scripts/            … check-native.mjs（native surface validator）
 .claude/
   agents/            … サブエージェント定義 7体
   skills/            … スキル 15種（上記）

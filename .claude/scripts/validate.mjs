@@ -399,7 +399,6 @@ const WRAP_SKILL_REF = [/(?:^|[^\w/])\/wrap\b/, 'there is no /wrap skill — the
 const FORBIDDEN = [
   [/\bcode-reviewer\b/, 'agent "code-reviewer" does not exist (use reviewer target: code)'],
   [/\bplan-(lite|full)\b/, 'skill plan-lite/plan-full was merged into "plan"'],
-  [/\.codex\//, 'Codex CLI config paths must not be referenced by harness docs'],
   [/\.claude\/clover/, 'clover lives at the repo root (clover/) in v2 — the .claude/clover path is dead'],
   [/\bCLAUDE_JP\b/, 'CLAUDE_JP.md was removed'],
   [/\baddons?\b/, 'addons subsystem was removed (intentional) — do not reference it'],
