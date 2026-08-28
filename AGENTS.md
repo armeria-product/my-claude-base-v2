@@ -4,18 +4,49 @@ This repository has separate Claude Code and Codex surfaces. Codex follows this 
 repository-local `.codex/` and `.agents/` files; it does not inherit `.claude/**` as an execution
 contract.
 
-## Main-first operation
+## Sol-led / Luna-implemented operation
 
-- Main Codex owns ordinary investigation, planning, implementation, tests, and diff review.
-- Finish normal work in the current task. Do not create a subagent merely because work is large,
-  difficult, spans many files, or needs build, lint, or test commands.
-- Use subagents only when independent context materially helps: parallel independent research,
-  read-only review separate from Main's implementation, adversarial security analysis, or clearly
-  separable large work. Do not create duplicate work or a standing Planner/Executor/Reviewer/
-  Verifier chain.
+- Main Sol owns user interaction, requirements clarification, investigation and root-cause
+  analysis, architecture and design, difficult reasoning, implementation strategy/planning/
+  decomposition, risk/dependency/migration/compatibility/security/performance/debugging decisions,
+  the Luna handoff, diff/code review, and final verification.
+- Luna Max owns actual artifact changes: source, test, and configuration code; refactors;
+  repetitive or mechanical edits; file creation, moves, and renames; test/lint/typecheck/build
+  fixes; generated files; and implementation-adjacent documentation.
+- Every artifact-changing request dispatches the project custom agent `luna_max`
+  (`gpt-5.6-luna`, `max`) after Main Sol's bounded handoff. Main Sol must not directly edit
+  source, tests, configuration, or deliverable artifacts; read-only diagnostics and verification
+  remain allowed.
+- Difficulty never changes ownership. For hard work, Sol decides the design, invariants,
+  algorithm, and targets, Luna edits, and Sol reviews. Small edits also go to Luna. Read-only and
+  diagnostic work remains Main Sol's responsibility: reads, searches, status, diffs, tests, builds,
+  lint, logs, browser checks, and screenshots.
+- Product Design, UI/UX, Skill, and Plugin work do not change ownership. Main Sol owns current-state
+  and UX analysis, information architecture/design decisions, and the implementation plan. Luna Max
+  owns React/CSS/component/layout/responsive/accessibility/test edits. Main Sol owns browser,
+  screenshot, UX, diff, and final verification.
+- Before dispatching Luna, Main Sol must provide a bounded handoff containing the purpose,
+  cause/current evidence, targets, non-targets, implementation approach, invariants, edge cases,
+  error handling, backward-compatibility requirements, required tests, and completion criteria.
+  Luna must report missing or contradictory design needed for correctness instead of inventing
+  product-level architecture.
+- Use one implementation Luna at a time and reuse that same Luna thread for corrections. There is
+  no standing Planner/Executor/Reviewer/Verifier chain. Extra agents are limited to independent
+  parallel research, separate-context read-only review, adversarial security analysis, or truly
+  independent units of work; they do not create duplicate writers.
+- If Luna, the custom agent, its model/effort, or spawning fails, Main Sol stops and reports what
+  failed, why, the intended model `gpt-5.6-luna` and effort `max`, and that no Main implementation
+  fallback occurred. Main Sol must never silently take over artifact edits.
+- Main Sol's mandatory review covers `git diff`, requirements/design match, unrelated changes,
+  regressions, edge and error handling, security/performance, coverage, and build/lint/typecheck/
+  test results. Problems mean Sol redesigns the correction, the same Luna edits it, and Sol
+  re-reviews it.
 - This repository does not force the user's global model or reasoning settings. The intended Main
-  baseline is GPT-5.6 Sol with xhigh reasoning and Fast mode enabled by the user.
-- Do not recursively launch `codex exec` from a Codex task. Use the current task and native tools.
+  baseline remains GPT-5.6 Sol with xhigh reasoning and Fast mode enabled by the user; the project
+  Luna implementation default is `gpt-5.6-luna` with `max` effort.
+- `$save-session` and `$resume-session` remain their narrow save/resume workflows and do not start
+  implementation. Do not recursively launch `codex exec` from a Codex task; use the current task
+  and native tools.
 
 ## Safety boundary
 
@@ -35,7 +66,7 @@ contract.
 ## Working and verification rules
 
 - Prefer the smallest defensible implementation. Do not add compatibility layers or workflow files
-  for behavior Main Codex already provides.
+  beyond the Sol-led/Luna-implemented contract already provided here.
 - Lead with evidence. Support completion claims with relevant command output, tests, diffs, or file
   references; label anything else unverified.
 - Run proportionate build, typecheck, lint, and test commands for product changes, then inspect the
