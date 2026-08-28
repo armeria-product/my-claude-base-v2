@@ -1,4 +1,4 @@
-// Shared git-worktree helpers (used by block-pr-without-todo.js and scope-decision.js).
+// Shared git-worktree helpers (used by block-pr-without-todo.js and cmd-write-guard.js).
 //
 // isWithinRepoTree / resolveGitDir / resolveCommonGitDir were moved here verbatim from
 // block-pr-without-todo.js (2026-08-07 origin; see that file's history) — same threat model,
@@ -73,10 +73,10 @@ function resolveCommonGitDir(gitDir, repoRoot) {
   return resolved;
 }
 
-// Per-process memoization of resolveGitDir(root): decide() (scope-decision.js) can run this
-// lookup once per Edit/Write and once per extracted Bash write-target — several times in one
-// hook invocation for a single multi-target command (cmd-write-guard.js loops decide() over
-// every extracted target). Each hook invocation is its own short-lived Node process, so a
+// Per-process memoization of resolveGitDir(root): cmd-write-guard.js's isStateDir()/
+// isFableStatusFile() can run this lookup once per extracted Bash write-target — several times
+// in one hook invocation for a single multi-target command. Each hook invocation is its own
+// short-lived Node process, so a
 // module-level Map is both the cheapest cache available AND cannot go stale across invocations
 // (the process exits and the cache with it) — nothing needs to invalidate it. Within one process
 // `root` never changes mid-run and the on-disk git structure cannot change under a hook that is
@@ -189,17 +189,13 @@ function isLinkedWorktreeOf(root, absPath) {
 }
 
 // PR-B (2026-08-28, plans/parallel-dev-speedup/PLAN.md): rebase a path that lives inside a linked
-// worktree of this repo onto the equivalent path in the main tree, so allow/forbid (or any other
-// prefix-based judgment) treats it exactly as it would the identical file in the main tree —
-// regardless of where that worktree sits on disk. Before this rebase, a worktree parked under
-// tmp/ fell through the tmp/** always-allow rule in scope-decision.js untouched (a forbidden file,
-// or the enforcement chain itself, both wrongly ALLOWed), and one parked outside the repo hit the
-// blanket 'outside-project' deny regardless of the actual file. Shared by scope-decision.js's
-// decide() and cmd-write-guard.js's isStateDir()/isFableStatusFile() (2026-08-28 follow-up: those
-// two compared the RAW path against <root>/.claude/state and <root>/.claude/.fable-status, so a
-// worktree-internal write to either was invisible to them regardless of lock state — this is the
-// one fix for both). Any resolution failure returns `p` unchanged — fail-open, the path is then
-// judged exactly as it was before this function existed.
+// worktree of this repo onto the equivalent path in the main tree, so a prefix-based judgment
+// treats it exactly as it would the identical file in the main tree — regardless of where that
+// worktree sits on disk. Used by cmd-write-guard.js's isFableStatusFile() (2026-08-28 follow-up:
+// it compared the RAW path against <root>/.claude/.fable-status, so a worktree-internal write to
+// it was invisible to that comparison regardless of the raw spelling used). Any resolution
+// failure returns `p` unchanged — fail-open, the path is then judged exactly as it was before
+// this function existed.
 function rebaseIntoMainTree(root, p) {
   try {
     const abs = path.resolve(root, String(p));

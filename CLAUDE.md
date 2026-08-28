@@ -16,8 +16,8 @@ Multi-project hub. Each product lives under `dev/{name}/` (own git repo, own `ta
 
 - `tasks/` — todo.md / lessons.md / session-state.md (+ `history/` = frozen pre-2026-08-13 archive, never rotated or added to) + `journal/`
 - `tasks/journal/YYYY-MM/DD.md` — append-only work journal: hooks write machine lines; /save-session appends the human report. **Never rotate or delete journal entries.** ONE global timeline: always at the workspace root's `tasks/journal/` — the dev-mode routing below never applies to it.
-- `plans/{slug}/` — PLAN.md + scope.json (+ deviations.md) produced by /plan
-- `.claude/` — agents / skills / commands / rules / hooks / scripts, plus `state/` = **hook-owned runtime state (scope lock). Claude never writes there; permissions.deny + cmd-write-guard enforce it.**
+- `plans/{slug}/` — PLAN.md (+ deviations.md) produced by /plan
+- `.claude/` — agents / skills / commands / rules / hooks / scripts
 - `clover/` — external-model relay, a self-contained code sub-project at the repo root (routing convention: `.claude/skills/relay/SKILL.md`)
 - **Temp files**: `tmp/` under the current work folder (root or `dev/{name}/`), always untracked. Never pass POSIX `/tmp/...` paths to Windows-native tools.
 - **Dev Mode Routing**: while editing `dev/{name}/**`, `tasks/...` and `plans/...` paths in later sections read as `dev/{name}/...` (SOT: `.claude/rules/session-persistence.md`).
@@ -56,10 +56,10 @@ Native model names (`fable`/`opus`/`sonnet`/`haiku`/`inherit`) pass through unch
 ### 1.10 Critical Partnership — Challenge the Request
 - Treat development requests as **hypotheses, not orders**. Product-shaped work → research the domain (comparables, table-stakes, complaints) and volunteer gap proposals before being asked; small requests → verify premises only.
 - **Objections require evidence** (facts, measurements, comparisons) plus a concrete alternative. The user rules; record overruled objections in `Objections & Rulings`.
-- Gap proposals await the user's ruling — **never fold them into scope or code without one** (§1.7 governs implementation unchanged). While a scope lock is armed, out-of-scope ideas go to `plans/{slug}/deviations.md` and are proposed at /save-session — never implemented (§7).
+- Gap proposals await the user's ruling — **never fold them into scope or code without one** (§1.7 governs implementation unchanged). Out-of-scope ideas found mid-implementation go to `plans/{slug}/deviations.md` and are proposed at /save-session — never implemented on the spot (§7).
 
 ### 1.11 Fable ON/OFF Gate
-Fable usage spiked cost in a single day (2026-08-06), so the authority frontmatter default is now Opus (§2). Fable may be used only while `.claude/.fable-status` holds exactly the word `ON` (trim + case-insensitive; missing = OFF; gitignored and machine-local, same convention as `.relay-status` §1.8). The file is the user's to edit by hand (ruling 2026-08-06): Claude only reads it and reports its state — no slash command, no new state directory, and Claude cannot write it even via the shell (`cmd-write-guard.js` denies it, same protection as `.claude/state`). If Fable is wanted while the switch is OFF, Claude asks the user to edit `.claude/.fable-status` themselves. While the switch is OFF, `block-fable-when-off.js` denies every subagent dispatch whose model name is visible in the dispatch and resolves to Fable in any spelling, authority roles and non-authority roles alike — not only planner/reviewer; see Known limits below for what stays outside its reach.
+Fable usage spiked cost in a single day (2026-08-06), so the authority frontmatter default is now Opus (§2). Fable may be used only while `.claude/.fable-status` holds exactly the word `ON` (trim + case-insensitive; missing = OFF; gitignored and machine-local, same convention as `.relay-status` §1.8). The file is the user's to edit by hand (ruling 2026-08-06): Claude only reads it and reports its state — no slash command, no new state directory, and Claude cannot write it even via the shell (`cmd-write-guard.js` denies it). If Fable is wanted while the switch is OFF, Claude asks the user to edit `.claude/.fable-status` themselves. While the switch is OFF, `block-fable-when-off.js` denies every subagent dispatch whose model name is visible in the dispatch and resolves to Fable in any spelling, authority roles and non-authority roles alike — not only planner/reviewer; see Known limits below for what stays outside its reach.
 **Known limits, always disclosed together wherever this gate is described**: (a) the user's own session model (`/model`) cannot be gated at all — no hook observes it; (b) a dispatch that omits an explicit model and inherits the session's model instead of naming one may be invisible to this hook (unverified). This gate covers subagent dispatches whose model is observable — never state or imply it covers every route to Fable.
 
 ### 1.12 Deliberation Gate — Reports From a Delegated Worker
@@ -87,7 +87,7 @@ Design the dispatch before writing its prose — conductor and workers alike, an
 
 - The conductor (main session) delegates, coordinates, integrates, and decides — it **never writes code or non-trivial deliverables itself**. Direct work allowed: single-point config/doc edits, trivial fixes in non-code files, answers and conversation.
 - One task, one subagent. Investigation/exploration, code review, parallel independent tasks, deep analysis, complex debugging → always delegate. Non-trivial deliverables: workers produce, the authority reviews via `quality-loop`.
-- **Scope handoff (anti-telephone-game): the dispatch prompt passes the PLAN.md and scope.json *paths* — the worker reads them itself. Never paraphrase scope into a dispatch prompt.**
+- **Scope handoff (anti-telephone-game): the dispatch prompt passes the PLAN.md *path* — the worker reads it itself. Never paraphrase scope into a dispatch prompt.**
 
 ### Model Tier Policy (single source of truth)
 
@@ -110,7 +110,6 @@ Design the dispatch before writing its prose — conductor and workers alike, an
 - **Before claiming done**: run the `check` skill (§6.1).
 - **Commit Protocol**: message body in plain Japanese (conventional prefix, trailer keys, identifiers stay English). Important changes add trailers: `Constraint:` / `Rejected:` / `Confidence:` / `Not-tested:`.
 - **Git Workflow — never land on main**: one branch per work unit (`<YYYY-MM-DD>-<topic>` from up-to-date main), commit → push → one PR per branch; **main advances only when the user merges**. `block-direct-to-main.js` enforces. Report git results in plain Japanese (what was saved where, what the user can do next).
-- **Scope lock**: while a plan is locked (§7), every write is hook-gated to the approved scope; out-of-scope diffs are review findings (reviewer's Scope Conformance dimension).
 
 ---
 
@@ -147,11 +146,7 @@ Conclusion first (1-3 lines: what changed, verification result). Then ≤5 one-l
 ## 7. Task Management & Scope Lock
 
 1. **Plan first** (plan skill), check with user, then implement. Track in `todo.md` (1 line per item; Recently Done cap 10). Large-scale ordered steps → `roadmap.md`. Lessons on correction (§4).
-2. **Scope lock lifecycle** (mechanical — hooks own every transition; contracts SOT: `.claude/skills/plan/SKILL.md`):
-   - Planning (the plan skill's heavy path, or native plan mode) ends by writing `plans/{slug}/scope.json` (`status:"proposed"`, with `allow`/`forbid` globs + task list) and telling the user: 「scope.json を書き出しました。『承認』と返信するとロックして自走を開始します（解除は『解除』）」.
-   - The user's whole-message 「承認」 arms `.claude/state/scope-lock.json` via the approve-lock hook — Claude cannot write that file. 「解除」 unlocks. The lock persists across sessions (all sessions sharing this project dir) until replaced or unlocked.
-   - While locked: writes outside `allow` are denied by scope-guard / cmd-write-guard (subagents included; records dirs stay writable). A denied intent → one line in `plans/{slug}/deviations.md`, surfaced as a proposal at /save-session, implemented only after the user re-approves.
-   - The lock implicitly forbids editing the enforcement chain itself (settings.json / hooks / validate.mjs) — **a plan whose target is the harness runs unlocked**.
+2. **Scope lock (廃止)**: the keyword-gated approve/unlock mechanism formerly described here was removed 2026-08-28 (user ruling — the approval-wait step was judged an annoyance). Planning now presents the approach and proceeds straight into implementation; the only stops left are CLAUDE.md §1.5's own boundaries (5+ files touched / security-related / file-or-data deletion / 3 consecutive failures at the same approach).
 3. **Journal**: hooks append every edit / command / delegation / denial to `tasks/journal/YYYY-MM/DD.md` automatically. Append-only, never rotated (§0).
 
 ---

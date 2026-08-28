@@ -96,7 +96,7 @@ Each handoff between agents must include:
 - **Changed files**: list of files changed
 - **Open items**: remaining questions
 - **Notes to the next agent**: recommended next action
-- **Scope handoff**: when a PLAN.md / scope.json exists for this work, the dispatch prompt passes their *paths* — the worker must read PLAN.md/scope.json itself; never paraphrase scope into a dispatch prompt (paraphrase loss is how unapproved implementation creeps in)
+- **Scope handoff**: when a PLAN.md exists for this work, the dispatch prompt passes its *path* — the worker must read PLAN.md itself; never paraphrase scope into a dispatch prompt (paraphrase loss is how unapproved implementation creeps in)
 
 ## Parallel Execution
 Steps with no dependencies run in parallel:
@@ -111,7 +111,6 @@ The same supply convention quality-loop's Loop Contract step [2] already uses to
 - The tree's path travels in the dispatch prompt, exactly as quality-loop step [2] passes a worktree path to a review seat.
 - The conductor integrates each finished diff back into the main tree and removes that worktree once it's merged (`git worktree remove`, same cwd-safety sequencing as step [2]: confirm the shell isn't inside the target first, `cd` to the absolute main root if it is). The worker does neither.
 - If a worktree can't be provisioned (creation fails, no disk, etc.), drop that task to serial dispatch in the main tree — never route two workers into one tree just to keep the parallel plan alive.
-- Parallel dispatch under an armed scope lock is safe because `scope-decision.js` rebases a linked-worktree path onto the repo root before deciding: a path inside a worktree is judged by the same allow/forbid rules as the identical path in the main tree. If that rebasing is ever absent or fails to resolve a path, the path falls outside the lock's allow/forbid check, and parallel dispatch under an armed lock is off until it works again.
 - **A worker measures its own acceptance baseline inside its own tree, before its first edit** — never a number carried over from the main tree or another worker's tree. A linked worktree of this repo is missing `dev/` and `plans/` (both gitignored, so absent from a worktree's checkout), so `validate.mjs` reports a different finding/warning count there than in the main tree. Handing a worker a main-tree ceiling number makes it misjudge its own work.
 - **Product-code verification stays in the main tree**: anything reading `dev/**` (build/type/lint/test for a `dev/{name}` product) needs `dev/`, which a harness worktree doesn't carry — only harness-file verification (`validate.mjs`) travels with one.
 

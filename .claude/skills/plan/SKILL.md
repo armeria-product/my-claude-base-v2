@@ -178,6 +178,8 @@ Output `{base}/PLAN.md`:
 ### Phases
 #### Phase 1: [name]
 - tasks / test gate / dependencies
+### Security Review
+- required: yes/no — <risk area>
 ### Objections & Rulings
 - [G1/O1]: adopted / rejected / overruled — [one-line reason]
 ### Verification Strategy
@@ -207,36 +209,15 @@ derive-from-text rule above applies to it directly — it is **not** routed to e
 `### Observation Points` takes precedence — it is the roster of required behaviors, Verification
 Strategy is how to prove them.
 
-Additionally output `{base}/scope.json` — the machine-readable contract the approve-lock hook transcribes into the scope lock (**required — the heavy path is incomplete without it**):
+`### Security Review` records whether this plan's implementation needs the security track auto-seated (SOT: quality-loop Security Track): set `required: yes` when the planned work touches auth/permissions, payments, API endpoints / external input surfaces, DB/query/migration, secrets, or dangerous operations (shell/eval/external sends) — name the `<risk area>`. When in doubt, set it yes.
 
-```json
-{
-  "slug": "{slug}",
-  "status": "proposed",
-  "proposedAt": "<ISO 8601 now>",
-  "plan": "{base}/PLAN.md",
-  "allow": ["dev/app/src/feature-x/**", "dev/app/tests/feature-x/**"],
-  "forbid": ["dev/app/src/payment/**"],
-  "tasks": ["<1 line per planned task, in order>"],
-  "securityReview": false
-}
-```
+### Plan Handoff
 
-Set `"securityReview": true` when the planned work touches auth/permissions, payments, API endpoints / external input surfaces, DB/query/migration, secrets, or dangerous operations (shell/eval/external sends) — the flag is carried into the lock and **every code review during the locked run auto-seats the security track** (SOT: quality-loop Security Track). When in doubt, set it true — the user cannot interject mid-run.
-
-Glob subset: `**` (any depth) / `*` (one segment) / exact path; a trailing `/` means the whole directory. **Prefer folder-level allow globs** so legitimate helpers and tests fit without re-approval. Records (tasks/ — journal・history 含む — tmp/ and `{base}/` itself) are always writable — don't list them. Never propose `**`-class breadth (a lock that allows everything locks nothing; the hook warns the user). While locked, the enforcement chain (`.claude/settings.json` / hooks / validate.mjs) is implicitly forbidden — a plan whose target is the harness itself must state that it runs **unlocked**.
-
-### Approval Handoff (the user gate that arms the lock)
-
-After self-review APPROVE, present to the user in plain Japanese: the approach in 2-3 lines, the allow/forbid ranges in readable form, the task list — and end with **exactly**:
-
-「scope.json を書き出しました。**『承認』と返信するとロックして自走を開始します**（対象を選ぶ場合は『承認 {slug}』、解除は『解除』）」
-
-Phase 3 starts **only after** the approve-lock hook confirms the lock (it injects a 🔒 confirmation). Any other affirmative phrasing does not arm the lock — if the hook's near-miss notice appears, relay it. If the user replies with change requests instead, revise and re-propose (scope.json stays `"proposed"`).
+After self-review APPROVE, present to the user in plain Japanese: the approach in 2-3 lines, the scope touched, and the task list — then proceed straight into Phase 3. The only stops are CLAUDE.md §1.5's own boundaries (5+ files touched / security-related / deletion / 3 consecutive failures at the same approach) — otherwise no approval wait.
 
 ### Phase 3 — Implement
 For implementation, **use the harness skill's pipeline as the execution engine** (the SOT for the pipeline definition is harness; plan focuses on "deciding" and does not restate the pipeline here). Choose the appropriate type per phase:
-1. Feature implementation → `harness feature` / bug fix → `harness bugfix` / refactor → `harness refactor`. Since planner self-review is done in Phase 2, each phase uses **the executor onward** of the harness pipeline (implementation through verification) as the execution engine. Every dispatch prompt passes the **paths** of `{base}/PLAN.md` and `{base}/scope.json` — the worker reads them itself; never paraphrase the scope into the prompt (CLAUDE.md §2 Scope handoff — paraphrase is how unapproved implementation creeps in)
+1. Feature implementation → `harness feature` / bug fix → `harness bugfix` / refactor → `harness refactor`. Since planner self-review is done in Phase 2, each phase uses **the executor onward** of the harness pipeline (implementation through verification) as the execution engine. Every dispatch prompt passes the **path** of `{base}/PLAN.md` — the worker reads it itself; never paraphrase the scope into the prompt (CLAUDE.md §2 Scope handoff — paraphrase is how unapproved implementation creeps in)
 2. Each phase requires passing the test gate — which includes, for every observation point that phase implements, both the M1 and M2 results (SOT: `executor.md` Detection power). Failure → debug and retry (max 2 times) → if it still fails, stop and report
 3. Before starting a phase designated as a deferral destination, inventory it: list what accumulated there and eject anything outside that phase's original one-line definition — a deferral record says only "→ phase X", so the drift stays invisible until the phase is opened
 4. After all phases complete: **reviewer** (target: code, full-diff review) → address findings → **verifier** (final E2E verification)

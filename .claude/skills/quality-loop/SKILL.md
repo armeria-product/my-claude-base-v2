@@ -218,9 +218,9 @@ A **parallel `reviewer target: security` review** (OWASP Top 10 + agentic threat
    - DB・データ層（SQL/query 組み立て, migration, schema, データ削除・エクスポート）
    - 秘密情報（secrets, API key, .env の取り扱い）
    - 危険操作（shell 実行, eval, デシリアライズ, 外部への送信）
-3. **Plan-time flag** — a heavy-path plan that knows it touches these areas sets `"securityReview": true` in scope.json; approve-lock carries it into the lock, and **every code review during that locked run seats the track** regardless of per-dispatch detection.
+3. **Plan-time flag** — a heavy-path plan that knows it touches these areas records `required: yes` in its PLAN.md `### Security Review` section (plan skill Phase 2 template), and **every code review during that plan's implementation seats the track** regardless of per-dispatch detection.
 
-**Recording is mandatory**: every authority code review states the decision in the Quality Loop Report — seated (auto: <signal> / user / lock flag) or **not seated (no risk signals)** — so a silent skip is visible.
+**Recording is mandatory**: every authority code review states the decision in the Quality Loop Report — seated (auto: <signal> / user / plan flag) or **not seated (no risk signals)** — so a silent skip is visible.
 
 Mechanics: fold ALL tracks into the **single** fusion call — code spec-conformance + code red-team (+ code external when attending) + security = 3-5 inputs; never run a nested code-only fusion first. The security track is a separate review, **not** a lens seat: the 4-seat cap governs the code panel only, and the security review itself takes no co-seats (Round 0 policy below). The conductor acts on the fused JSON: fix all CRITICAL/HIGH, investigate every `blind_spot`, resolve each `contradiction` explicitly; the verifier then attaches concrete evidence (test logs, diffs) per finding addressed.
 
@@ -269,7 +269,7 @@ All thresholds and caps live in one place (the module above) and are re-tuned ag
 - Authority model: Opus | Fable (gate: CLAUDE.md §1.11 ON)
 - Standing pair: Opus×2 | Fable×2 (gate ON); never mixed
 - Co-review: external + red-team (fused, N=3) | red-team only (fused, N=2) | none (reason)
-- Security track: seated (auto: <signal> | user | lock flag) | not seated (no risk signals)
+- Security track: seated (auto: <signal> | user | plan flag) | not seated (no risk signals)
 - Cycles: N / 3
 - Cycle-3 carryover (## Cycle-3 Carryover): N/A (resolved by cycle ≤2) | ran, 0 item(s) carried |
   ran, M item(s) → tasks/todo.md Backlog

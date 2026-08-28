@@ -25,7 +25,7 @@ codex    # Codex: AGENTS.md、.codex/hooks.json、.agents/skills/ が読み込�
 
 ### 必要な分だけ計画して自走させられる
 
-Claude Code は既存の `/plan`、Codex は Main Sol の通常の会話内計画を使います。Codex に専用 orchestrator や scope-lock はなく、Main Sol が調査・設計・計画を行い、1つの Luna Max が実装し、Main Sol がreview・検証します。既存の `PLAN.md` / `scope.json` を使う作業では、その計画へ差分を照合します。
+Claude Code は既存の `/plan`、Codex は Main Sol の通常の会話内計画を使います。Codex に専用 orchestrator はなく、Main Sol が調査・設計・計画を行い、1つの Luna Max が実装し、Main Sol がreview・検証します。既存の `PLAN.md` を使う作業では、その計画へ差分を照合します。
 
 ```
 依頼 → Main Sol が調査・設計・計画
@@ -39,7 +39,6 @@ Claude Code は既存の `/plan`、Codex は Main Sol の通常の会話内計�
 - 計画のない追加機能や依存関係は「動くおまけ」ではなく scope drift として報告します。
 - hooks・設定・validator・provider adapter を変える場合は、ユーザーがハーネス自体を対象に含めたことを確認します。
 - プロジェクト構造・entrypoint・所有/責務・重要な制御フローが変わるときは、同じ変更で現在の作業コンテキストにルーティングされた最寄りの `tasks/codemap.md` を更新します。内容だけの編集や、その関係を変えない振る舞いだけの変更では地図を無駄に更新せず、完了時に適用可否と見出し・パスの正確さを確認します。
-- 永続 scope-lock、共有ロック状態、特別な「承認」「解除」コマンドはありません。
 
 ### Claude Code と Codex で作業記録を自動化し、途中から再開できる
 
@@ -134,7 +133,7 @@ AGENTS.md            … Codex/GPT 用の独立した運用ルール・入口
 clover/              … 外部モデル中継（自己完結のサブプロジェクト・ルート直下）
 docs/                … PDF変換のセットアップ手順などのガイド
 tasks/               … todo / lessons / session-state（+ history/ に2026-08-13以前の版を凍結保存・それ以降は増えない）+ journal/（機械ジャーナル＋レポート・追記専用）— いずれも git 追跡外。journal はどのプロジェクトを触っていても分岐しないルート1本のタイムライン
-plans/               … /plan の成果物（PLAN.md / scope.json / deviations.md・git 追跡外・/plan が初回に生成するため、フレッシュな clone 直後には存在しない）
+plans/               … /plan の成果物（PLAN.md / deviations.md・git 追跡外・/plan が初回に生成するため、フレッシュな clone 直後には存在しない）
 dev/                 … 製品プロジェクトの置き場（各自が独立したgitリポジトリを持てる・git 追跡外なので、最初の製品を置くまでフレッシュな clone 直後には存在しない）
 tmp/                 … 使い捨ての作業ファイル（git 追跡外・使う側が必要時に作るため、フレッシュな clone 直後には存在しない）
 ```
@@ -143,11 +142,11 @@ tmp/                 … 使い捨ての作業ファイル（git 追跡外・使
 
 ## 安全装置の一覧（Claude Code hooks 18本）
 
-全18本のうち、Bash と PowerShell の両方の経路を実際に検査するのは9本です — `settings.json` で `Bash|PowerShell` にマッチャー登録された8本（`block-fable-status-write.js` / `block-destructive-git.js` / `block-direct-to-main.js` / `block-pr-without-todo.js` / `block-destructive-fs.js` / `block-no-verify.js` / `check-commit-safety.js` / `block-secret-read.js`）と、両方を含むより広いマッチャーで動く `journal.js`。残り9本は Edit/Write・Task/Agent・SessionStart・UserPromptSubmit など別イベントに登録されており、コマンド文字列そのものは検査しません。
+全18本のうち、Bash と PowerShell の両方の経路を実際に検査するのは9本です — `settings.json` で `Bash|PowerShell` にマッチャー登録された8本（`cmd-write-guard.js` / `block-destructive-git.js` / `block-direct-to-main.js` / `block-pr-without-todo.js` / `block-destructive-fs.js` / `block-no-verify.js` / `check-commit-safety.js` / `block-secret-read.js`）と、両方を含むより広いマッチャーで動く `journal.js`。残り9本は Edit/Write・Task/Agent・SessionStart・UserPromptSubmit など別イベントに登録されており、コマンド文字列そのものは検査しません。
 
 - **記録系**: `journal.js`（全ツール実行を1行記録） / `session-journal.js`（セッションの境界マーカーを打ち、レポート未生成を検知する） / `session-start.js`（session-state・ジャーナル末尾・todo・lessons を起動時に読み込む）
 - **危険操作を止める系**: `block-destructive-git.js`（`push --force` 等の破壊的git操作） / `block-destructive-fs.js`（`rm -rf` 等の破壊的ファイル操作） / `block-secret-read.js`（`.env` など秘密情報の読み取り） / `block-no-verify.js`（`--no-verify` でのコミットフック回避） / `block-direct-to-main.js`（main への直接コミット・直接マージ） / `block-pr-without-todo.js`（このブランチの `tasks/todo.md` を更新しないまま `gh pr create` するのを拒否。ただし見ているのは更新時刻だけで、内容の正しさもどのブランチ向けの編集かも検査しない） / `check-commit-safety.js`（コミット前の安全確認）
-- **運用系**: `check-prompt.js`（リポジトリ状態をプロンプトへ1行注入） / `format-on-write.js`（`dev/` 配下の自動整形） / `block-fable-status-write.js`（ユーザー専用の Fable スイッチを shell 書き込みから保護） / `relay-required-agent.js`（外部モデル連携がOFFのときに起動をブロック。native Fable は対象外） / `block-review-floor.js`（planner/reviewer の権威モデルを native fable | opus に限定） / `block-fable-when-off.js`（CLAUDE.md §1.11: `.claude/.fable-status` が ON でない限り、role を問わず model: fable での起動を拒否） / `clover-auto-install.js`（clover ラッパーの自動設置）
+- **運用系**: `check-prompt.js`（リポジトリ状態をプロンプトへ1行注入） / `format-on-write.js`（`dev/` 配下の自動整形） / `cmd-write-guard.js`（ユーザー専用の Fable スイッチを shell 書き込みから保護） / `relay-required-agent.js`（外部モデル連携がOFFのときに起動をブロック。native Fable は対象外） / `block-review-floor.js`（planner/reviewer の権威モデルを native fable | opus に限定） / `block-fable-when-off.js`（CLAUDE.md §1.11: `.claude/.fable-status` が ON でない限り、role を問わず model: fable での起動を拒否） / `clover-auto-install.js`（clover ラッパーの自動設置）
 - **気づきを促す系**: `deliberation-gate.js`（CLAUDE.md §1.12: 委任先の報告が「うまくいかなかった／回避した」気配のとき、最上位の同期実行の報告に限って一言添えるだけの仕組みで、ブロックはしない。ルールは委任した側すべてを縛る。フックが後押しするのは最上位の同期実行だけ（実測で全委任の約30%が同期、うち約75%が最上位、報告の16%が該当 → 全委任の**およそ4%弱**でしか出ない）。フックが出なかったことは「問題なし」の意味ではない）
 - **共有ライブラリ**: `lib/parse-cmd.js`（引用符・heredoc に対応したコマンド解析） / `lib/cmd-targets.js`（書き込み先抽出） / `lib/path-util.js`（ワークスペース相対パス判定） / `lib/journal-util.js`（ジャーナルへの追記）
 
