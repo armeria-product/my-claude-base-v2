@@ -407,6 +407,18 @@ const FORBIDDEN = [
   // 2026-08-28 (plans/2026-08-28-drop-scope-lock/PLAN.md): the "scope-lock" mechanism was removed
   // (approve-lock.js / scope-guard.js / scope.json were all removed too) — detects a silent
   // reintroduction; none of these terms must be referenced in the harness again outside this note.
+  // Two known, disclosed limits (quality-loop cycle-1 red-team finding, 2026-08-28), not fixed here:
+  // (a) this pin lives in a .mjs file, and walkMd's extension filter (/\.(md|js|json|html)$/, see
+  //     scope-limit comment near the NUL-byte check below) does not include .mjs, so validate.mjs
+  //     itself (and every other .claude/scripts/*.mjs file) is never scanned by this pin or any
+  //     other FORBIDDEN entry — widening the filter was already tried and reverted for a DIFFERENT
+  //     FORBIDDEN pin (see that same comment) because it turns validate.mjs's own source, which must
+  //     legitimately contain the forbidden strings it defines, into false-positive dead-ref FAILs
+  //     against itself; the same tradeoff applies here, so this pin inherits the same gap rather
+  //     than re-litigating it. (b) the shared ALLOW_LINE exemption below (旧/former/removed/廃止/
+  //     etc.) also exempts THIS pin's own lines, so a reintroduction narrated inside a comment that
+  //     happens to use one of those words (e.g. "restoring the former scope-lock behavior") slips
+  //     through undetected — a pre-existing property of ALLOW_LINE, not unique to this entry.
   [/scope-lock|approve-lock|scope-guard|scope\.json/, 'the scope-lock mechanism (approve-lock.js / scope-guard.js / scope.json) was removed 2026-08-28 and must not be referenced in the harness again — see CLAUDE.md §7'],
 ];
 // Test fixture, not config/docs: hook-probes.samples.json rows intentionally carry the exact
@@ -530,6 +542,15 @@ const INVARIANTS = [
   ['.claude/skills/plan/SKILL.md', /Objections & Rulings[\s\S]*Objections & Rulings/, 'plan SKILL.md must still carry both "Objections & Rulings" record sections (light-path and heavy-path templates)'],
   ['.claude/skills/harness/SKILL.md', /worker must read PLAN\.md itself/, 'harness Handoff Protocol must keep the scope-handoff rule (workers read the plan themselves — no paraphrase)'],
   ['.claude/agents/reviewer.md', /Scope Conformance/, 'reviewer.md must keep the Scope Conformance dimension (out-of-scope diff = HIGH) — the review-side scope backstop'],
+  // Quality-loop cycle-1 finding (2026-08-28): verifier.md's Scope check had no direct pin at all
+  // (the only prior backstop, the "locked means status" pin, was deleted with the scope-lock
+  // mechanism) — a silent deletion of the whole section would have gone undetected.
+  ['.claude/agents/verifier.md', /Scope check/, 'verifier.md must keep the Scope check section — the verification-side scope backstop'],
+  // Quality-loop cycle-1 fusion finding (2026-08-28, post scope-lock removal): this rule is
+  // lock-independent (a diff must not revise the PLAN.md scope/acceptance sections that judge it)
+  // and was wrongly dropped along with the deleted lock-vs-scope.json mismatch check it used to sit
+  // beside — restore it and pin it so it cannot silently vanish again.
+  ['.claude/agents/reviewer.md', /cannot revise the scope that judges it/, 'reviewer.md Scope Conformance must keep the self-revising-scope-during-review rule (editing PLAN.md\'s own scope/acceptance sections as part of the reviewed change is HIGH) — lock-independent, must not have been dropped with the scope-lock removal'],
   ['.claude/agents/executor.md', /detection power/i, 'executor.md must keep the detection-power duty (RED->restore->GREEN test-power check) from the 4 recurring review-gap classes'],
   ['.claude/agents/executor.md', /branch\/OS/, 'executor.md must keep the claim-scope duty (numbers/completion language limited to the verified branch/OS/condition)'],
   ['.claude/agents/executor.md', /match⇒deny|match=deny/, 'executor.md must keep the consumer-direction-classification duty (match⇒deny fail-closed vs match⇒allow fail-open sorting before widening a shared matcher)'],
@@ -540,6 +561,11 @@ const INVARIANTS = [
   ['.claude/skills/quality-loop/SKILL.md', /Security Track \(on request or auto-seated\)/, 'quality-loop must keep the Security Track auto-seat section — the conductor seats security on API/DB/auth/payment signals without being asked (user ruling 2026-08-02)'],
   ['.claude/skills/quality-loop/SKILL.md', /not seated \(no risk signals\)/, 'quality-loop must keep the mandatory security-attendance recording line — a silent skip of the risk check must stay visible'],
   ['.claude/skills/plan/SKILL.md', /### Security Review/, 'plan SKILL.md must keep the PLAN.md Security Review section — the plan-time path that auto-seats the security track for this plan\'s implementation'],
+  // Quality-loop cycle-1 finding (2026-08-28): only the producer side (plan/SKILL.md, above) was
+  // pinned for "### Security Review" — the two consumers (quality-loop's read of it, planner.md's
+  // own copy of the template) had no pin, so either could silently stop reading/emitting it.
+  ['.claude/skills/quality-loop/SKILL.md', /### Security Review/, 'quality-loop must keep reading PLAN.md\'s ### Security Review section for the plan-time auto-seat path (Security Track item 3) — otherwise the securityReview migration from scope.json silently loses this consumer'],
+  ['.claude/agents/planner.md', /### Security Review/, 'planner.md Output Format B must keep the ### Security Review line in its PLAN.md template — otherwise a standalone (non-plan-skill) planner-authored PLAN.md silently drops the section'],
   // --- agents-revision Phase 8 (loop-03, user ruling 2026-08-05) ---
   ['CLAUDE.md', /recurring review category/i, 'CLAUDE.md §4 must keep the recurring-review-category trigger bullet — a 2nd occurrence of the same review finding across cycles/PRs must be treated as a role-definition gap, not just fixed as an instance'],
   // --- agents-revision fix cycle (fusion-adjudicated, 2026-08-05) ---

@@ -73,11 +73,10 @@ function resolveCommonGitDir(gitDir, repoRoot) {
   return resolved;
 }
 
-// Per-process memoization of resolveGitDir(root): cmd-write-guard.js's isStateDir()/
-// isFableStatusFile() can run this lookup once per extracted Bash write-target — several times
-// in one hook invocation for a single multi-target command. Each hook invocation is its own
-// short-lived Node process, so a
-// module-level Map is both the cheapest cache available AND cannot go stale across invocations
+// Per-process memoization of resolveGitDir(root): cmd-write-guard.js's isFableStatusFile() can
+// run this lookup once per extracted Bash write-target — several times in one hook invocation
+// for a single multi-target command. Each hook invocation is its own short-lived Node process,
+// so a module-level Map is both the cheapest cache available AND cannot go stale across invocations
 // (the process exits and the cache with it) — nothing needs to invalidate it. Within one process
 // `root` never changes mid-run and the on-disk git structure cannot change under a hook that is
 // itself the only thing running, so caching by `root` for the process lifetime is safe.

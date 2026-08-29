@@ -127,7 +127,7 @@ function journalView(text) {
 
 // A6: short pointer block for tasks/codemap.md — path + `##` headings + one reminder line.
 // Deliberately does not read/inject the file body (see header comment). Returns null when the
-// file doesn't exist at this tasksDir (opt-in, fail-open — same convention as lockStatus above).
+// file doesn't exist at this tasksDir (opt-in, fail-open: missing file -> null, no error).
 function codemapPointerBlock(tasksDir, projectDir) {
   const codemapPath = path.join(tasksDir, 'codemap.md');
   let text;

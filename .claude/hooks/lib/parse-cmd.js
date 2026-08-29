@@ -213,8 +213,8 @@ function normalizeSegment(seg) {
   //        membership check above (`cwdBuiltinCandidate`) only ever single-strips before testing
   //        membership, so a loop would let a doubly-suffixed cwd builtin (e.g. `cd.exe.cmd`)
   //        strip all the way down to the bare `cd` and be treated as a real cwd move — reopening
-  //        the fake-cwd-move class that `lock-cd-exe-fake-cwd-move-escape` /
-  //        `state-cd-exe-fake-cwd-move-defeat` exist to pin. Deferred per CLAUDE.md §1.7.
+  //        the fake-cwd-move class that `fable-status-cd-exe-fake-cwd-move-defeat` exists to pin.
+  //        Deferred per CLAUDE.md §1.7.
   //    None of these are fixed here; they are pre-existing and out of this change's scope —
   //    named only so this comment does not read as an exhaustive account of what is closed.
   const rawCmd = tokens[idx];
