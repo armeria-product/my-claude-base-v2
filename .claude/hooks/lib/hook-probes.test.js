@@ -609,7 +609,7 @@ function registerTests() {
   // over another row's, or a row deleted and a different one duplicated in its place) passes the
   // count test above but changes this hash. See samplesHash() for the algorithm (sha256 over
   // pre-substitution rows sorted by set/name) and why it's built that way.
-  const EXPECTED_SAMPLES_HASH = '96501a33fd1b9986468ce5ba5499b95d0f48034b8879e4cd2d37b14e561607ab';
+  const EXPECTED_SAMPLES_HASH = '7e089cb0c6c35fa16aec5c65c1075bde8138df365149f3a5e8dbcadef1507a07';
 
   test('samples file integrity: full-content hash matches (catches same-count content swaps the row/set count checks miss)', () => {
     const rawRows = JSON.parse(raw); // pre-substitution rows -- see samplesHash() comment for why

@@ -115,7 +115,7 @@ function unquoteToken(t) {
 // also a no-op, but for a PATH-dependent reason a future environment could remove. The
 // child-process reason above is the one this exception actually rests on.) Suffix-stripping would
 // make lib/cmd-targets.js's exact-match cwd tracking (`case 'cd':`) and its liberal cd/pushd
-// tracking (used for .claude/state protection) believe a no-op invocation moved the cwd — see the
+// tracking (used for .claude/.fable-status protection) believe a no-op invocation moved the cwd — see the
 // comment at the strip site below for the bypasses this produced, both in the plain form and, in
 // a later review round, in the parenthesized/subshell-entry form.
 //
