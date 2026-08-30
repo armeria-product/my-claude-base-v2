@@ -8,15 +8,19 @@
 // unchanged. NOT tracked: subshells `( )`, a cd inside one stage of a pipeline (runs in a
 // separate process — inheriting it anyway over-detects, which is safe), pushd/popd, and
 // variable-expanded cd targets. The PowerShell path does no cd tracking — its targets resolve
-// against startCwd only. This precise/limited model is intentional for extractTargets, which
-// feeds Duty 2 (scope enforcement) — over-detecting there would falsely deny legitimate writes.
+// against startCwd only. This precise/limited cd-tracking model is extractTargets' own; its
+// result now only ever feeds cmd-write-guard.js's Arm B alongside extractStateCandidates below
+// (the scope-enforcement duty this precision used to also serve, "Duty 2", was removed 2026-08-28).
 //
 //   extractStateCandidates(toolName, command, startCwd) -> string[](absolute paths)
 //
 // A SEPARATE, deliberately over-detecting extractor used only by cmd-write-guard.js's
-// unconditional .claude/state protection (Arm B). For that check the safe direction is the
-// opposite of Duty 2's: a false DENY just makes the user split the command, but a false ALLOW
-// is a tamper. So this path additionally treats `pushd <dest>` and a subshell-entry `cd <dest>`
+// unconditional .claude/.fable-status protection (Arm B) — the sole remaining consumer of this
+// function; the .claude/state protection it originally also served was removed 2026-08-28,
+// the same day the whole keyword-gated approval mechanism formerly built on it was removed too.
+// For that check
+// the safe direction is a false DENY (cheap — the user splits the command) over a false ALLOW (a
+// tamper). So this path additionally treats `pushd <dest>` and a subshell-entry `cd <dest>`
 // as cwd changes, in both tokenizations the parser produces — glued (`(cd .claude` -> cmd "(cd")
 // and space-separated (`( cd .claude` -> cmd "(", args[0] "cd") — with NO subshell-exit scoping
 // (a cd inside `( )` leaks forward to the rest of the command).
@@ -194,7 +198,7 @@ function extractTargets(toolName, command, startCwd) {
 // PowerShell cd-equivalents recognized only by the liberal state-candidate path below.
 const PS_CD_RE = /\b(?:Set-Location|sl|pushd)\b\s+(?:-(?:Path|LiteralPath)\s+)?(?:"([^"]*)"|'([^']*)'|([^\s;|]+))/gi;
 
-// See header: deliberately over-detecting, used only for the .claude/state protection check.
+// See header: deliberately over-detecting, used only for the .claude/.fable-status protection check.
 function extractStateCandidates(toolName, command, startCwd) {
   const cwd = startCwd || process.cwd();
   const targets = [];

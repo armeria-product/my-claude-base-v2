@@ -11,7 +11,6 @@
       "Read(./**/secrets/**)",
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
-      "Edit(./.claude/state/**)",
       "Edit(./.claude/.fable-status)"
     ],
     "defaultMode": "bypassPermissions",
@@ -52,10 +51,6 @@
       {
         "matcher": "",
         "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/approve-lock.js\""
-          },
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/check-prompt.js\""
@@ -107,15 +102,6 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-fable-when-off.js\""
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/scope-guard.js\""
           }
         ]
       },

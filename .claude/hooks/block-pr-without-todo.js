@@ -4,7 +4,7 @@
 // Input:  Claude Code hook event JSON on stdin
 // Output: for a `gh pr create` whose branch's todo.md predates the branch -> message on
 //         stderr + exit 2 (block). Otherwise exit 0. No permissionDecision JSON on stdout —
-//         unlike scope-guard.js/cmd-write-guard.js, this hook signals deny via exit code only
+//         unlike cmd-write-guard.js, this hook signals deny via exit code only
 //         (2026-08-07 ruling): this harness has no other hook that emits an "allow" JSON, and
 //         adding one here would short-circuit the permission check and make this hook's
 //         composition with the rest of the PreToolUse chain unreadable.
@@ -309,7 +309,7 @@ function findRepoRoot(startDir) {
 }
 
 // isWithinRepoTree / resolveGitDir / resolveCommonGitDir moved to lib/git-worktree.js
-// (2026-08-28, PR-B) — shared with scope-decision.js's worktree rebase. See that module's header
+// (2026-08-28, PR-B) — shared with cmd-write-guard.js's worktree rebase. See that module's header
 // for the threat model (gitdir escape, S-pr-todo/pt-allow-gitdir-escape-outside-repo) and the
 // exact behavior of each function; unchanged here beyond the move.
 

@@ -42,5 +42,5 @@ Called by:
 - Can't find it? Report `NOT FOUND: <target>` plus the regex/patterns and paths you tried — don't speculate.
 - Prefer Grep/Glob over Read — don't Read a file when `grep -n` output already answers the question.
 - Bash is for reading and running tests only — no redirection to files, no file creation, no git writes.
-- If the dispatch prompt, this definition, a referenced artifact (PLAN.md / scope.json), or the repo's actual state contradict one another, **do not silently pick a side**: name the contradiction in your report and proceed only with the non-conflicting portion.
+- If the dispatch prompt, this definition, a referenced artifact (PLAN.md), or the repo's actual state contradict one another, **do not silently pick a side**: name the contradiction in your report and proceed only with the non-conflicting portion.
 - When a tool call is denied by a hook or permission, stop that line of work — **never retry variants or route around** the denial — quote the denial in your final report, and mark whatever it prevented as unverified.

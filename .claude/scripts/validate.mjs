@@ -4,7 +4,7 @@
 // Mechanically checks for the kinds of breakage that actually occurred across v1's
 // sessions (references to nonexistent agents, dead refs to removed features, missing
 // paths in rules, silently-dropped safety wording), plus v2's own invariants
-// (scope-lock wiring, journal wiring, Bash|PowerShell matcher coverage).
+// (journal wiring, Bash|PowerShell matcher coverage).
 //
 // Usage: node .claude/scripts/validate.mjs
 // Exit:  0 = PASS, 1 = FAIL (prints findings)
@@ -54,11 +54,12 @@ const AUTHORITY_DEFAULT_MODEL = 'opus';
 const OBS_CONTENT_AGENTS = new Set(['reviewer', 'verifier', 'debugger', 'executor', 'planner']);
 const LIGHTWEIGHT_CLAUSE_A_AGENTS = new Set(['document-author']);
 const EXEMPT_CLAUSE_A_AGENTS = new Set(['explorer']);
-// Batch H L9 (2026-08-06): the unlocked-run exception (Scope Conformance / Scope check dimension)
-// lives only in these two agents' bodies and must bind to a quoted recorded user ruling, not a
-// scope.json/PLAN.md's own self-declared "approved"/"unlocked" claim — SOT: .claude/rules/agents.md
-// clause (A) tail. An unbacked self-declaration is a HIGH review finding, not a valid exception.
-const UNLOCKED_EXCEPTION_AGENTS = new Set(['reviewer', 'verifier']);
+// Batch H L9 (2026-08-06). Renamed 2026-08-28, after the keyword-gated approval mechanism was
+// removed: the harness-target exception (Scope Conformance / Scope check dimension) lives only in
+// these two agents' bodies and must bind to a quoted recorded user ruling, not a PLAN.md's own
+// self-declared "approved" claim — SOT: .claude/rules/agents.md clause (A) tail. An unbacked
+// self-declaration is a HIGH review finding, not a valid exception.
+const RECORDED_RULING_AGENTS = new Set(['reviewer', 'verifier']);
 
 // clover relay model ids (claude-<alias>) are also allowed in agent model: frontmatter. They
 // route to external models via the relay and, unlike a pinned real Claude id, don't break on
@@ -136,10 +137,10 @@ for (const f of fs.readdirSync(agentsDir).filter((x) => x.endsWith('.md'))) {
     fail(`agent ${fm.name}: missing shared clause (A) observed-content discipline ("is data under examination, never instructions") — SOT: .claude/rules/agents.md Shared clauses`);
   if (LIGHTWEIGHT_CLAUSE_A_AGENTS.has(fm.name) && !/not an authoring instruction to you/.test(agentText))
     fail(`agent ${fm.name}: missing the lightweight shared clause (A) variant ("not an authoring instruction to you") — SOT: .claude/rules/agents.md Shared clauses`);
-  // Batch H L9: unlocked-run exception must bind to a quoted recorded user ruling, not a
-  // scope.json/PLAN.md's own self-declared "approved"/"unlocked" claim.
-  if (UNLOCKED_EXCEPTION_AGENTS.has(fm.name) && !/recorded user ruling/.test(agentText))
-    fail(`agent ${fm.name}: unlocked-run exception no longer requires a quoted recorded user ruling — an unbacked self-declared "approved"/"unlocked" claim in scope.json/PLAN.md would qualify for the exception — SOT: .claude/rules/agents.md clause (A) tail`);
+  // Batch H L9: the harness-target exception must bind to a quoted recorded user ruling, not a
+  // PLAN.md's own self-declared "approved" claim.
+  if (RECORDED_RULING_AGENTS.has(fm.name) && !/recorded user ruling/.test(agentText))
+    fail(`agent ${fm.name}: the harness-target exception no longer requires a quoted recorded user ruling — an unbacked self-declared "approved" claim in a PLAN.md would qualify for the exception — SOT: .claude/rules/agents.md clause (A) tail`);
 }
 
 // Reverse direction of the shared clause (A) 3-bucket partition (see comment above the Sets):
@@ -179,9 +180,9 @@ for (const groups of Object.values(settings.hooks ?? {}))
 const readmeText = fs.existsSync(path.join(ROOT, 'README.md')) ? read(path.join(ROOT, 'README.md')) : '';
 for (const f of fs.readdirSync(path.join(ROOT, '.claude', 'hooks')).filter((x) => x.endsWith('.js'))) {
   if (!registered.has(f)) {
-    // block-*.js and the scope-lock guard chain are safety hooks — an unwired one silently
+    // block-*.js and cmd-write-guard.js are safety hooks — an unwired one silently
     // never fires, which is a real incident (not just drift). Everything else stays WARN.
-    if (/^(block-|scope-guard|cmd-write-guard|approve-lock)/.test(f)) fail(`safety hook not registered in settings.json (never fires): ${f}`);
+    if (/^(block-|cmd-write-guard)/.test(f)) fail(`safety hook not registered in settings.json (never fires): ${f}`);
     else warn(`hook file not registered in settings.json: ${f}`);
   }
   if (readmeText && !readmeText.includes(f)) warn(`hook ${f} not documented in README (drift)`);
@@ -206,16 +207,12 @@ if (claudeMd)
 
 // ---- 3.5 v2 wiring invariants: state-dir deny + Bash matchers cover PowerShell ----
 {
-  // (b) The scope-lock state dir must be Claude-unwritable. permissions.deny is the only layer
-  // that holds even under bypassPermissions — losing this entry disarms the whole lock.
-  // CLI fact (observed 2026-08-02 warning): file-permission rules match Edit(path) ONLY, and
+  // (b) CLI fact (observed 2026-08-02 warning): file-permission rules match Edit(path) ONLY, and
   // an Edit rule covers ALL file-editing tools (Write/NotebookEdit included); Write(path)/
   // NotebookEdit(path) deny entries are inert noise, so exactly the Edit form must be present.
-  const denyList = settings.permissions?.deny ?? [];
-  if (!denyList.includes('Edit(./.claude/state/**)'))
-    fail('settings.json permissions.deny is missing "Edit(./.claude/state/**)" — .claude/state/ (scope-lock home) becomes Claude-writable and the lock is no longer tamper-proof (the Edit rule is the one that covers Write/NotebookEdit too)');
   // CLAUDE.md §1.11 switch file: user-edited only (ruling 2026-08-06) — Claude must not be able to
-  // Edit it either, same tamper-proofing rationale/mechanism as the .claude/state entry above.
+  // Edit it, so this stays the one tamper-proofing entry permissions.deny must keep.
+  const denyList = settings.permissions?.deny ?? [];
   if (!denyList.includes('Edit(./.claude/.fable-status)'))
     fail('settings.json permissions.deny is missing "Edit(./.claude/.fable-status)" — the CLAUDE.md §1.11 switch file becomes Claude-writable via the Edit tool, contradicting the 2026-08-06 ruling that only the user edits it');
   // (h) This Windows host exposes a PowerShell tool alongside Bash. A matcher that names Bash
@@ -249,32 +246,20 @@ if (claudeMd)
         fail(`session-journal.js is not registered under ${ev} — session boundary markers (crash detection) break`);
   }
 
-  // Scope-lock chain wiring: all three hooks must stay armed on the right events/matchers.
+  // Shell write-pathway wiring: cmd-write-guard.js must stay armed on the right event/matcher.
   {
-    const al = eventsOf('approve-lock.js');
-    if (!al.some((e) => e.event === 'UserPromptSubmit'))
-      fail('approve-lock.js is not registered under UserPromptSubmit — 「承認」/「解除」 can no longer arm/disarm the lock');
-    const sg = eventsOf('scope-guard.js');
-    if (!sg.some((e) => e.event === 'PreToolUse' && ['Edit', 'Write', 'NotebookEdit'].every((t) => e.matcher.includes(t))))
-      fail('scope-guard.js is not registered under PreToolUse Edit|Write|NotebookEdit — locked-scope writes are no longer gated');
     const cw = eventsOf('cmd-write-guard.js');
     if (!cw.some((e) => e.event === 'PreToolUse' && e.matcher.includes('Bash') && e.matcher.includes('PowerShell')))
       fail('cmd-write-guard.js is not registered under PreToolUse Bash|PowerShell — the shell write pathway is unguarded');
   }
-  // Guard-of-the-guard: cmd-write-guard must keep its unconditional .claude/state shell protection,
-  // and the statusline must keep surfacing the lock (silent locks breed confusion). The same two
-  // checks are mirrored for .claude/.fable-status (CLAUDE.md §1.11 switch, user-edited only per the
-  // 2026-08-06 ruling): the shell-write protection must stay armed, and the statusline must keep
-  // surfacing ON/OFF so a leftover ON from a previous session stays visible.
+  // Guard-of-the-guard: cmd-write-guard must keep its unconditional .claude/.fable-status shell
+  // protection (CLAUDE.md §1.11 switch, user-edited only per the 2026-08-06 ruling), and the
+  // statusline must keep surfacing ON/OFF so a leftover ON from a previous session stays visible.
   {
     const cwPath = path.join(ROOT, '.claude', 'hooks', 'cmd-write-guard.js');
-    if (fs.existsSync(cwPath) && !/\\?\.claude\[\\\\\/\]\+state|\.claude[\\/]+state/.test(read(cwPath)))
-      fail('cmd-write-guard.js no longer references .claude/state — the unconditional lock-file shell protection is gone');
     if (fs.existsSync(cwPath) && !read(cwPath).includes('.fable-status'))
       fail('cmd-write-guard.js no longer references .claude/.fable-status — the unconditional switch-file shell protection is gone');
     const slPath = path.join(ROOT, '.claude', 'scripts', 'statusline.js');
-    if (fs.existsSync(slPath) && !/scope-lock/.test(read(slPath)))
-      fail('statusline.js no longer reads scope-lock — the 🔒 indicator is gone (locks become invisible)');
     if (fs.existsSync(slPath) && !read(slPath).includes('.fable-status'))
       fail('statusline.js no longer reads .claude/.fable-status — a leftover ON switch from a previous session becomes invisible');
   }
@@ -338,7 +323,7 @@ if (claudeMd)
   // Deliberation gate wiring (CLAUDE.md §1.12 / T2.4a): deliberation-gate.js must stay armed on
   // PostToolUse Task|Agent so a top-level dispatch's report can be screened. This hook is
   // fail-open and non-blocking (a nudge, not enforcement) — it is deliberately NOT added to the
-  // ^(block-|scope-guard|...) safety-hook regex above (:175): naming it a safety hook there would
+  // ^(block-|cmd-write-guard) safety-hook regex above (:175): naming it a safety hook there would
   // misdescribe a hook that can never deny a tool call. This explicit check is what FAILs if it is
   // unwired or deleted, instead of silently falling back to a WARN.
   {
@@ -381,7 +366,7 @@ if (claudeMd)
           (cur[0] === VERSION_FLOOR[0] && cur[1] < VERSION_FLOOR[1]) ||
           (cur[0] === VERSION_FLOOR[0] && cur[1] === VERSION_FLOOR[1] && cur[2] < VERSION_FLOOR[2]);
         if (below)
-          warn(`claude --version reports ${cur.join('.')}, below the ${VERSION_FLOOR.join('.')} floor — the Edit(path)-covers-Write/NotebookEdit CLI behavior that settings.json's "Edit(./.claude/state/**)" / "Edit(./.claude/.fable-status)" deny rules rely on is unverified on this CLI version`);
+          warn(`claude --version reports ${cur.join('.')}, below the ${VERSION_FLOOR.join('.')} floor — the Edit(path)-covers-Write/NotebookEdit CLI behavior that settings.json's "Edit(./.claude/.fable-status)" deny rule relies on is unverified on this CLI version`);
       }
     } catch {
       // claude CLI not on PATH, or --version failed/timed out — cannot check, fail open (no warn).
@@ -419,6 +404,22 @@ const FORBIDDEN = [
   // "my-claude-base v2" heading (space-separated) or the unrelated "added for my-claude-base."
   // attribution line repeated across the imagegen/frontend-design skill files.
   [/my-claude-base[\\/](?!v2\b)/, 'a dead reference to the pre-"-v2" repo path was found (my-claude-base\\ or my-claude-base/ not followed by -v2) — this repo is my-claude-base-v2, update the path'],
+  // 2026-08-28 (plans/2026-08-28-drop-scope-lock/PLAN.md): the "scope-lock" mechanism was removed
+  // (approve-lock.js / scope-guard.js / scope.json were all removed too) — detects a silent
+  // reintroduction; none of these terms must be referenced in the harness again outside this note.
+  // Two known, disclosed limits (quality-loop cycle-1 red-team finding, 2026-08-28), not fixed here:
+  // (a) this pin lives in a .mjs file, and walkMd's extension filter (/\.(md|js|json|html)$/, see
+  //     scope-limit comment near the NUL-byte check below) does not include .mjs, so validate.mjs
+  //     itself (and every other .claude/scripts/*.mjs file) is never scanned by this pin or any
+  //     other FORBIDDEN entry — widening the filter was already tried and reverted for a DIFFERENT
+  //     FORBIDDEN pin (see that same comment) because it turns validate.mjs's own source, which must
+  //     legitimately contain the forbidden strings it defines, into false-positive dead-ref FAILs
+  //     against itself; the same tradeoff applies here, so this pin inherits the same gap rather
+  //     than re-litigating it. (b) the shared ALLOW_LINE exemption below (旧/former/removed/廃止/
+  //     etc.) also exempts THIS pin's own lines, so a reintroduction narrated inside a comment that
+  //     happens to use one of those words (e.g. "restoring the former scope-lock behavior") slips
+  //     through undetected — a pre-existing property of ALLOW_LINE, not unique to this entry.
+  [/scope-lock|approve-lock|scope-guard|scope\.json/, 'the scope-lock mechanism (approve-lock.js / scope-guard.js / scope.json) was removed 2026-08-28 and must not be referenced in the harness again — see CLAUDE.md §7'],
 ];
 // Test fixture, not config/docs: hook-probes.samples.json rows intentionally carry the exact
 // forbidden-shaped strings a hook must reject (e.g. "model":"claude-fable-5" pins the H-1
@@ -522,7 +523,7 @@ const INVARIANTS = [
   ['CLAUDE.md', /Objections require evidence/, 'CLAUDE.md §1.10 must still state the evidence-backed objection sentence — dropping it silently reverts the harness to yes-manning or unsupported contrarianism'],
   ['CLAUDE.md', /hypotheses, not orders/, 'CLAUDE.md §1.10\'s framing of development requests as hypotheses, not orders must remain'],
   ['CLAUDE.md', /never (added|folds?|folded) .*into scope|never fold them into scope/i, 'CLAUDE.md §1.10 must still state that gap proposals are never folded into scope without a ruling'],
-  ['CLAUDE.md', /worker reads (them|PLAN\.md.*itself)|reads them itself/i, 'CLAUDE.md §2 must still state the scope-handoff rule (workers read PLAN.md/scope.json themselves — no paraphrase)'],
+  ['CLAUDE.md', /worker reads it itself|reads it itself/i, 'CLAUDE.md §2 must still state the scope-handoff rule (workers read PLAN.md themselves — no paraphrase)'],
   ['.claude/commands/save-session.md', /やったこと[\s\S]*できなかったこと・保留[\s\S]*確認してほしいこと[\s\S]*次にやること/, 'save-session must keep the fixed 4-section report headings (やったこと / できなかったこと・保留 / 確認してほしいこと / 次にやること)'],
   ['.claude/commands/save-session.md', /SAVE マーカー/, 'save-session must keep the SAVE-marker step — the crash/unreported-session scan keys on it'],
   ['.claude/rules/session-persistence.md', /never rotated or deleted/i, 'session-persistence §6.2 must keep stating that tasks/history/ (the frozen pre-2026-08-13 session-state.md archive) is never rotated or deleted — this only catches the phrase disappearing, not a reversal of the guarantee it names'],
@@ -539,14 +540,17 @@ const INVARIANTS = [
   ['.claude/skills/quality-loop/SKILL.md', /Red-Team Second Seat \(standing, relay-independent\)/, 'quality-loop\'s "Red-Team Second Seat (standing, relay-independent)" definition heading must remain present'],
   ['.claude/agents/planner.md', /Gap proposals await a ruling/, 'planner.md must still state that gap proposals await a ruling before being folded into the plan (CLAUDE.md §1.10 boundary)'],
   ['.claude/skills/plan/SKILL.md', /Objections & Rulings[\s\S]*Objections & Rulings/, 'plan SKILL.md must still carry both "Objections & Rulings" record sections (light-path and heavy-path templates)'],
-  // --- v2 scope-lock chain (Phase 4 subjects) ---
-  ['.claude/skills/plan/SKILL.md', /scope\.json/, 'plan SKILL.md must still require the scope.json artifact — without it approval has nothing to lock'],
-  ['.claude/skills/plan/SKILL.md', /『承認』と返信するとロックして自走を開始します/, 'plan SKILL.md must keep the exact approval-handoff sentence the approve-lock hook flow depends on'],
-  ['.claude/skills/harness/SKILL.md', /worker must read PLAN\.md\/scope\.json itself/, 'harness Handoff Protocol must keep the scope-handoff rule (workers read the plan themselves — no paraphrase)'],
+  ['.claude/skills/harness/SKILL.md', /worker must read PLAN\.md itself/, 'harness Handoff Protocol must keep the scope-handoff rule (workers read the plan themselves — no paraphrase)'],
   ['.claude/agents/reviewer.md', /Scope Conformance/, 'reviewer.md must keep the Scope Conformance dimension (out-of-scope diff = HIGH) — the review-side scope backstop'],
-  ['.claude/agents/executor.md', /\[scope-lock\]/, 'executor.md must keep the scope-lock denial protocol (no workaround; deviations + report)'],
-  ['.claude/agents/debugger.md', /\[scope-lock\]/, 'debugger.md must keep the scope-lock denial protocol (no workaround; deviations + report)'],
-  ['.claude/agents/document-author.md', /\[scope-lock\]/, 'document-author.md must keep the scope-lock denial protocol (no workaround; deviations + report)'],
+  // Quality-loop cycle-1 finding (2026-08-28): verifier.md's Scope check had no direct pin at all
+  // (the only prior backstop, the "locked means status" pin, was deleted with the scope-lock
+  // mechanism) — a silent deletion of the whole section would have gone undetected.
+  ['.claude/agents/verifier.md', /Scope check/, 'verifier.md must keep the Scope check section — the verification-side scope backstop'],
+  // Quality-loop cycle-1 fusion finding (2026-08-28, post scope-lock removal): this rule is
+  // lock-independent (a diff must not revise the PLAN.md scope/acceptance sections that judge it)
+  // and was wrongly dropped along with the deleted lock-vs-scope.json mismatch check it used to sit
+  // beside — restore it and pin it so it cannot silently vanish again.
+  ['.claude/agents/reviewer.md', /cannot revise the scope that judges it/, 'reviewer.md Scope Conformance must keep the self-revising-scope-during-review rule (editing PLAN.md\'s own scope/acceptance sections as part of the reviewed change is HIGH) — lock-independent, must not have been dropped with the scope-lock removal'],
   ['.claude/agents/executor.md', /detection power/i, 'executor.md must keep the detection-power duty (RED->restore->GREEN test-power check) from the 4 recurring review-gap classes'],
   ['.claude/agents/executor.md', /branch\/OS/, 'executor.md must keep the claim-scope duty (numbers/completion language limited to the verified branch/OS/condition)'],
   ['.claude/agents/executor.md', /match⇒deny|match=deny/, 'executor.md must keep the consumer-direction-classification duty (match⇒deny fail-closed vs match⇒allow fail-open sorting before widening a shared matcher)'],
@@ -556,7 +560,12 @@ const INVARIANTS = [
   ['.claude/skills/quality-loop/SKILL.md', /Lens Catalog[\s\S]*4 seats total/, 'quality-loop must keep the Lens Catalog section with the 4-seat hard cap'],
   ['.claude/skills/quality-loop/SKILL.md', /Security Track \(on request or auto-seated\)/, 'quality-loop must keep the Security Track auto-seat section — the conductor seats security on API/DB/auth/payment signals without being asked (user ruling 2026-08-02)'],
   ['.claude/skills/quality-loop/SKILL.md', /not seated \(no risk signals\)/, 'quality-loop must keep the mandatory security-attendance recording line — a silent skip of the risk check must stay visible'],
-  ['.claude/skills/plan/SKILL.md', /securityReview/, 'plan SKILL.md must keep the scope.json securityReview flag — the plan-time path that auto-seats security for the whole locked run'],
+  ['.claude/skills/plan/SKILL.md', /### Security Review/, 'plan SKILL.md must keep the PLAN.md Security Review section — the plan-time path that auto-seats the security track for this plan\'s implementation'],
+  // Quality-loop cycle-1 finding (2026-08-28): only the producer side (plan/SKILL.md, above) was
+  // pinned for "### Security Review" — the two consumers (quality-loop's read of it, planner.md's
+  // own copy of the template) had no pin, so either could silently stop reading/emitting it.
+  ['.claude/skills/quality-loop/SKILL.md', /### Security Review/, 'quality-loop must keep reading PLAN.md\'s ### Security Review section for the plan-time auto-seat path (Security Track item 3) — otherwise the securityReview migration from scope.json silently loses this consumer'],
+  ['.claude/agents/planner.md', /### Security Review/, 'planner.md Output Format B must keep the ### Security Review line in its PLAN.md template — otherwise a standalone (non-plan-skill) planner-authored PLAN.md silently drops the section'],
   // --- agents-revision Phase 8 (loop-03, user ruling 2026-08-05) ---
   ['CLAUDE.md', /recurring review category/i, 'CLAUDE.md §4 must keep the recurring-review-category trigger bullet — a 2nd occurrence of the same review finding across cycles/PRs must be treated as a role-definition gap, not just fixed as an instance'],
   // --- agents-revision fix cycle (fusion-adjudicated, 2026-08-05) ---
@@ -574,12 +583,15 @@ const INVARIANTS = [
   ['README.md', /起動先モデルが分かるサブエージェントの起動[\s\S]*?対象外[\s\S]*?この仕組みから見えないことがあります/, 'README.md must keep the §1.11 gate\'s two-hole disclosure in Japanese (session model out of scope; inherited-model dispatch may be invisible) — dropping it leaves users unaware of what the gate does not cover'],
   ['.claude/hooks/block-fable-when-off.js', /この仕組みで止められるのは「モデル名が分かるサブエージェントの起動」だけです[\s\S]*?Fable で動いている場合[\s\S]*?この仕組みからは見えないことがあります/, 'block-fable-when-off.js\'s Japanese deny message (shown to the model on every blocked dispatch) must keep the same two-hole disclosure as the English header — this is a separate string from the header comment pinned above, and dropping it removes the disclosure from the one place a blocked dispatch actually sees'],
   // --- backlog-sweep Batch H L9 (2026-08-06) ---
-  ['.claude/rules/agents.md', /recorded user ruling/, 'agents.md clause (A) tail must keep the "recorded user ruling" binding for the unlocked-run exception — without it, reviewer.md/verifier.md have no SOT explaining why a self-declared "approved"/"unlocked" claim in scope.json/PLAN.md is insufficient'],
-  // --- todo-gate-sweep Batch 4 (2026-08-07): decide() ignores lock.status, so a present-but-unlocked
-  // .claude/state/scope-lock.json (or any unarmed plans/{slug}/scope.json) read literally by the old
-  // wording gets passed into decide() as if armed — flagging nearly every file, or throwing on lock:null.
-  ['.claude/agents/reviewer.md', /status\s*===\s*["']locked["']/, 'reviewer.md Scope Conformance must state that "locked" means `status === "locked"` — without it the locator reads a merely-present-but-unlocked scope-lock.json as an armed manifest and feeds it into decide()'],
-  ['.claude/agents/verifier.md', /status\s*===\s*["']locked["']/, 'verifier.md Scope check must state that "locked" means `status === "locked"` — without it the locator reads a merely-present-but-unlocked scope-lock.json as an armed manifest and feeds it into decide()'],
+  ['.claude/rules/agents.md', /recorded user ruling/, 'agents.md clause (A) tail must keep the "recorded user ruling" binding for the harness-target exception — without it, reviewer.md/verifier.md have no SOT explaining why a self-declared "approved" claim in a PLAN.md is insufficient'],
+  // Quality-loop cycle2 finding (2026-08-29): reviewer.md/verifier.md cite this exact phrase as
+  // their SOT pointer (replacing the now-dead "CLAUDE.md §7.2" citation, cycle1 fix) — agents.md
+  // itself already discloses that this rule was renamed once (2026-08-28); pin all three faces so
+  // a second rename that updates only one or two of them creates a mechanically-caught FAIL
+  // instead of a silently re-orphaned citation.
+  ['.claude/rules/agents.md', /harness-target change rule/, 'agents.md must keep the literal phrase "harness-target change rule" — reviewer.md/verifier.md cite this exact string as their SOT pointer for the recorded-ruling exception; renaming it here without updating both citing files re-creates the dangling-citation bug cycle1 fixed'],
+  ['.claude/agents/reviewer.md', /harness-target change rule/, 'reviewer.md\'s Recorded-ruling exception must keep citing "harness-target change rule" (SOT: .claude/rules/agents.md) — a stale citation string here is a dangling reference even if agents.md itself still defines the rule under a different name'],
+  ['.claude/agents/verifier.md', /harness-target change rule/, 'verifier.md\'s Recorded-ruling exception must keep citing "harness-target change rule" (SOT: .claude/rules/agents.md) — a stale citation string here is a dangling reference even if agents.md itself still defines the rule under a different name'],
   // --- planner self-review ruling (2026-08-13) ---
   ['.claude/skills/plan/SKILL.md', /freshly spawned instance \(the authoring instance never reviews its own plan\)/, 'plan SKILL.md must keep the 2026-08-13 self-review ruling (planner self-review permitted only as a freshly spawned instance, with the red-team second seat attending per its attendance rule for plan reviews) — dropping it silently reopens the planner→planner axis with no recorded authorization'],
   ['.claude/agents/planner.md', /never the same conversation\/instance that authored the plan/, 'planner.md must keep its own copy of the 2026-08-13 Self-Review Mode Eligibility line (freshly spawned instance only, never the authoring instance) — without this pin, deleting the line from planner.md alone (leaving plan SKILL.md untouched) stays undetected'],
@@ -896,11 +908,11 @@ for (const [relPath, must, why] of INVARIANTS) {
 
 // ---- 12. Negative invariant: no hook may ever emit permissionDecision:"allow" on stdout -------
 // Silence + exit 0 already means allow; an explicit "allow" could short-circuit a later hook in
-// the same PreToolUse chain. cmd-write-guard.js/scope-guard.js legitimately write
+// the same PreToolUse chain. cmd-write-guard.js legitimately writes
 // permissionDecision on this field, but always with "deny" — only a literal "allow" value fails.
 // Provenance (2026-08-07): an earlier version of this scan was non-recursive (top level of
 // .claude/hooks/ only) and missed everything under lib/; an even earlier version excluded
-// cmd-write-guard.js/scope-guard.js by filename, leaving the two files most likely to ever carry a
+// cmd-write-guard.js by filename, leaving the file most likely to ever carry a
 // real "allow" completely unscanned. Recursive, with no per-file exclusion, on purpose.
 // Known, disclosed evasion: a value built via a variable or concatenation (e.g.
 // `permissionDecision: decision` or `'al' + 'low'`) does not match this literal-string regex and

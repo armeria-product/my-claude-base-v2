@@ -115,7 +115,7 @@ function unquoteToken(t) {
 // also a no-op, but for a PATH-dependent reason a future environment could remove. The
 // child-process reason above is the one this exception actually rests on.) Suffix-stripping would
 // make lib/cmd-targets.js's exact-match cwd tracking (`case 'cd':`) and its liberal cd/pushd
-// tracking (used for .claude/state protection) believe a no-op invocation moved the cwd — see the
+// tracking (used for .claude/.fable-status protection) believe a no-op invocation moved the cwd — see the
 // comment at the strip site below for the bypasses this produced, both in the plain form and, in
 // a later review round, in the parenthesized/subshell-entry form.
 //
@@ -183,16 +183,13 @@ function normalizeSegment(seg) {
   //    words) is unaffected by this exception — it is a different, already-opaque command name
   //    and is handled (or not) by whatever downstream logic sees an unrecognized `cmd === '('`.
   //
-  //    Concretely, without this exception `cd.exe sub; cp a.txt other/b.txt` made
-  //    cmd-targets.js's cwd tracker believe cwd moved to `sub/` when a real shell never left the
-  //    top level (scope-lock escape: the cp target then falsely resolves inside an allow-listed
-  //    dir), and `cd .claude; cd.exe ..; echo x > state/f` made it believe cwd left `.claude`
-  //    when a real shell never did (defeats the unconditional .claude/state write protection).
-  //    Both were found in review and are pinned as samples (hook-probes.samples.json:
-  //    lock-cd-exe-fake-cwd-move-escape, state-cd-exe-fake-cwd-move-defeat). A later review round
-  //    found the same two bypasses again in the parenthesized/subshell-entry form specifically —
-  //    the paren-stripped-but-not-suffix-stripped membership check above closes those too (pinned
-  //    alongside the same two samples). Backlog note: today, the plain (non-parenthesized) form's
+  //    Concretely, without this exception `cd .claude; cd.exe ..; echo ON > .fable-status` made
+  //    cmd-targets.js's cwd tracker believe cwd left `.claude` when a real shell never did (defeats
+  //    the unconditional .claude/.fable-status write protection). Found in review; the liberal-cd
+  //    mechanism this exception protects is pinned via hook-probes.samples.json's S-state/
+  //    fable-status-* rows. A later review round found the same bypass again in the
+  //    parenthesized/subshell-entry form specifically — the paren-stripped-but-not-suffix-stripped
+  //    membership check above closes that too. Backlog note: today, the plain (non-parenthesized) form's
   //    safety in the non-nested case also happens to rest on cmd-write-guard.js checking the
   //    union of its precise and liberal target lists, not on this exception alone; after this fix
   //    this exception is what actually carries the parenthesized form too — see tasks/todo.md.
@@ -216,8 +213,8 @@ function normalizeSegment(seg) {
   //        membership check above (`cwdBuiltinCandidate`) only ever single-strips before testing
   //        membership, so a loop would let a doubly-suffixed cwd builtin (e.g. `cd.exe.cmd`)
   //        strip all the way down to the bare `cd` and be treated as a real cwd move — reopening
-  //        the fake-cwd-move class that `lock-cd-exe-fake-cwd-move-escape` /
-  //        `state-cd-exe-fake-cwd-move-defeat` exist to pin. Deferred per CLAUDE.md §1.7.
+  //        the fake-cwd-move class that `fable-status-cd-exe-fake-cwd-move-defeat` exists to pin.
+  //        Deferred per CLAUDE.md §1.7.
   //    None of these are fixed here; they are pre-existing and out of this change's scope —
   //    named only so this comment does not read as an exhaustive account of what is closed.
   const rawCmd = tokens[idx];
